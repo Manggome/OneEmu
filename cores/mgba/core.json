@@ -1,0 +1,38 @@
+{
+  "id": "mgba",
+  "displayName": "mGBA",
+  "libFile": "libmgba_libretro.so",
+  "systems": ["gba", "gbc", "gb"],
+  "extensions": ["gba", "gb", "gbc", "sgb", "zip"],
+  "needFullPath": false,
+  "hwRender": "none",
+  "bios": [
+    { "system": "gba", "file": "gba_bios.bin", "required": false, "description": "GBA BIOS (선택, 없으면 내장 HLE BIOS 사용)" },
+    { "system": "gb",  "file": "gb_bios.bin",  "required": false, "description": "Game Boy 부트 ROM (선택)" },
+    { "system": "gbc", "file": "gbc_bios.bin", "required": false, "description": "Game Boy Color 부트 ROM (선택)" },
+    { "system": "gb",  "file": "sgb_bios.bin", "required": false, "description": "Super Game Boy 부트 ROM (선택, SGB 모델 사용 시)" }
+  ],
+  "sourceRepo": "https://github.com/libretro/mgba",
+  "sourceCommit": "e31759b24e7a4e3899285ff720d7b573ac328ae7",
+  "license": "MPL-2.0",
+  "defaultOptions": {
+    "mgba_gb_model": "Autodetect",
+    "mgba_use_bios": "ON",
+    "mgba_skip_bios": "ON",
+    "mgba_gb_colors": "Grayscale",
+    "mgba_gb_colors_preset": "0",
+    "mgba_sgb_borders": "ON",
+    "mgba_color_correction": "OFF",
+    "mgba_interframe_blending": "OFF",
+    "mgba_audio_low_pass_filter": "disabled",
+    "mgba_audio_low_pass_range": "60",
+    "mgba_allow_opposing_directions": "no",
+    "mgba_solar_sensor_level": "0",
+    "mgba_force_gbp": "OFF",
+    "mgba_idle_optimization": "Remove Known",
+    "mgba_frameskip": "disabled",
+    "mgba_frameskip_threshold": "33",
+    "mgba_frameskip_interval": "0"
+  },
+  "notes": "libretro/mgba 0.11-dev (CMake BUILD_LIBRETRO). RGB565 소프트웨어 렌더링, ROM은 메모리로 전달(need_fullpath=false), zip은 내장 minizip으로 코어가 직접 해제. BIOS는 RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY 경로에서 찾고 없으면 HLE BIOS로 실행."
+}

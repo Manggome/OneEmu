@@ -1,0 +1,27 @@
+# Gradle / Android
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.kotlin/
+.cxx/
+captures/
+*.apk
+*.aab
+*.hprof
+
+# Signing
+*.jks
+*.keystore
+keystore.properties
+
+# Prebuilt cores (built by scripts/build-cores.sh or CI)
+app/src/main/jniLibs/
+cores/build/
+cores/out/
+
+# macOS
+.DS_Store
+cores/*/src/
+cores/*/build/

@@ -1,0 +1,57 @@
+{
+  "id": "mame2003plus",
+  "displayName": "MAME 2003-Plus",
+  "libFile": "libmame2003plus_libretro.so",
+  "systems": [
+    "arcade"
+  ],
+  "extensions": [
+    "zip"
+  ],
+  "needFullPath": true,
+  "hwRender": "none",
+  "bios": [
+    {
+      "system": "arcade",
+      "file": "mame2003-plus/cheat.dat",
+      "required": false,
+      "description": "치트 DB (선택). 소스 metadata/cheat.dat 를 <systemdir>/mame2003-plus/ 에 복사"
+    },
+    {
+      "system": "arcade",
+      "file": "mame2003-plus/hiscore.dat",
+      "required": false,
+      "description": "하이스코어 저장 지원 DB (선택). 소스 metadata/hiscore.dat"
+    },
+    {
+      "system": "arcade",
+      "file": "mame2003-plus/history.dat",
+      "required": false,
+      "description": "게임 히스토리 텍스트 (선택). 소스 metadata/history.dat"
+    }
+  ],
+  "sourceRepo": "https://github.com/libretro/mame2003-plus-libretro",
+  "sourceCommit": "d3ac6c95f293a33b684402cf57fa56d9247d095a",
+  "license": "MAME (non-commercial)",
+  "defaultOptions": {
+    "mame2003-plus_skip_disclaimer": "enabled",
+    "mame2003-plus_skip_warnings": "enabled",
+    "mame2003-plus_display_setup": "disabled",
+    "mame2003-plus_display_artwork": "disabled",
+    "mame2003-plus_sample_rate": "48000",
+    "mame2003-plus_xy_device": "disabled",
+    "mame2003-plus_input_interface": "retropad",
+    "mame2003-plus_mame_remapping": "enabled",
+    "mame2003-plus_frameskip": "disabled",
+    "mame2003-plus_use_samples": "enabled",
+    "mame2003-plus_core_sys_subfolder": "enabled",
+    "mame2003-plus_core_save_subfolder": "enabled",
+    "mame2003-plus_autosave_hiscore": "default",
+    "mame2003-plus_nvram_bootstraps": "enabled",
+    "mame2003-plus_tate_mode": "disabled",
+    "mame2003-plus_four_way_emulation": "disabled",
+    "mame2003-plus_digital_joy_centering": "enabled",
+    "mame2003-plus_cpu_clock_scale": "default"
+  },
+  "notes": "MAME 0.78 기반 'MAME 2003-Plus' 전용 롬셋(zip, non-merged 또는 split) 필요. zip 파일명 = MAME 짧은 이름(예: sf2.zip); 전체 제목은 소스 metadata/mame2003-plus.xml(DAT, <game name> -> <description>)로 매핑. BIOS 롬셋(neogeo.zip, pgm.zip, stvbios.zip 등)은 systemdir가 아니라 게임 zip과 같은 ROM 폴더에 둔다. 샘플 <systemdir>/mame2003-plus/samples/<game>.zip, 아트워크 <systemdir>/mame2003-plus/artwork/<game>.zip, *.dat 은 <systemdir>/mame2003-plus/. NVRAM/hi/cfg/memcard/diff 는 <savedir>/mame2003-plus/ 하위에 기록. 16KB 페이지 정렬 빌드."
+}

@@ -1,0 +1,31 @@
+diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
+index 8a07c26f..84cc148b 100644
+--- a/Source/ui_libretro/main_libretro.cpp
++++ b/Source/ui_libretro/main_libretro.cpp
+@@ -547,7 +547,25 @@ bool retro_load_game_special(unsigned game_type, const struct retro_game_info* i
+ void retro_init()
+ {
+ #ifdef __ANDROID__
+-	Framework::PathUtils::SetFilesDirPath(getenv("EXTERNAL_STORAGE"));
++	{
++		//Prefer the frontend-provided save/system directory over EXTERNAL_STORAGE:
++		//EXTERNAL_STORAGE (/sdcard) is not writable under scoped storage (Android 11+)
++		//and may be unset, which would crash fs::path construction.
++		const char* filesDir = nullptr;
++		if(!g_environ_cb || !g_environ_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &filesDir) || !filesDir || !*filesDir)
++		{
++			filesDir = nullptr;
++			if(!g_environ_cb || !g_environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &filesDir) || !filesDir || !*filesDir)
++			{
++				filesDir = getenv("EXTERNAL_STORAGE");
++			}
++		}
++		if(!filesDir || !*filesDir)
++		{
++			filesDir = "/sdcard";
++		}
++		Framework::PathUtils::SetFilesDirPath(filesDir);
++	}
+ #endif
+ 	CLog::GetInstance().Print(LOG_NAME, "%s\n", __FUNCTION__);
+ 

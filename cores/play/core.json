@@ -1,0 +1,19 @@
+{
+  "id": "play",
+  "displayName": "Play!",
+  "libFile": "libplay_libretro.so",
+  "systems": ["ps2"],
+  "extensions": ["iso", "chd", "cso", "isz", "cue", "elf"],
+  "needFullPath": true,
+  "hwRender": "gles3",
+  "bios": [],
+  "sourceRepo": "https://github.com/jpd002/Play-",
+  "sourceCommit": "83700b2c31e593bc94e845b4b31b797be84dda59",
+  "license": "BSD-2-Clause",
+  "defaultOptions": {
+    "play_res_multi": "1x",
+    "play_presentation_mode": "Fit Screen",
+    "play_bilinear_filtering": "false"
+  },
+  "notes": "PS2 HLE emulator (no BIOS). Requests a GLES 3.2 context with depth buffer, bottom-left origin, cache_context=false, XRGB8888. Writes config/memcards to <save dir>/Play Data Files (patched; upstream uses $EXTERNAL_STORAGE). Compatibility far below PCSX2/AetherSX2; expect many titles to fail or run slowly."
+}

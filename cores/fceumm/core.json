@@ -1,0 +1,45 @@
+{
+  "id": "fceumm",
+  "displayName": "FCEUmm",
+  "libFile": "libfceumm_libretro.so",
+  "systems": ["nes"],
+  "extensions": ["nes", "fds", "unf", "unif", "zip"],
+  "needFullPath": true,
+  "hwRender": "none",
+  "bios": [
+    {
+      "system": "nes",
+      "file": "disksys.rom",
+      "required": false,
+      "description": "Famicom Disk System BIOS (FDS 게임에만 필요, .nes/.unf에는 불필요). system 디렉터리 루트에 배치"
+    }
+  ],
+  "sourceRepo": "https://github.com/libretro/libretro-fceumm",
+  "sourceCommit": "236ccdfc911e84c60fea6b9d0699c2d440a8de14",
+  "license": "GPL-2.0",
+  "defaultOptions": {
+    "fceumm_region": "Auto",
+    "fceumm_aspect": "4:3",
+    "fceumm_overscan_h_left": "0",
+    "fceumm_overscan_h_right": "0",
+    "fceumm_overscan_v_top": "8",
+    "fceumm_overscan_v_bottom": "8",
+    "fceumm_palette": "default",
+    "fceumm_ntsc_filter": "disabled",
+    "fceumm_hdpacks": "disabled",
+    "fceumm_sndquality": "High",
+    "fceumm_sndrate_hint": "Auto",
+    "fceumm_sndvolume": "7",
+    "fceumm_sndlowpass": "disabled",
+    "fceumm_swapduty": "disabled",
+    "fceumm_overclocking": "disabled",
+    "fceumm_nospritelimit": "disabled",
+    "fceumm_ramstate": "fill $ff",
+    "fceumm_up_down_allowed": "disabled",
+    "fceumm_turbo_enable": "None",
+    "fceumm_zapper_mode": "touchscreen",
+    "fceumm_show_crosshair": "enabled",
+    "fceumm_game_genie": "disabled"
+  },
+  "notes": "픽셀 포맷 XRGB8888(WANT_32BPP). need_fullpath=true, block_extract=false 이므로 zip은 프론트엔드가 임시 디렉터리에 풀어 실제 파일 경로를 넘겨야 함. 오버스캔은 fceumm_overscan(PSP 전용) 대신 per-side 4개 키 사용. FDS는 system/disksys.rom 필요."
+}

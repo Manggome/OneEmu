@@ -1,0 +1,40 @@
+{
+  "id": "melondsds",
+  "displayName": "melonDS DS",
+  "libFile": "libmelondsds_libretro.so",
+  "systems": ["nds"],
+  "extensions": ["nds", "dsi", "ids", "zip"],
+  "needFullPath": false,
+  "hwRender": "none",
+  "bios": [
+    { "system": "nds", "file": "bios7.bin", "required": false, "description": "DS ARM7 BIOS (16KB). 없으면 내장 FreeBIOS 사용" },
+    { "system": "nds", "file": "bios9.bin", "required": false, "description": "DS ARM9 BIOS (4KB). 없으면 내장 FreeBIOS 사용" },
+    { "system": "nds", "file": "firmware.bin", "required": false, "description": "DS 펌웨어 (128/256/512KB). 없으면 내장 펌웨어 사용" },
+    { "system": "nds", "file": "dsi_bios7.bin", "required": false, "description": "DSi ARM7 BIOS (64KB). DSi 모드에서만 필요" },
+    { "system": "nds", "file": "dsi_bios9.bin", "required": false, "description": "DSi ARM9 BIOS (64KB). DSi 모드에서만 필요" },
+    { "system": "nds", "file": "dsi_firmware.bin", "required": false, "description": "DSi 펌웨어. DSi 모드에서만 필요" },
+    { "system": "nds", "file": "dsi_nand.bin", "required": false, "description": "DSi NAND 이미지 (240MB/245.5MB). DSi 모드에서만 필요" }
+  ],
+  "sourceRepo": "https://github.com/JesseTG/melonds-ds",
+  "sourceCommit": "bc4e4b67d2d470d7c682810a1e892cafd6f9082b",
+  "license": "GPL-3.0-or-later",
+  "defaultOptions": {
+    "melonds_render_mode": "software",
+    "melonds_threaded_renderer": "enabled",
+    "melonds_console_mode": "ds",
+    "melonds_sysfile_mode": "native",
+    "melonds_boot_mode": "direct",
+    "melonds_jit_enable": "enabled",
+    "melonds_touch_mode": "auto",
+    "melonds_show_cursor": "disabled",
+    "melonds_number_of_screen_layouts": "2",
+    "melonds_screen_layout1": "top-bottom",
+    "melonds_screen_layout2": "left-right",
+    "melonds_hybrid_ratio": "2",
+    "melonds_hybrid_small_screen": "both",
+    "melonds_screen_gap": "0",
+    "melonds_show_bios_warnings": "disabled",
+    "melonds_show_unsupported_features": "disabled"
+  },
+  "notes": "v1.3.1. 소프트웨어 렌더러(스레드) 전용 빌드: 업스트림이 Android에서 OpenGL 렌더러를 미지원(issue #23)이라 ENABLE_OPENGL=OFF. 소스는 gles3 프로파일 옵션(OPENGL_PROFILE)을 갖고 있어 향후 포팅되면 gles3 전환 가능. FreeBIOS 내장 → BIOS 없이 구동, bios7/bios9/firmware.bin 있으면 자동 사용(sysfile_mode=native, 없으면 builtin으로 폴백). BIOS 탐색: <system>/melonDS DS/<file> 우선, 없으면 <system>/<file>. 터치스크린은 RETRO_DEVICE_POINTER(port 0) 좌표로 입력. 화면 레이아웃 키: melonds_screen_layout1..8 (top-bottom, bottom-top, left-right, right-left, top, bottom, hybrid-top, hybrid-bottom, largescreen-top, largescreen-bottom, rotate-left, rotate-right, rotate-180 등). zip은 프론트엔드가 해제(block_extract=false)."
+}

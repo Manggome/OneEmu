@@ -1,0 +1,36 @@
+<resources>
+    <string name="app_name">OneEmu</string>
+
+    <!-- 공통 -->
+    <string name="ok">확인</string>
+    <string name="cancel">취소</string>
+    <string name="delete">삭제</string>
+    <string name="save">저장</string>
+    <string name="close">닫기</string>
+    <string name="back">뒤로</string>
+    <string name="retry">다시 시도</string>
+    <string name="search">검색</string>
+    <string name="settings">설정</string>
+    <string name="help">도움말</string>
+    <string name="more">더보기</string>
+    <string name="none">없음</string>
+    <string name="default_">기본값</string>
+    <string name="loading">불러오는 중…</string>
+    <string name="error_generic">오류가 발생했습니다</string>
+
+    <!-- 권한 -->
+    <string name="perm_all_files_title">저장공간 접근 권한</string>
+    <string name="perm_all_files_desc">게임 파일을 읽으려면 \'모든 파일 접근\' 권한이 필요합니다. 설정에서 OneEmu를 허용해 주세요.</string>
+    <string name="perm_open_settings">설정 열기</string>
+
+    <!-- 설정 메뉴 (My Boy 참고) -->
+    <string name="settings_video">비디오</string>
+    <string name="settings_audio">오디오</string>
+    <string name="settings_input">입력</string>
+    <string name="settings_layouts">패드 레이아웃</string>
+    <string name="settings_cores">코어 / BIOS</string>
+    <string name="settings_misc">기타</string>
+    <string name="settings_advanced">고급</string>
+    <string name="settings_about">정보</string>
+    <string name="settings_update">업데이트 확인</string>
+</resources>
