@@ -20,6 +20,13 @@ object Routes {
     const val CORE_OPTIONS = "settings/core/{coreId}"
     fun coreOptions(coreId: String) = "settings/core/$coreId"
 
+    /** Pad skin picker for a system: settings/skins/{systemId} */
+    const val SKINS = "settings/skins/{systemId}"
+    fun skins(systemId: String) = "settings/skins/$systemId"
+
+    /** Theme picker */
+    const val SETTINGS_THEME = "settings/theme"
+
     /** Virtual pad layout editor: layout/{systemId} */
     const val LAYOUT_EDITOR = "layout/{systemId}"
     fun layoutEditor(systemId: String) = "layout/$systemId"
