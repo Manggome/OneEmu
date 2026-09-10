@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/jniLibs/arm64-v8a/lib${{ matrix.core }}_libretro.so
-          key: core-${{ env.CORE_CACHE_SALT }}-${{ runner.os }}-${{ matrix.core }}-${{ hashFiles(format('cores/{0}/**', matrix.core)) }}
+          key: core-${{ env.CORE_CACHE_SALT }}-${{ runner.os }}-${{ matrix.core }}-${{ hashFiles(format('cores/{0}/build.sh', matrix.core), format('cores/{0}/core.json', matrix.core), format('cores/{0}/patches/**', matrix.core)) }}
 
       - name: Install build tools
         if: steps.cache.outputs.cache-hit != 'true'

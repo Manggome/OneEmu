@@ -137,9 +137,9 @@ cp -f "$BUILT_SO" "$OUT_SO"
 "$LLVM_BIN/llvm-strip" --strip-unneeded "$OUT_SO"
 
 # ---------------------------------------------------------------- verify
-"$LLVM_BIN/llvm-readelf" -h "$OUT_SO" | grep -q AArch64 || die "output is not AArch64"
+"$LLVM_BIN/llvm-readelf" -h "$OUT_SO" | grep -c AArch64 >/dev/null || die "output is not AArch64"
 for sym in retro_run retro_load_game retro_api_version retro_get_system_info; do
-  "$LLVM_BIN/llvm-nm" -D "$OUT_SO" | grep -qE " T ${sym}$" || die "missing exported symbol: $sym"
+  "$LLVM_BIN/llvm-nm" -D "$OUT_SO" | grep -cE " T ${sym}$" >/dev/null || die "missing exported symbol: $sym"
 done
 
 log "OK: $OUT_SO ($(du -h "$OUT_SO" | cut -f1))"
