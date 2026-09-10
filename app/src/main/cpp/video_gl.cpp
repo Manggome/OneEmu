@@ -64,8 +64,13 @@ bool VideoGL::init(ANativeWindow* window, bool needDepth, bool needStencil) {
         LOGE("eglChooseConfig failed");
         return false;
     }
-    const EGLint ctxAttribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
-    context_ = eglCreateContext(display_, config_, EGL_NO_CONTEXT, ctxAttribs);
+    // Prefer an explicit ES 3.2 context (Azahar/PPSSPP use 3.2 features when present), fall back to any ES 3.x.
+    const EGLint ctxAttribs32[] = { EGL_CONTEXT_MAJOR_VERSION, 3, EGL_CONTEXT_MINOR_VERSION, 2, EGL_NONE };
+    context_ = eglCreateContext(display_, config_, EGL_NO_CONTEXT, ctxAttribs32);
+    if (context_ == EGL_NO_CONTEXT) {
+        const EGLint ctxAttribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
+        context_ = eglCreateContext(display_, config_, EGL_NO_CONTEXT, ctxAttribs);
+    }
     if (context_ == EGL_NO_CONTEXT) {
         LOGE("eglCreateContext failed: 0x%x", eglGetError());
         return false;

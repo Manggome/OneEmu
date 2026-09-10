@@ -1,0 +1,94 @@
+<resources>
+    <!-- 에뮬레이터 화면 -->
+    <string name="emu_loading_title">%1$s 불러오는 중…</string>
+    <string name="emu_error_title">게임을 시작할 수 없습니다</string>
+    <string name="emu_exit_confirm">게임을 종료할까요?</string>
+    <string name="emu_exit">종료</string>
+    <string name="emu_gamepad_connected">게임패드가 연결되어 화면 패드를 숨겼습니다</string>
+    <string name="emu_no_core">이 기종을 실행할 코어가 없습니다</string>
+    <string name="emu_missing_bios">필요한 BIOS 파일이 없습니다: %1$s</string>
+    <string name="emu_game_not_found">게임 정보를 찾을 수 없습니다</string>
+
+    <!-- 인게임 메뉴 -->
+    <string name="menu_load">불러오기</string>
+    <string name="menu_save">저장</string>
+    <string name="menu_fast_forward">빨리감기</string>
+    <string name="menu_cheats">치트</string>
+    <string name="menu_settings">설정</string>
+    <string name="menu_screenshot">스크린샷</string>
+    <string name="menu_reset">리셋</string>
+    <string name="menu_close">닫기</string>
+    <string name="ff_unlimited">무제한</string>
+    <string name="ff_speed_x">%1$d배</string>
+    <string name="ff_on">켜짐</string>
+    <string name="ff_off">꺼짐</string>
+    <string name="reset_confirm">게임을 리셋할까요? 저장하지 않은 진행 상황은 사라집니다.</string>
+
+    <!-- 세이브 슬롯 -->
+    <string name="slot_pick_save">저장할 슬롯 선택</string>
+    <string name="slot_pick_load">불러올 슬롯 선택</string>
+    <string name="slot_auto">자동 저장</string>
+    <string name="slot_n">슬롯 %1$d</string>
+    <string name="slot_empty">비어 있음</string>
+    <string name="slot_saved">슬롯 %1$d에 저장했습니다</string>
+    <string name="slot_saved_auto">자동 저장 슬롯에 저장했습니다</string>
+    <string name="slot_loaded">슬롯 %1$d을(를) 불러왔습니다</string>
+    <string name="slot_loaded_auto">자동 저장을 불러왔습니다</string>
+    <string name="slot_save_failed">저장에 실패했습니다</string>
+    <string name="slot_load_failed">불러오기에 실패했습니다</string>
+    <string name="slot_load_confirm">현재 진행 상황이 사라집니다. 불러올까요?</string>
+    <string name="slot_overwrite_confirm">이미 저장된 슬롯입니다. 덮어쓸까요?</string>
+
+    <!-- 치트 -->
+    <string name="cheat_title">치트</string>
+    <string name="cheat_add">치트 추가</string>
+    <string name="cheat_name">이름</string>
+    <string name="cheat_code">코드</string>
+    <string name="cheat_code_hint">여러 줄 입력 가능</string>
+    <string name="cheat_empty">등록된 치트가 없습니다</string>
+    <string name="cheat_delete_confirm">\'%1$s\' 치트를 삭제할까요?</string>
+    <string name="cheat_long_press_hint">길게 눌러 삭제</string>
+    <string name="cheat_add_button">추가</string>
+
+    <!-- 빠른 설정 -->
+    <string name="qs_title">설정</string>
+    <string name="qs_filter">화면 필터</string>
+    <string name="qs_filter_smooth">부드럽게</string>
+    <string name="qs_filter_pixel">픽셀</string>
+    <string name="qs_aspect">화면비</string>
+    <string name="qs_aspect_core">코어 기본</string>
+    <string name="qs_aspect_stretch">꽉 채우기</string>
+    <string name="qs_aspect_integer">정수 배율</string>
+    <string name="qs_aspect_square">정사각 픽셀</string>
+    <string name="qs_pad_opacity">패드 투명도</string>
+    <string name="qs_pad_scale">패드 크기</string>
+    <string name="qs_vibration">진동</string>
+    <string name="qs_show_fps">FPS 표시</string>
+    <string name="qs_audio">오디오</string>
+    <string name="qs_core_options">코어 옵션</string>
+    <string name="qs_core_options_empty">이 코어에는 옵션이 없습니다</string>
+    <string name="qs_edit_layout">패드 레이아웃 편집</string>
+    <string name="qs_category_general">일반</string>
+
+    <!-- 스크린샷 -->
+    <string name="screenshot_saved">스크린샷 저장: %1$s</string>
+    <string name="screenshot_failed">스크린샷을 저장하지 못했습니다</string>
+
+    <!-- 패드 레이아웃 편집기 -->
+    <string name="le_title">패드 레이아웃</string>
+    <string name="le_reset">기본값으로 되돌리기</string>
+    <string name="le_save">저장</string>
+    <string name="le_cancel">취소</string>
+    <string name="le_opacity">투명도</string>
+    <string name="le_scale">크기</string>
+    <string name="le_visible">표시</string>
+    <string name="le_elements">요소 표시/숨기기</string>
+    <string name="le_snap">격자에 맞추기</string>
+    <string name="le_portrait">세로</string>
+    <string name="le_landscape">가로</string>
+    <string name="le_hint">요소를 끌어서 옮기고, 탭해서 선택하세요</string>
+    <string name="le_saved">레이아웃을 저장했습니다</string>
+    <string name="le_mock_game">게임 화면</string>
+    <string name="le_discard_confirm">변경 사항을 저장하지 않고 나갈까요?</string>
+    <string name="le_discard">나가기</string>
+</resources>

@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 설정 홈 -->
+    <string name="settings_title">설정</string>
+    <string name="settings_video_desc">화면 필터, 화면비, FPS 표시</string>
+    <string name="settings_audio_desc">소리 켜기/끄기</string>
+    <string name="settings_input_desc">가상 패드 투명도, 크기, 진동</string>
+    <string name="settings_layouts_desc">기종별 버튼 위치 편집</string>
+    <string name="settings_cores_desc">기본 코어 선택, 코어 옵션, BIOS 상태</string>
+    <string name="settings_misc_desc">업데이트, 자동 저장, 빨리감기</string>
+    <string name="settings_about_desc">버전, 라이선스, 포함된 코어</string>
+
+    <!-- 비디오 -->
+    <string name="video_filter">화면 필터</string>
+    <string name="video_filter_nearest">픽셀 그대로</string>
+    <string name="video_filter_linear">부드럽게</string>
+    <string name="video_aspect">화면비</string>
+    <string name="video_aspect_core">코어 기본</string>
+    <string name="video_aspect_stretch">꽉 채우기</string>
+    <string name="video_aspect_integer">정수 배율</string>
+    <string name="video_aspect_square">정사각 픽셀</string>
+    <string name="video_show_fps">FPS 표시</string>
+    <string name="video_show_fps_desc">화면 구석에 초당 프레임 수를 표시합니다</string>
+
+    <!-- 오디오 -->
+    <string name="audio_enabled">소리 켜기</string>
+    <string name="audio_enabled_desc">끄면 게임 소리가 재생되지 않습니다</string>
+
+    <!-- 입력 -->
+    <string name="input_pad_opacity">패드 투명도</string>
+    <string name="input_pad_scale">패드 크기</string>
+    <string name="input_vibration">진동</string>
+    <string name="input_vibration_desc">가상 패드 버튼을 누를 때 진동합니다</string>
+    <string name="input_vibration_ms">진동 세기 (ms)</string>
+    <string name="input_hide_with_gamepad">게임패드 연결 시 가상 패드 숨기기</string>
+    <string name="input_hide_with_gamepad_desc">물리 게임패드가 연결되면 화면의 가상 패드를 감춥니다</string>
+    <string name="input_layout_note">버튼 위치와 배치는 \'패드 레이아웃\' 메뉴에서 기종별로 편집할 수 있습니다.</string>
+
+    <!-- 패드 레이아웃 -->
+    <string name="layouts_edit_hint">편집할 기종을 선택하세요</string>
+    <string name="layouts_reset_all">모든 레이아웃 초기화</string>
+    <string name="layouts_reset_all_desc">모든 기종의 가로/세로 버튼 배치를 기본값으로 되돌립니다</string>
+    <string name="layouts_reset_confirm_title">레이아웃을 초기화할까요?</string>
+    <string name="layouts_reset_confirm_body">모든 기종의 가상 패드 배치가 기본값으로 돌아갑니다. 이 작업은 되돌릴 수 없습니다.</string>
+    <string name="layouts_reset_done">모든 레이아웃을 초기화했습니다</string>
+    <string name="reset">초기화</string>
+
+    <!-- 코어 / BIOS -->
+    <string name="cores_bios_folder">BIOS 폴더</string>
+    <string name="cores_bios_folder_desc">파일 관리자 앱으로 아래 경로에 BIOS 파일을 복사하세요. 파일 이름은 표시된 것과 정확히 같아야 합니다.</string>
+    <string name="cores_copy_path">경로 복사</string>
+    <string name="cores_path_copied">경로를 복사했습니다</string>
+    <string name="cores_import_bios">BIOS 파일 가져오기</string>
+    <string name="cores_import_done">%1$d개 파일을 복사했습니다</string>
+    <string name="cores_import_failed">파일을 복사하지 못했습니다: %1$s</string>
+    <string name="cores_no_core">코어 미포함</string>
+    <string name="cores_no_core_desc">이 기종의 코어는 아직 준비 중입니다</string>
+    <string name="cores_default_core">기본 코어</string>
+    <string name="cores_core_unavailable">(APK에 코어 파일 없음)</string>
+    <string name="cores_core_options">코어 옵션</string>
+    <string name="cores_bios_files">BIOS 파일</string>
+    <string name="cores_bios_none">BIOS가 필요하지 않습니다</string>
+    <string name="cores_bios_required">필수</string>
+    <string name="cores_bios_optional">선택</string>
+    <string name="cores_bios_found">있음</string>
+    <string name="cores_bios_missing">없음</string>
+
+    <!-- 코어 옵션 -->
+    <string name="core_options_title">%1$s 옵션</string>
+    <string name="core_options_loading">코어를 불러와 옵션 목록을 읽는 중…</string>
+    <string name="core_options_running">게임 실행 중에는 열 수 없습니다</string>
+    <string name="core_options_running_desc">게임을 종료한 뒤 다시 시도하세요.</string>
+    <string name="core_options_load_failed">코어를 불러오지 못했습니다</string>
+    <string name="core_options_empty">이 코어에는 옵션이 없습니다</string>
+    <string name="core_options_show_advanced">고급 옵션 표시</string>
+    <string name="core_options_reset_all">모두 초기화</string>
+    <string name="core_options_reset_all_confirm">이 코어의 모든 옵션 변경 사항을 지우고 기본값으로 되돌릴까요?</string>
+    <string name="core_options_reset_one">기본값으로</string>
+    <string name="core_options_modified">변경됨</string>
+    <string name="core_options_category_other">기타</string>
+    <string name="core_options_apply_note">변경한 옵션은 다음에 게임을 시작할 때 적용됩니다.</string>
+
+    <!-- 기타 -->
+    <string name="misc_update_on_start">시작할 때 업데이트 확인</string>
+    <string name="misc_update_on_start_desc">앱을 열 때 GitHub에서 새 버전을 확인합니다 (6시간마다 한 번)</string>
+    <string name="misc_auto_save">게임을 나갈 때 자동 저장</string>
+    <string name="misc_auto_save_desc">게임을 종료하면 자동 슬롯에 상태를 저장합니다</string>
+    <string name="misc_ff_speed">빨리감기 속도</string>
+    <string name="misc_ff_unlimited">무제한</string>
+    <string name="misc_clear_temp">임시 파일 정리</string>
+    <string name="misc_clear_temp_desc">압축 해제된 ROM 등 임시 파일을 삭제합니다</string>
+    <string name="misc_clear_temp_done">임시 파일을 정리했습니다</string>
+
+    <!-- 정보 -->
+    <string name="about_version">버전 %1$s</string>
+    <string name="about_check_update">업데이트 확인</string>
+    <string name="about_checking">확인 중…</string>
+    <string name="about_up_to_date">최신 버전입니다</string>
+    <string name="about_update_available">새 버전 v%1$s이(가) 있습니다</string>
+    <string name="about_check_failed">업데이트를 확인할 수 없습니다: %1$s</string>
+    <string name="about_github">GitHub 저장소</string>
+    <string name="about_github_desc">소스 코드, 이슈 제보, 릴리스</string>
+    <string name="about_debug_note">지금 실행 중인 빌드는 디버그 빌드입니다. 앱 내 업데이트로 받은 릴리스 APK는 이 빌드 위에 덮어 설치되지 않으니, GitHub Releases의 릴리스 APK를 설치해서 사용하세요.</string>
+    <string name="about_license_title">라이선스</string>
+    <string name="about_license_app">OneEmu 앱 코드: GPL-3.0</string>
+    <string name="about_license_desc">OneEmu는 GPL 코어를 포함하므로 앱 전체가 GPL-3.0으로 배포됩니다. 아래 코어들은 각각 자체 라이선스를 따르는 오픈 소스 프로젝트입니다.</string>
+    <string name="about_cores_title">포함된 코어</string>
+    <string name="about_core_commit">커밋 %1$s</string>
+    <string name="about_no_rom_note">OneEmu에는 게임 ROM이나 BIOS가 포함되어 있지 않습니다. 직접 소유한 파일만 사용하세요.</string>
+
+    <!-- 업데이트 -->
+    <string name="update_title">새 버전 v%1$s이(가) 있습니다</string>
+    <string name="update_size">다운로드 크기: %1$s</string>
+    <string name="update_notes_empty">릴리스 노트가 없습니다.</string>
+    <string name="update_action_update">업데이트</string>
+    <string name="update_action_later">나중에</string>
+    <string name="update_action_skip">이 버전 건너뛰기</string>
+    <string name="update_action_install">설치</string>
+    <string name="update_downloading">다운로드 중… %1$d%%</string>
+    <string name="update_downloaded">다운로드가 끝났습니다. 설치를 눌러 업데이트하세요.</string>
+    <string name="update_failed">업데이트에 실패했습니다: %1$s</string>
+    <string name="update_perm_title">알 수 없는 앱 설치 허용</string>
+    <string name="update_perm_body">업데이트를 설치하려면 OneEmu가 APK를 설치할 수 있도록 허용해야 합니다. 설정 화면에서 \'이 출처 허용\'을 켠 뒤 돌아와 다시 설치를 누르세요.</string>
+    <string name="update_perm_open">설정 열기</string>
+    <string name="update_release_page">릴리스 페이지</string>
+</resources>

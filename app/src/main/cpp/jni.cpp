@@ -51,6 +51,14 @@ struct JavaListener : FrontendListener {
         ScopedEnv se; if (!se.env) return;
         se.env->CallStaticVoidMethod(g_bridgeClass, g_onShutdown);
     }
+    void onEmuThreadStarted() override {
+        JNIEnv* env = nullptr;
+        if (g_vm && g_vm->GetEnv((void**)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
+            JavaVMAttachArgs args{ JNI_VERSION_1_6, "OneEmuEmu", nullptr };
+            g_vm->AttachCurrentThread(&env, &args); // stays attached for the thread's lifetime
+        }
+    }
+    void onEmuThreadStopping() override { if (g_vm) g_vm->DetachCurrentThread(); }
     void onFatal(const std::string& what) override {
         ScopedEnv se; if (!se.env) return;
         jstring js = se.env->NewStringUTF(what.c_str());

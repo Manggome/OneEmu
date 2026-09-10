@@ -18,7 +18,7 @@
 - 세이브스테이트(`retro_serialize/unserialize`) 구현 완료, 코어 옵션 V2, 메모리 맵(`SET_MEMORY_MAPS`), 입력 디스크립터 제공.
 - 대안인 `libretro/citra`는 같은 계보(동일 작성자 warmenhoven)의 **2023-12 Citra 스냅샷**이라 Azahar에 2.5년치 정확도/성능 개선이 빠져 있고, Panda3DS는 세이브스테이트가 없고 호환성이 낮다. Azahar 안드로이드 앱 네이티브 라이브러리를 직접 임베드하는 방식은 JNI 결합도가 높아 libretro 경로보다 5~10배의 작업량이 든다(3절 참조).
 
-빌드 시도 결과(요약): NDK 28.2.13676358 + CMake 4.4.3(pip) + Ninja로 `-DENABLE_LIBRETRO=ON` 구성 성공(1756 컴파일 스텝). 컴파일은 시간 제한 안에 끝나지 않아 백그라운드로 진행 중이며 에러는 없었다(진행 상황은 5절 끝 참조). 단 하나의 사전 조건 이슈: **Azahar는 CMake ≥ 3.25를 요구**하므로 OneEmu 규약의 SDK CMake 3.22.1로는 구성이 불가하다(해결책은 4절).
+빌드 시도 결과(요약): NDK 28.2.13676358 + CMake 4.4.3(pip) + Ninja로 `-DENABLE_LIBRETRO=ON` 구성 성공(1756 컴파일 스텝). 컴파일 중 **컴파일 에러 1건**(`src/common/error.cpp`의 `strerror_r` — Android bionic은 `_GNU_SOURCE` 아래에서 GNU식 `char*`를 반환하는데 libretro 빌드에서만 XSI 분기를 타도록 되어 있음)을 만났고, 한 줄 패치(4절 단계 1의 `patches/0001-android-libretro-strerror_r-gnu.patch`)로 해결해 빌드를 재개했다. 이 이슈는 서드파티 빌드 가이드(Emulayr/azahar-libretro-builds)에도 동일하게 기록된 알려진 문제다. 그 외 사전 조건 이슈: **Azahar는 CMake ≥ 3.25를 요구**하므로 OneEmu 규약의 SDK CMake 3.22.1로는 구성이 불가하다(해결책은 4절). 최종 빌드 결과는 5절 끝 "빌드 결과" 참조.
 
 ---
 
@@ -110,8 +110,23 @@ llvm-strip -s build/android-arm64-v8a/bin/Release/azahar_libretro.so
   ```
   타깃 `azahar_libretro`, 산출물 `build/bin/Release/azahar_libretro.so` → `llvm-strip --strip-unneeded` → `app/src/main/jniLibs/arm64-v8a/libazahar_libretro.so`.
 - NDK 28.2는 arm64 기본 `max-page-size=16384`라 16KB 페이지 요건 충족(Azahar CI는 같은 이유로 NDK 29 사용).
-- 빌드 시간: 1,756 스텝, 8코어 macOS에서 60~100분 예상. GitHub Actions에서는 `build/` 캐시 또는 ccache를 권장.
-- 패치 후보(필요 시 `patches/`): (1) Android 기본 Vulkan 강제(`GetPreferredRenderer`)를 프론트엔드 선호 우선으로 바꾸는 소규모 패치 — `ENABLE_VULKAN=OFF`로 빌드하면 불필요. (2) NDK 28에서 컴파일 에러가 나오면 해당 파일만 패치(현재까지 에러 없음).
+- 빌드 시간: 1,756 스텝, 8코어 Apple Silicon macOS에서 **실측 약 18분**(구성 70초 + 컴파일/링크 2회 합산 17분 52초). GitHub Actions 2코어 러너에서는 60분 이상 예상 → `build/` 캐시 또는 ccache 권장.
+- **필수 패치 1건** `patches/0001-android-libretro-strerror_r-gnu.patch` (로컬 빌드에서 확인된 유일한 컴파일 에러):
+  ```diff
+  --- a/src/common/error.cpp
+  +++ b/src/common/error.cpp
+  @@ -35,7 +35,7 @@ std::string NativeErrorToString(int e) {
+   #else
+       char err_str[255];
+   #if defined(__GLIBC__) && (_GNU_SOURCE || (_POSIX_C_SOURCE < 200112L && _XOPEN_SOURCE < 600)) ||   \
+  -    (defined(ANDROID) && !defined(HAVE_LIBRETRO))
+  +    defined(ANDROID)
+       // Thread safe (GNU-specific)
+       const char* str = strerror_r(e, err_str, sizeof(err_str));
+       return std::string(str);
+  ```
+  원인: NDK의 clang++는 `_GNU_SOURCE`를 기본 정의하므로 bionic `strerror_r`이 `char*`를 반환하는데, 업스트림 조건식이 `HAVE_LIBRETRO`가 정의된 Android 빌드에서만 XSI(`int` 반환) 분기를 타게 되어 있다. 업스트림에 PR로 올릴 가치가 있는 한 줄 수정.
+- 선택 패치: Android 기본 Vulkan 강제(`GetPreferredRenderer`)를 프론트엔드 선호 우선으로 바꾸는 소규모 패치 — `ENABLE_VULKAN=OFF`로 빌드하면 불필요.
 
 ### 단계 2. `cores/azahar/core.json`
 ```json
@@ -170,8 +185,8 @@ llvm-strip -s build/android-arm64-v8a/bin/Release/azahar_libretro.so
 | Android에서 Vulkan 강제 기본값 | `ENABLE_VULKAN=ON`이면 OneEmu에서 로드 실패 | 1단계 `ENABLE_VULKAN=OFF` + `citra_graphics_api=OpenGL` |
 | GLES 3.2 요구 | 3.1까지만 지원하는 구형 Mali/PowerVR 기기에서 셰이더 컴파일 실패 | 지원 기기 최소 사양 명시, EGL 3.2 명시 요청 + 실패 시 사용자 메시지 |
 | CMake ≥ 3.25 요구 | 규약(SDK 3.22.1)과 충돌 | build.sh에서 3.30.3/PATH/pip 순 탐색, README 예외 기재 |
-| 빌드 시간(60~100분) 및 서브모듈 400MB | CI 타임아웃, 개발자 반복 속도 | ccache/`build/` 캐시, 얕은 서브모듈, 필요 시 공식 릴리스 바이너리 폴백 |
-| NDK 28 vs 업스트림 NDK 29 | Clang 19/21 차이로 경고→에러 가능 | `CITRA_WARNINGS_AS_ERRORS=OFF`, 필요 시 소규모 패치. 현재 구성 성공, 컴파일 중 에러 0 |
+| 빌드 시간(로컬 18분, CI 러너 60분+) 및 서브모듈 400MB | CI 타임아웃, 개발자 반복 속도 | ccache/`build/` 캐시, 얕은 서브모듈, 필요 시 공식 릴리스 바이너리 폴백 |
+| NDK 28 vs 업스트림 NDK 29 | Clang 19/21 차이로 경고→에러 가능 | `CITRA_WARNINGS_AS_ERRORS=OFF`, 필요 시 소규모 패치. 로컬 빌드에서 실제 에러는 `strerror_r` 1건뿐이었고 패치로 해결(위 단계 1) |
 | 복호화 ROM만 지원, `.cia` 불가 | 사용자 혼란 | 확장자 목록 제한, 안내 문구 |
 | 세이브 위치가 `.srm`이 아닌 가상 SD | 세이브 백업/동기화 UI가 있다면 누락 | `<saveDir>/Azahar/` 디렉터리 단위로 취급 |
 | 세이브스테이트 포맷이 코어 버전에 종속 | 코어 업데이트 시 기존 스테이트 무효 | 코어 업데이트 시 릴리스 노트에 명시, 인게임 세이브 권장 |
@@ -183,5 +198,18 @@ llvm-strip -s build/android-arm64-v8a/bin/Release/azahar_libretro.so
 ### 빌드 시도 로그(참고)
 - 위치: 스크래치패드 `3ds/azahar/build/android-arm64/` (프로젝트 외부).
 - 구성: `cmake -G Ninja -DENABLE_LIBRETRO=ON -DENABLE_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DANDROID_PLATFORM=android-26 -DANDROID_ABI=arm64-v8a -DANDROID_STL=c++_static -DCMAKE_TOOLCHAIN_FILE=<NDK 28.2.13676358>/build/cmake/android.toolchain.cmake -DCITRA_WARNINGS_AS_ERRORS=OFF` → 성공(약 70초, CMake 4.4.3/pip, 경고만 발생: sirit의 구식 `cmake_minimum_required`).
-- 빌드: `cmake --build … --target azahar_libretro -j8` 진행 중(문서 작성 시점 1756 스텝 중 초반 externals 단계 통과, 에러 0). 최종 결과는 아래 "빌드 결과" 절에 추가.
+- 빌드: `cmake --build … --target azahar_libretro -j8`. 1차 실행은 1110/1756 스텝에서 `src/common/error.cpp` `strerror_r` 에러로 중단(8분 54초), 위 패치 적용 후 재개해 나머지 640 스텝 완료(8분 58초). 총 컴파일 에러 1건(패치로 해결), 경고로 인한 실패 없음.
+
+### 빌드 결과 (NDK 28.2.13676358, 태그 2126.1 + 패치 1건)
+
+| 검사 | 결과 |
+|---|---|
+| 산출물 | `build/android-arm64/bin/Release/azahar_libretro.so` 440.6MB(디버그 심볼 포함) → `llvm-strip --strip-unneeded` 후 **36.9MB** |
+| `llvm-readelf -h` | ELF64, DYN, **AArch64** |
+| `llvm-nm -D` 필수 심볼 | `retro_run`, `retro_load_game`, `retro_api_version`, `retro_get_system_info` 모두 `T`로 export. `retro_serialize/unserialize/serialize_size` 포함 libretro API 25개 전부 존재 |
+| LOAD 세그먼트 정렬 | **0x4000 (16KB)** → Android 15 16KB 페이지 요건 충족 |
+| NEEDED | `liblog.so libm.so libdl.so libc.so`만 의존(`c++_static`로 libc++ 정적 링크 확인, `libc++_shared.so` 불필요) |
+| 기타 | `retro_vfs_*_impl`(libretro-common 내장 VFS) 심볼도 export됨. `CMAKE_CXX_VISIBILITY_PRESET default` 때문에 비-libretro 심볼 약 17,900개가 함께 export됨 — 동작에는 무관(프론트엔드가 `RTLD_LOCAL`로 dlopen)하지만 크기 절감·심볼 충돌 방지를 위해 `-Wl,--version-script`(retro_* 만 노출) 패치를 후속 개선 항목으로 둔다 |
+
+즉, **NDK 28 + 한 줄 패치로 OneEmu 규약 산출물(`libazahar_libretro.so`, AArch64, retro_* export)이 실제로 만들어짐**을 확인했다. 실기 로드/실행 테스트는 프론트엔드 사전 수정(단계 0) 이후 통합 담당이 수행해야 한다.
 
