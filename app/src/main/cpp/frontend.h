@@ -37,6 +37,9 @@ struct FrontendListener {
     virtual void onGeometryChanged(unsigned w, unsigned h, float aspect) = 0;
     virtual void onCoreShutdown() = 0;
     virtual void onFatal(const std::string& what) = 0;
+    /** Called on the emu thread itself so the JNI layer can attach/detach it once. */
+    virtual void onEmuThreadStarted() {}
+    virtual void onEmuThreadStopping() {}
 };
 
 // Single libretro frontend instance. All core calls happen on the emu thread; public
@@ -143,6 +146,9 @@ private:
     retro_hw_render_callback hwCb_{};
     bool hwContextReady_ = false;
     bool frameIsHw_ = false;
+    unsigned hwFboW_ = 0, hwFboH_ = 0;
+    unsigned hwFboGrowW_ = 0, hwFboGrowH_ = 0;
+    bool hwFboNeedsGrow_ = false;
     bool gotFrameThisRun_ = false;
     std::atomic<int> fastForward_{0};
     unsigned ffFrameCounter_ = 0;

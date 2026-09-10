@@ -31,6 +31,7 @@ class RomScanner(
     val progress: StateFlow<Progress> get() = _progress
 
     private val extMap: Map<String, List<SystemId>> by lazy { registry.extensionToSystems() }
+    private val arcadeTitles by lazy { ArcadeTitles(context) }
 
     suspend fun scanAll() = withContext(Dispatchers.IO) {
         for (folder in db.folders().allOnce()) scanFolder(folder)
@@ -106,6 +107,9 @@ class RomScanner(
 
         var title = RomInfo.cleanTitle(f.name)
         var autoIcon: String? = null
+        if (system == SystemId.ARCADE) {
+            arcadeTitles.cleanTitle(f.nameWithoutExtension)?.let { title = it }
+        }
         if (system == SystemId.NDS) {
             RomInfo.ndsBanner(f)?.let { b ->
                 autoIcon = saveIcon(b.icon, f)

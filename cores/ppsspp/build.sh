@@ -200,13 +200,17 @@ find "$ASSET_OUT_DIR" -name '.DS_Store' -delete 2>/dev/null || true
 # Verify
 # ---------------------------------------------------------------------------
 log "Verifying"
-"$LLVM_BIN/llvm-readelf" -h "$OUT_SO" | grep -q AArch64 || { echo "not an AArch64 ELF" >&2; exit 1; }
+# (capture first: `cmd | grep -q` under pipefail fails via SIGPIPE when grep exits early)
+ELF_HEADER="$("$LLVM_BIN/llvm-readelf" -h "$OUT_SO")"
+grep -q AArch64 <<<"$ELF_HEADER" || { echo "not an AArch64 ELF" >&2; exit 1; }
+DYN_SYMS="$("$LLVM_BIN/llvm-nm" -D "$OUT_SO")"
 for sym in retro_run retro_load_game retro_api_version retro_get_system_info; do
-  "$LLVM_BIN/llvm-nm" -D "$OUT_SO" | grep -qE " T ${sym}$" || { echo "missing exported symbol: $sym" >&2; exit 1; }
+  grep -qE " T ${sym}$" <<<"$DYN_SYMS" || { echo "missing exported symbol: $sym" >&2; exit 1; }
 done
-if "$LLVM_BIN/llvm-readelf" -d "$OUT_SO" | grep -q 'libc++_shared'; then
+DYN_NEEDED="$("$LLVM_BIN/llvm-readelf" -d "$OUT_SO" | grep NEEDED || true)"
+if grep -q 'libc++_shared' <<<"$DYN_NEEDED"; then
   echo "unexpected dependency on libc++_shared.so" >&2; exit 1
 fi
 
 log "OK: $OUT_SO ($(du -h "$OUT_SO" | cut -f1)), assets: $(du -sh "$ASSET_OUT_DIR" | cut -f1)"
-"$LLVM_BIN/llvm-readelf" -d "$OUT_SO" | grep NEEDED || true
+printf '%s\n' "$DYN_NEEDED"

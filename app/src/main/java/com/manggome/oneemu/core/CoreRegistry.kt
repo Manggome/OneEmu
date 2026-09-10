@@ -26,9 +26,15 @@ class CoreRegistry(private val context: Context) {
 
     fun coresFor(system: SystemId): List<CoreInfo> = cores.filter { system.id in it.systems }
 
-    /** Default core for a system: the first bundled one whose library is present. */
-    fun defaultCoreFor(system: SystemId): CoreInfo? =
-        coresFor(system).firstOrNull { isAvailable(it) } ?: coresFor(system).firstOrNull()
+    /** User-chosen default core ids per system (Settings.Keys.coreForSystem), kept in sync by [OneEmuApp]. */
+    @Volatile var preferredCoreIds: Map<String, String> = emptyMap()
+
+    /** Default core for a system: the user's choice if valid and present, else the first bundled one whose library is present. */
+    fun defaultCoreFor(system: SystemId): CoreInfo? {
+        val candidates = coresFor(system)
+        preferredCoreIds[system.id]?.let { id -> candidates.firstOrNull { it.id == id && isAvailable(it) }?.let { return it } }
+        return candidates.firstOrNull { isAvailable(it) } ?: candidates.firstOrNull()
+    }
 
     fun libraryPath(core: CoreInfo): File = File(context.applicationInfo.nativeLibraryDir, core.libFile)
 

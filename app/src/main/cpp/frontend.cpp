@@ -63,6 +63,8 @@ static void cb_log(enum retro_log_level level, const char* fmt, ...) {
     va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
+    // Cores can be extremely chatty at DEBUG level (mGBA logs every DMA); drop those entirely.
+    if (level == RETRO_LOG_DEBUG) return;
     int prio = ANDROID_LOG_DEBUG;
     switch (level) {
         case RETRO_LOG_INFO: prio = ANDROID_LOG_INFO; break;
@@ -131,13 +133,14 @@ void Frontend::stopThread() {
 
 void Frontend::threadMain() {
     LOGI("emu thread started");
+    if (listener_) listener_->onEmuThreadStarted();
     while (threadRunning_) {
         std::vector<Command> cmds;
         {
             std::unique_lock<std::mutex> lock(queueMutex_);
             bool active = gameLoaded_ && !paused_ && !shutdownRequested_;
             if (!active) {
-                queueCv_.wait(lock, [&] { return !queue_.empty() || !threadRunning_ || (gameLoaded_ && !paused_); });
+                queueCv_.wait(lock, [&] { return !queue_.empty() || !threadRunning_ || windowDirty_ || (gameLoaded_ && !paused_); });
             }
             cmds.swap(queue_);
         }
@@ -164,6 +167,7 @@ void Frontend::threadMain() {
         }
         if (shutdownRequested_.exchange(false) && listener_) listener_->onCoreShutdown();
     }
+    if (listener_) listener_->onEmuThreadStopping();
     LOGI("emu thread exiting");
 }
 
@@ -184,9 +188,14 @@ void Frontend::ensureGlReady() {
 
 void Frontend::contextResetIfNeeded() {
     if (!hwRender_ || hwContextReady_ || !video_.ready()) return;
-    unsigned maxW = avInfo_.geometry.max_width ? avInfo_.geometry.max_width : 1920;
-    unsigned maxH = avInfo_.geometry.max_height ? avInfo_.geometry.max_height : 1080;
-    if (!video_.createHwFramebuffer(maxW, maxH, hwCb_.depth, hwCb_.stencil)) return;
+    // Cores advertise huge max sizes (PPSSPP 5120x3584, Azahar 7200x9600) that would need
+    // hundreds of MB of GPU memory. Start with a sane size and grow on demand (see videoRefresh).
+    unsigned w = std::max(avInfo_.geometry.base_width * 2u, 1280u);
+    unsigned h = std::max(avInfo_.geometry.base_height * 2u, 720u);
+    if (avInfo_.geometry.max_width) w = std::min(w, avInfo_.geometry.max_width);
+    if (avInfo_.geometry.max_height) h = std::min(h, avInfo_.geometry.max_height);
+    hwFboW_ = w; hwFboH_ = h;
+    if (!video_.createHwFramebuffer(w, h, hwCb_.depth, hwCb_.stencil)) return;
     videoCfg_.bottomLeftOrigin = hwCb_.bottom_left_origin;
     if (hwCb_.context_reset) hwCb_.context_reset();
     hwContextReady_ = true;
@@ -368,6 +377,14 @@ void Frontend::runFrame() {
     }
 
     if (hwRender_) {
+        if (hwFboNeedsGrow_) {
+            hwFboNeedsGrow_ = false;
+            unsigned maxW = avInfo_.geometry.max_width ? avInfo_.geometry.max_width : 8192u;
+            unsigned maxH = avInfo_.geometry.max_height ? avInfo_.geometry.max_height : 8192u;
+            unsigned w = std::min(hwFboGrowW_, maxW), h = std::min(hwFboGrowH_, maxH);
+            if (video_.createHwFramebuffer(w, h, hwCb_.depth, hwCb_.stencil)) { hwFboW_ = w; hwFboH_ = h; }
+            LOGI("HW framebuffer grown to %ux%u", hwFboW_, hwFboH_);
+        }
         glBindFramebuffer(GL_FRAMEBUFFER, video_.hwFramebuffer());
     }
     gotFrameThisRun_ = false;
@@ -396,6 +413,12 @@ void Frontend::videoRefresh(const void* data, unsigned w, unsigned h, size_t pit
     gotFrameThisRun_ = true;
     if (data == RETRO_HW_FRAME_BUFFER_VALID) {
         frameIsHw_ = true;
+        if (w > hwFboW_ || h > hwFboH_) {
+            // The core rendered at a higher internal resolution than our FBO; grow before the next frame.
+            hwFboGrowW_ = std::max(w, hwFboW_); hwFboGrowH_ = std::max(h, hwFboH_);
+            hwFboNeedsGrow_ = true;
+            w = std::min(w, hwFboW_); h = std::min(h, hwFboH_);
+        }
         video_.setHwFrameSize(w, h);
         return;
     }
@@ -573,7 +596,7 @@ bool Frontend::environment(unsigned cmd, void* data) {
             avInfo_ = *(const retro_system_av_info*)data;
             audio_.start(avInfo_.timing.sample_rate);
             if (hwRender_ && hwContextReady_) {
-                video_.createHwFramebuffer(avInfo_.geometry.max_width, avInfo_.geometry.max_height, hwCb_.depth, hwCb_.stencil);
+                video_.createHwFramebuffer(hwFboW_, hwFboH_, hwCb_.depth, hwCb_.stencil);
             }
             if (listener_) listener_->onGeometryChanged(avInfo_.geometry.base_width, avInfo_.geometry.base_height, avInfo_.geometry.aspect_ratio);
             return true;

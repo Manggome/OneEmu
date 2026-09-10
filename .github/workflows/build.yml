@@ -1,0 +1,241 @@
+# OneEmu CI: build the libretro cores (cached per core), assemble a signed release APK and publish it
+# as a GitHub Release tagged v0.1.<commit count>. The in-app updater compares BuildConfig.VERSION_NAME
+# ("0.1.<commit count>") against that tag, so the two MUST stay identical (see the "version" step).
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NDK_VERSION: 28.2.13676358
+  CMAKE_VERSION: 3.22.1
+  # Bump to invalidate every core cache at once (toolchain change etc.).
+  CORE_CACHE_SALT: v1
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # One job per core. The built .so is cached on the hash of cores/<id>/** (build.sh, core.json,
+  # patches, assets), so a core is rebuilt only when its own folder changes.
+  # ---------------------------------------------------------------------------
+  build-cores:
+    name: core ${{ matrix.core }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        core: [mgba, fceumm, melondsds, ppsspp, mame2003plus, play, azahar]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore cached core
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/jniLibs/arm64-v8a/lib${{ matrix.core }}_libretro.so
+          key: core-${{ env.CORE_CACHE_SALT }}-${{ runner.os }}-${{ matrix.core }}-${{ hashFiles(format('cores/{0}/**', matrix.core)) }}
+
+      - name: Install build tools
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build nasm python3 python3-venv python3-pip ccache pkg-config autoconf automake libtool make patch unzip zip
+
+      - name: Set up JDK 17
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+          packages: ""
+
+      - name: Install NDK + CMake
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;${NDK_VERSION}" "cmake;${CMAKE_VERSION}" "platforms;android-37" "build-tools;35.0.0"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "${ANDROID_HOME}/cmake/${CMAKE_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Build ${{ matrix.core }}
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${NDK_VERSION}"
+          bash "cores/${{ matrix.core }}/build.sh"
+          ls -la "app/src/main/jniLibs/arm64-v8a/lib${{ matrix.core }}_libretro.so"
+
+      - name: Upload core artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-${{ matrix.core }}
+          path: app/src/main/jniLibs/arm64-v8a/lib${{ matrix.core }}_libretro.so
+          if-no-files-found: error
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # APK: collect the cores, sign, assemble, release.
+  # ---------------------------------------------------------------------------
+  build-apk:
+    name: apk
+    needs: build-cores
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version (0.1.<commit count>, same as app/build.gradle.kts)
+        id: version
+        run: |
+          COUNT="$(git rev-list --count HEAD)"
+          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+          echo "version=0.1.${COUNT}" >> "$GITHUB_OUTPUT"
+          echo "OneEmu version 0.1.${COUNT} (versionCode ${COUNT})"
+
+      - name: Download core artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: core-*
+          merge-multiple: true
+          path: app/src/main/jniLibs/arm64-v8a
+
+      - name: List cores
+        run: ls -la app/src/main/jniLibs/arm64-v8a
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+          packages: ""
+
+      - name: Install NDK + CMake + platform
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;${NDK_VERSION}" "cmake;${CMAKE_VERSION}" "platforms;android-37" "build-tools;35.0.0"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Signing: real keystore from secrets when present; otherwise a CI-only fallback keystore that
+      # is kept in the Actions cache so consecutive builds share one key as long as the cache lives.
+      # Without the secrets, installing over an APK signed by a *different* key requires an uninstall.
+      - name: Detect signing secrets
+        id: signing
+        env:
+          HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_ALIAS != '' && secrets.KEY_PASSWORD != '' }}
+        run: echo "has_keystore=${HAS_KEYSTORE}" >> "$GITHUB_OUTPUT"
+
+      - name: Write release keystore from secrets
+        if: steps.signing.outputs.has_keystore == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > keystore.jks
+          {
+            echo "storeFile=keystore.jks"
+            echo "storePassword=${KEYSTORE_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS}"
+            echo "keyPassword=${KEY_PASSWORD}"
+          } > keystore.properties
+          echo "Using release keystore from secrets."
+
+      - name: Restore CI fallback keystore
+        if: steps.signing.outputs.has_keystore != 'true'
+        id: fallback-cache
+        uses: actions/cache@v4
+        with:
+          path: ci-fallback.jks
+          key: oneemu-ci-fallback-keystore-v1
+
+      - name: Create CI fallback keystore (no signing secrets configured)
+        if: steps.signing.outputs.has_keystore != 'true'
+        run: |
+          if [ ! -f ci-fallback.jks ]; then
+            keytool -genkeypair -v -keystore ci-fallback.jks -storepass oneemu-ci -keypass oneemu-ci \
+              -alias oneemu-ci -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=OneEmu CI, OU=CI, O=OneEmu, C=KR"
+            echo "::warning::No KEYSTORE_BASE64/KEYSTORE_PASSWORD/KEY_ALIAS/KEY_PASSWORD secrets. Generated a CI-only keystore; users must uninstall before installing an APK signed with a different key. Run scripts/make-keystore.sh and upload the secrets."
+          else
+            echo "Reusing cached CI fallback keystore."
+          fi
+          {
+            echo "storeFile=ci-fallback.jks"
+            echo "storePassword=oneemu-ci"
+            echo "keyAlias=oneemu-ci"
+            echo "keyPassword=oneemu-ci"
+          } > keystore.properties
+
+      - name: Assemble release APK
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COUNT: ${{ steps.version.outputs.count }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon --console=plain \
+            "-Poneemu.versionName=${VERSION}" "-Poneemu.versionCode=${COUNT}"
+
+      - name: Rename APK
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          APK="$(ls app/build/outputs/apk/release/*.apk | head -n1)"
+          [ -n "$APK" ] || { echo "no APK produced"; exit 1; }
+          mkdir -p dist
+          cp "$APK" "dist/OneEmu-v${VERSION}-arm64.apk"
+          ls -la dist
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OneEmu-v${{ steps.version.outputs.version }}-arm64
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: OneEmu v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          make_latest: true
+          files: dist/OneEmu-v${{ steps.version.outputs.version }}-arm64.apk
+          body: |
+            OneEmu v${{ steps.version.outputs.version }} (arm64-v8a)
+
+            - 설치: 아래 `OneEmu-v${{ steps.version.outputs.version }}-arm64.apk` 를 내려받아 설치하세요.
+            - 앱 내 업데이트는 이 릴리스 태그(`v${{ steps.version.outputs.version }}`)와 앱 버전을 비교합니다.
+            - ROM/BIOS 는 포함되어 있지 않습니다.
