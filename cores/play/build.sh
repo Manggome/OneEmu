@@ -131,8 +131,8 @@ mkdir -p "$OUT_DIR"
 "$STRIP" --strip-all -o "$OUT_SO" "$BUILT_SO"
 
 # ---- verify -----------------------------------------------------------------
-"$LLVM_BIN/llvm-readelf" -h "$OUT_SO" | grep -q AArch64 || { echo "ERROR: not AArch64" >&2; exit 1; }
+"$LLVM_BIN/llvm-readelf" -h "$OUT_SO" | grep -c AArch64 >/dev/null || { echo "ERROR: not AArch64" >&2; exit 1; }
 for sym in retro_run retro_load_game retro_api_version retro_get_system_info; do
-  "$LLVM_BIN/llvm-nm" -D "$OUT_SO" | grep -qE " T ${sym}$" || { echo "ERROR: missing export $sym" >&2; exit 1; }
+  "$LLVM_BIN/llvm-nm" -D "$OUT_SO" | grep -cE " T ${sym}$" >/dev/null || { echo "ERROR: missing export $sym" >&2; exit 1; }
 done
 echo "== OK: $OUT_SO ($(du -h "$OUT_SO" | cut -f1))"
