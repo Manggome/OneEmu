@@ -121,8 +121,9 @@ internal fun SettingsRow(
     subtitle: String? = null,
     icon: ImageVector? = null,
     enabled: Boolean = true,
-    onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
+    // Last so that a trailing lambda at the call site is the click handler, never composed content.
+    onClick: (() -> Unit)? = null,
 ) {
     val modifier = if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier
     ListItem(
