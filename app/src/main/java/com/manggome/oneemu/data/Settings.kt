@@ -80,7 +80,7 @@ class Settings(private val context: Context) {
     }
 
     companion object {
-        const val DEFAULT_PAD_OPACITY = 0.6f
+        const val DEFAULT_PAD_OPACITY = 0.85f
         const val DEFAULT_PAD_SCALE = 1.0f
         const val DEFAULT_VIBRATION_MS = 15
         const val DEFAULT_FF_SPEED = 3

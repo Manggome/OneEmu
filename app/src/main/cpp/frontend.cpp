@@ -7,8 +7,17 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <strings.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
+
+static constexpr size_t kLogRingSize = 40;
+
+// Case-insensitive substring test used to classify core error messages.
+static bool containsNoCase(const std::string& hay, const char* needle) {
+    return strcasestr(hay.c_str(), needle) != nullptr;
+}
 
 static int64_t nowNs() {
     timespec ts;
@@ -66,13 +75,15 @@ static void cb_log(enum retro_log_level level, const char* fmt, ...) {
     // Cores can be extremely chatty at DEBUG level (mGBA logs every DMA); drop those entirely.
     if (level == RETRO_LOG_DEBUG) return;
     int prio = ANDROID_LOG_DEBUG;
+    char tag = 'I';
     switch (level) {
-        case RETRO_LOG_INFO: prio = ANDROID_LOG_INFO; break;
-        case RETRO_LOG_WARN: prio = ANDROID_LOG_WARN; break;
-        case RETRO_LOG_ERROR: prio = ANDROID_LOG_ERROR; break;
+        case RETRO_LOG_INFO: prio = ANDROID_LOG_INFO; tag = 'I'; break;
+        case RETRO_LOG_WARN: prio = ANDROID_LOG_WARN; tag = 'W'; break;
+        case RETRO_LOG_ERROR: prio = ANDROID_LOG_ERROR; tag = 'E'; break;
         default: break;
     }
     __android_log_write(prio, "libretro", buf);
+    Frontend::get().noteLog(tag, buf);
 }
 
 static uintptr_t cb_hw_get_current_framebuffer() { return Frontend::get().hwFramebufferForCore(); }
@@ -92,6 +103,57 @@ static void cb_perf_log() {}
 Frontend& Frontend::get() {
     static Frontend inst;
     return inst;
+}
+
+void Frontend::noteLog(char level, const std::string& line) {
+    std::string l = line;
+    while (!l.empty() && (l.back() == '\n' || l.back() == '\r' || l.back() == ' ')) l.pop_back();
+    if (l.empty()) return;
+    if (l.size() > 400) l.resize(400);
+    std::string entry = std::string("[") + level + "] " + l;
+    std::lock_guard<std::mutex> lock(logMutex_);
+    if (logRing_.size() < kLogRingSize) {
+        logRing_.push_back(std::move(entry));
+    } else {
+        logRing_[logNext_] = std::move(entry);
+        logNext_ = (logNext_ + 1) % kLogRingSize;
+    }
+}
+
+std::string Frontend::recentLog() {
+    std::lock_guard<std::mutex> lock(logMutex_);
+    std::string out;
+    size_t n = logRing_.size();
+    size_t start = n < kLogRingSize ? 0 : logNext_;
+    for (size_t i = 0; i < n; i++) {
+        out += logRing_[(start + i) % n];
+        out += '\n';
+    }
+    return out;
+}
+
+void Frontend::fail(LoadError code, const std::string& what, std::string* error) {
+    lastError_ = code;
+    if (error) *error = what;
+    LOGE("load failed (%d): %s", (int)code, what.c_str());
+    noteLog('E', "frontend: " + what);
+}
+
+// Logs MemTotal/MemAvailable from /proc/meminfo; 3DS/PSP cores need several hundred MB of native heap.
+void Frontend::logMemoryInfo() {
+    FILE* f = fopen("/proc/meminfo", "r");
+    if (!f) return;
+    char line[256];
+    long totalKb = 0, availKb = 0;
+    while (fgets(line, sizeof line, f)) {
+        if (sscanf(line, "MemTotal: %ld kB", &totalKb) == 1) continue;
+        if (sscanf(line, "MemAvailable: %ld kB", &availKb) == 1) continue;
+    }
+    fclose(f);
+    char buf[128];
+    snprintf(buf, sizeof buf, "memory: total %ld MB, available %ld MB", totalKb / 1024, availKb / 1024);
+    LOGI("%s", buf);
+    noteLog('I', buf);
 }
 
 void Frontend::post(Command c) {
@@ -178,16 +240,45 @@ void Frontend::ensureGlReady() {
     if (!w) return;
     bool depth = hwRender_ && hwCb_.depth;
     bool stencil = hwRender_ && hwCb_.stencil;
-    if (!video_.init(w, depth, stencil)) {
-        if (listener_) listener_->onFatal("OpenGL ES 3 초기화 실패");
+    int reqMajor = hwRender_ ? (int)hwCb_.version_major : 0;
+    int reqMinor = hwRender_ ? (int)hwCb_.version_minor : 0;
+    if (!video_.init(w, depth, stencil, reqMajor, reqMinor)) {
+        lastError_ = LoadError::GlInitFailed;
+        noteLog('E', "frontend: EGL/GLES context creation failed");
+        if (listener_) listener_->onFatal("OpenGL ES 3 context creation failed", (int)LoadError::GlInitFailed);
         return;
     }
+    noteLog('I', "GL: " + video_.rendererString() + " / " + video_.versionString());
     video_.setSwapInterval(0);
     contextResetIfNeeded();
 }
 
 void Frontend::contextResetIfNeeded() {
-    if (!hwRender_ || hwContextReady_ || !video_.ready()) return;
+    if (!hwRender_ || hwContextReady_ || hwUnsupported_ || !video_.ready()) return;
+    // A core whose shaders really need ES 3.2 (Azahar: "#version 320 es") cannot run on a 3.0/3.1 context;
+    // calling its context_reset would only crash or leave a black screen. When core.json marks the version
+    // as a hard requirement (glesMinVersion → strictGlesVersion_), fail clearly instead.
+    if (hwCb_.version_major > 0) {
+        int reqMajor = (int)hwCb_.version_major, reqMinor = (int)hwCb_.version_minor;
+        int gotMajor = video_.glMajor(), gotMinor = video_.glMinor();
+        bool tooOld = gotMajor > 0 && (gotMajor < reqMajor || (gotMajor == reqMajor && gotMinor < reqMinor));
+        if (tooOld) {
+            char buf[256];
+            snprintf(buf, sizeof buf, "core requires OpenGL ES %d.%d but the device context is %s", reqMajor, reqMinor,
+                     video_.versionString().c_str());
+            if (strictGlesVersion_) {
+                hwUnsupported_ = true;
+                lastError_ = LoadError::GlesUnsupported;
+                LOGE("%s", buf);
+                noteLog('E', std::string("frontend: ") + buf);
+                if (listener_) listener_->onFatal(buf, (int)LoadError::GlesUnsupported);
+                return;
+            }
+            // Some cores (Play!) ask for 3.2 but ship ES 3.0 shaders; let them try and keep the note for diagnostics.
+            LOGW("%s (continuing: core.json has no glesMinVersion)", buf);
+            noteLog('W', std::string("frontend: ") + buf + " (continuing)");
+        }
+    }
     // Cores advertise huge max sizes (PPSSPP 5120x3584, Azahar 7200x9600) that would need
     // hundreds of MB of GPU memory. Start with a sane size and grow on demand (see videoRefresh).
     unsigned w = std::max(avInfo_.geometry.base_width * 2u, 1280u);
@@ -211,8 +302,10 @@ bool Frontend::rumble(unsigned port, unsigned strength) {
 
 // ---------------------------------------------------------------- load / unload
 bool Frontend::loadCore(const std::string& corePath, const std::string& systemDir, const std::string& saveDir,
-                        const std::string& optionOverrides, std::string* error) {
+                        const std::string& optionOverrides, bool strictGlesVersion, std::string* error) {
     unload();
+    { std::lock_guard<std::mutex> lock(logMutex_); logRing_.clear(); logNext_ = 0; lastCoreMessage_.clear(); }
+    lastError_ = LoadError::None;
     startThread();
     bool ok = false;
     run([&] {
@@ -221,11 +314,22 @@ bool Frontend::loadCore(const std::string& corePath, const std::string& systemDi
         mkdir(saveDir_.c_str(), 0755);
         { std::lock_guard<std::mutex> lock(optionsMutex_); options_.clear(); optionOverrides_.clear(); }
         applyOptionOverrides(optionOverrides);
-        hwRender_ = false; hwContextReady_ = false; hwCb_ = {};
+        hwRender_ = false; hwContextReady_ = false; hwUnsupported_ = false; hwCb_ = {};
+        strictGlesVersion_ = strictGlesVersion;
         pixelFormat_ = RETRO_PIXEL_FORMAT_0RGB1555;
         supportsBitmasks_ = false;
         rotation_ = 0; videoCfg_.rotation = 0;
-        if (!core_.load(corePath, error)) return;
+        logMemoryInfo();
+        noteLog('I', "loading core " + corePath);
+        if (access(corePath.c_str(), R_OK) != 0) {
+            fail(LoadError::CoreMissing, "core file not found or unreadable: " + corePath, error);
+            return;
+        }
+        std::string err;
+        if (!core_.load(corePath, &err)) {
+            fail(err.rfind("dlopen", 0) == 0 ? LoadError::DlopenFailed : LoadError::CoreInitFailed, err, error);
+            return;
+        }
         core_.retro_set_environment(cb_environment);
         core_.retro_set_video_refresh(cb_video);
         core_.retro_set_audio_sample(cb_audio);
@@ -237,15 +341,18 @@ bool Frontend::loadCore(const std::string& corePath, const std::string& systemDi
         core_.retro_get_system_info(&sysInfo_);
         LOGI("core loaded: %s %s (ext: %s, fullpath=%d)", sysInfo_.library_name, sysInfo_.library_version,
              sysInfo_.valid_extensions ? sysInfo_.valid_extensions : "", sysInfo_.need_fullpath);
+        noteLog('I', std::string("core loaded: ") + (sysInfo_.library_name ? sysInfo_.library_name : "?") + " " +
+                         (sysInfo_.library_version ? sysInfo_.library_version : ""));
         ok = true;
     });
     return ok;
 }
 
 bool Frontend::loadGame(const std::string& romPath, std::string* error) {
-    if (!core_.loaded()) { if (error) *error = "core not loaded"; return false; }
+    if (!core_.loaded()) { fail(LoadError::CoreInitFailed, "core not loaded", error); return false; }
     bool ok = false;
     run([&] {
+        noteLog('I', "loading game " + romPath);
         romPath_ = romPath;
         size_t slash = romPath.find_last_of('/');
         std::string base = slash == std::string::npos ? romPath : romPath.substr(slash + 1);
@@ -256,13 +363,18 @@ bool Frontend::loadGame(const std::string& romPath, std::string* error) {
         info.path = romPath_.c_str();
         info.meta = "";
         if (!sysInfo_.need_fullpath) {
-            if (!readFile(romPath_, romData_)) { if (error) *error = "ROM 파일을 읽을 수 없습니다"; return; }
+            if (!readFile(romPath_, romData_)) { fail(LoadError::RomReadFailed, "cannot read ROM file: " + romPath_, error); return; }
             info.data = romData_.data();
             info.size = romData_.size();
         }
         if (!core_.retro_load_game(&info)) {
-            if (error) *error = "코어가 게임을 불러오지 못했습니다";
             romData_.clear();
+            // Azahar reports encrypted/unsupported ROMs through SET_MESSAGE, not a return code.
+            std::string reason = lastCoreMessage_.empty() ? "retro_load_game returned false" : lastCoreMessage_;
+            std::string haystack = lastCoreMessage_ + "\n" + recentLog();
+            bool encrypted = containsNoCase(haystack, "encrypt") || containsNoCase(haystack, "decrypt") ||
+                             containsNoCase(haystack, "NCSD") || containsNoCase(haystack, "CIA");
+            fail(encrypted ? LoadError::RomEncrypted : LoadError::RomLoadFailed, reason, error);
             return;
         }
         romData_.clear();
@@ -344,7 +456,10 @@ void Frontend::runFrame() {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
         return;
     }
-    if (hwRender_ && !hwContextReady_) { contextResetIfNeeded(); if (!hwContextReady_) return; }
+    if (hwRender_ && !hwContextReady_) {
+        contextResetIfNeeded();
+        if (!hwContextReady_) { std::this_thread::sleep_for(std::chrono::milliseconds(5)); return; }
+    }
     video_.makeCurrent();
 
     if (videoCfgDirty_.exchange(false)) {
@@ -498,12 +613,18 @@ bool Frontend::environment(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_GET_CAN_DUPE: *(bool*)data = true; return true;
         case RETRO_ENVIRONMENT_SET_MESSAGE: {
             auto* m = (const retro_message*)data;
-            if (listener_ && m && m->msg) listener_->onMessage(m->msg, m->frames * 1000 / 60, 1);
+            if (m && m->msg) {
+                lastCoreMessage_ = m->msg;
+                noteLog('M', m->msg);
+                if (listener_) listener_->onMessage(m->msg, m->frames * 1000 / 60, 1);
+            }
             return true;
         }
         case RETRO_ENVIRONMENT_SET_MESSAGE_EXT: {
             auto* m = (const retro_message_ext*)data;
             if (m && m->msg) {
+                lastCoreMessage_ = m->msg;
+                noteLog('M', m->msg);
                 if (m->target == RETRO_MESSAGE_TARGET_LOG) { LOGI("[core] %s", m->msg); return true; }
                 if (listener_) listener_->onMessage(m->msg, m->duration, (int)m->priority);
             }
@@ -614,6 +735,7 @@ bool Frontend::environment(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_MEMORY_MAPS: return true;
         case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS: return true;
         case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: return true;
+        case 44: return true; // SET_SERIALIZATION_QUIRKS in older libretro.h revisions (Azahar's libretro-common)
         case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: return false;
         case RETRO_ENVIRONMENT_GET_LED_INTERFACE: return false;
         case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: *(int*)data = 3; return true;
@@ -841,7 +963,11 @@ bool Frontend::screenshot(std::vector<uint32_t>& rgba, int& w, int& h) {
 }
 
 void Frontend::setCheat(unsigned index, bool enabled, const std::string& code) {
-    run([&] { if (core_.loaded()) core_.retro_cheat_set(index, enabled, code.c_str()); });
+    run([&] {
+        if (!core_.loaded()) return;
+        LOGI("retro_cheat_set(%u, %s, \"%s\")", index, enabled ? "on" : "off", code.c_str());
+        core_.retro_cheat_set(index, enabled, code.c_str());
+    });
 }
 
 void Frontend::resetCheats() {

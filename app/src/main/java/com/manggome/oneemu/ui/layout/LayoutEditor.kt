@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -68,6 +69,9 @@ import com.manggome.oneemu.emu.pad.PadLayout
 import com.manggome.oneemu.emu.pad.PadLayoutStore
 import com.manggome.oneemu.emu.pad.drawPadElement
 import com.manggome.oneemu.emu.pad.rectOn
+import com.manggome.oneemu.emu.skin.SkinSelection
+import com.manggome.oneemu.emu.skin.SkinStore
+import com.manggome.oneemu.ui.skins.SkinEditor
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.ui.theme.OneEmuColors
 import kotlinx.coroutines.launch
@@ -89,6 +93,27 @@ fun LayoutEditor(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     orientationToggle: (@Composable () -> Unit)? = null,
+) {
+    // An image skin selected for this system gets its own editor; the vector pad keeps the original one.
+    val context = LocalContext.current
+    val selection by produceState<SkinSelection>(SkinSelection.Loading, system) {
+        SkinStore.observeSelectedSkin(context, system).collect { value = it }
+    }
+    when (val sel = selection) {
+        SkinSelection.Loading -> Box(modifier.fillMaxSize().background(if (showMockGame) OneEmuColors.Background else Color(0x66000000)))
+        is SkinSelection.Skin -> SkinEditor(system, landscape, sel.info, showMockGame, onClose, modifier, orientationToggle)
+        SkinSelection.Vector -> VectorLayoutEditor(system, landscape, showMockGame, onClose, modifier, orientationToggle)
+    }
+}
+
+@Composable
+private fun VectorLayoutEditor(
+    system: SystemId,
+    landscape: Boolean,
+    showMockGame: Boolean,
+    onClose: () -> Unit,
+    modifier: Modifier,
+    orientationToggle: (@Composable () -> Unit)?,
 ) {
     val context = LocalContext.current
     val settings = remember { OneEmuApp.get().settings }

@@ -17,6 +17,7 @@ import androidx.navigation.compose.rememberNavController
 import com.manggome.oneemu.ui.layout.layoutEditorGraph
 import com.manggome.oneemu.ui.library.libraryGraph
 import com.manggome.oneemu.ui.settings.settingsGraph
+import com.manggome.oneemu.ui.skins.skinsGraph
 import com.manggome.oneemu.ui.theme.OneEmuTheme
 import com.manggome.oneemu.update.UpdatePrompt
 
@@ -62,5 +63,6 @@ fun AppNavHost(nav: NavHostController) {
         libraryGraph(nav)
         settingsGraph(nav)
         layoutEditorGraph(nav)
+        skinsGraph(nav)
     }
 }

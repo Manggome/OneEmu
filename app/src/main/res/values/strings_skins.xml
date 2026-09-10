@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 패드 스킨 선택 -->
+    <string name="skins_title">패드 스킨</string>
+    <string name="skins_title_for">%1$s 패드 스킨</string>
+    <string name="skins_vector_name">기본 벡터 패드</string>
+    <string name="skins_vector_desc">OneEmu 기본 선 그리기 패드 · 요소별 배치 편집 가능</string>
+    <string name="skins_section_recommended">이 기종에 맞는 스킨</string>
+    <string name="skins_section_universal">공용 스킨</string>
+    <string name="skins_section_other">다른 기종용 스킨</string>
+    <string name="skins_section_imported">가져온 스킨</string>
+    <string name="skins_no_imported">가져온 스킨이 없습니다</string>
+    <string name="skins_import">스킨 가져오기</string>
+    <string name="skins_import_zip">ZIP 파일 선택</string>
+    <string name="skins_import_folder">폴더 선택</string>
+    <string name="skins_import_hint">RetroArch 오버레이(.cfg + PNG)를 ZIP 파일이나 폴더로 가져올 수 있습니다. libretro/common-overlays 의 gamepads 폴더에 있는 스킨을 그대로 쓸 수 있습니다.</string>
+    <string name="skins_import_done">\'%1$s\' 스킨을 가져왔습니다</string>
+    <string name="skins_import_failed">스킨을 가져올 수 없습니다. 버튼이 정의된 .cfg 파일이 필요합니다.</string>
+    <string name="skins_importing">스킨 가져오는 중…</string>
+    <string name="skins_delete">삭제</string>
+    <string name="skins_delete_confirm">\'%1$s\' 스킨을 삭제할까요? 저장한 배치도 함께 지워집니다.</string>
+    <string name="skins_edit">배치 편집</string>
+    <string name="skins_selected">사용 중</string>
+    <string name="skins_credit">제작: %1$s · %2$s</string>
+    <string name="skins_credit_unknown">제작자 정보 없음</string>
+    <string name="skins_credits_footer">번들 스킨은 libretro/common-overlays 저장소에서 가져왔으며 CC BY 4.0 라이선스를 따릅니다. 각 스킨의 제작자는 카드에 표시됩니다.</string>
+    <string name="skins_preview_portrait">세로</string>
+    <string name="skins_preview_landscape">가로</string>
+    <string name="skins_loading">스킨 불러오는 중…</string>
+    <string name="skins_load_failed">스킨을 불러올 수 없습니다</string>
+
+    <!-- 스킨 배치 편집기 -->
+    <string name="se_title">스킨 배치 편집</string>
+    <string name="se_hint">버튼 묶음을 끌어서 옮기고, 탭해서 선택하세요</string>
+    <string name="se_group_dpad">방향 패드</string>
+    <string name="se_group_abxy">ABXY 버튼</string>
+    <string name="se_group_stick">스틱</string>
+    <string name="se_group_menu">메뉴 버튼</string>
+    <string name="se_group_ff">빨리감기</string>
+    <string name="se_group_toggle">레이아웃 전환</string>
+    <string name="se_reset">기본값으로</string>
+    <string name="se_saved">스킨 배치를 저장했습니다</string>
+    <string name="se_variant">변형: %1$s</string>
+</resources>

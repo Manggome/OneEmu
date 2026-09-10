@@ -53,6 +53,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.manggome.oneemu.R
+import com.manggome.oneemu.emu.menu.CheatEditor
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.ui.Routes
 import com.manggome.oneemu.ui.common.GameThumbnail
@@ -77,6 +78,8 @@ fun GameDetailScreen(nav: NavHostController, gameId: Long, vm: LibraryViewModel 
     LaunchedEffect(Unit) {
         vm.messages.collect { msg -> snackbar.showSnackbar(context.getString(msg.resId, *msg.args.toTypedArray())) }
     }
+    var cheatMessage by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(cheatMessage) { cheatMessage?.let { snackbar.showSnackbar(it); cheatMessage = null } }
 
     Scaffold(
         topBar = {
@@ -163,6 +166,23 @@ fun GameDetailScreen(nav: NavHostController, gameId: Long, vm: LibraryViewModel 
                     InfoRow(stringResource(R.string.lib_info_added), formatDateTime(g.addedAt))
                     InfoRow(stringResource(R.string.lib_info_last_played), if (g.lastPlayedAt > 0) formatDateTime(g.lastPlayedAt) else stringResource(R.string.lib_info_never))
                     InfoRow(stringResource(R.string.lib_info_play_time), playTimeText(g.playTimeSec))
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(vertical = 12.dp)) {
+                    Text(
+                        stringResource(R.string.lib_detail_cheats),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                    )
+                    Text(
+                        stringResource(R.string.lib_detail_cheats_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                    )
+                    CheatEditor(gameId = g.id, core = vm.coreFor(g), onChanged = {}, onMessage = { cheatMessage = it })
                 }
             }
         }

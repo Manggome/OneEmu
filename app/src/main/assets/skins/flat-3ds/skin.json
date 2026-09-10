@@ -1,0 +1,12 @@
+{
+  "id": "flat-3ds",
+  "name": "3DS 플랫",
+  "systems": [
+    "3ds"
+  ],
+  "author": "hunterk, Sérgio Benjamim (flat) · 3DS 배치 수정: OneEmu",
+  "license": "CC BY 4.0",
+  "source": "https://github.com/libretro/common-overlays/tree/master/gamepads/flat/psp.cfg",
+  "portraitCfg": "3ds.cfg",
+  "landscapeCfg": "3ds.cfg"
+}

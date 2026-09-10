@@ -1,0 +1,12 @@
+{
+  "id": "dualshock-classic",
+  "name": "듀얼쇼크 클래식",
+  "systems": [
+    "ps2"
+  ],
+  "author": "libretro (twinaphex, hunterk)",
+  "license": "CC BY 4.0",
+  "source": "https://github.com/libretro/common-overlays/tree/master/gamepads/dual-shock",
+  "portraitCfg": "dual-shock.cfg",
+  "landscapeCfg": "dual-shock.cfg"
+}

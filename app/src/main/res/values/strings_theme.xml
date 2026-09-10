@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 설정 홈 행 -->
+    <string name="settings_theme">테마</string>
+    <string name="settings_theme_desc">색상 테마, 라이트/다크, AMOLED 블랙</string>
+
+    <!-- 테마 화면 -->
+    <string name="theme_mode">모드</string>
+    <string name="theme_mode_system">시스템</string>
+    <string name="theme_mode_light">라이트</string>
+    <string name="theme_mode_dark">다크</string>
+    <string name="theme_presets">색상 테마</string>
+    <string name="theme_options">옵션</string>
+    <string name="theme_amoled">AMOLED 블랙</string>
+    <string name="theme_amoled_desc">다크 모드에서 배경을 순수한 검은색으로 표시합니다</string>
+    <string name="theme_dynamic_toggle">다이내믹 컬러</string>
+    <string name="theme_dynamic_toggle_desc">배경화면에서 추출한 Material You 색상을 사용합니다 (Android 12 이상)</string>
+    <string name="theme_selected">선택됨</string>
+    <string name="theme_preview_title">OneEmu</string>
+    <string name="theme_preview_note">미리보기는 현재 모드(라이트/다크)와 AMOLED 설정을 반영합니다.</string>
+
+    <!-- 프리셋 이름 / 설명 -->
+    <string name="theme_mint">민트</string>
+    <string name="theme_mint_desc">기본. 차콜 배경에 민트 포인트</string>
+    <string name="theme_graphite">그래파이트</string>
+    <string name="theme_graphite_desc">무채색 그레이, 흰색 포인트</string>
+    <string name="theme_ocean">오션</string>
+    <string name="theme_ocean_desc">딥 네이비에 스카이블루</string>
+    <string name="theme_sunset">선셋</string>
+    <string name="theme_sunset_desc">다크 브라운에 오렌지 코랄</string>
+    <string name="theme_forest">포레스트</string>
+    <string name="theme_forest_desc">다크 그린에 라임</string>
+    <string name="theme_retro">레트로</string>
+    <string name="theme_retro_desc">게임보이 LCD 올리브 톤</string>
+    <string name="theme_famicom">패미컴</string>
+    <string name="theme_famicom_desc">크림 화이트에 레드 포인트</string>
+    <string name="theme_dynamic">다이내믹</string>
+    <string name="theme_dynamic_desc">배경화면 색상 (Material You)</string>
+</resources>

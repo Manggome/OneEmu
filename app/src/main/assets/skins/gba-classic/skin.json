@@ -1,0 +1,12 @@
+{
+  "id": "gba-classic",
+  "name": "GBA 클래식",
+  "systems": [
+    "gba"
+  ],
+  "author": "libretro (twinaphex, hunterk)",
+  "license": "CC BY 4.0",
+  "source": "https://github.com/libretro/common-overlays/tree/master/gamepads/gba",
+  "portraitCfg": "gba.cfg",
+  "landscapeCfg": "gba.cfg"
+}

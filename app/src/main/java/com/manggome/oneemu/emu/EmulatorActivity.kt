@@ -187,6 +187,8 @@ class EmulatorActivity : ComponentActivity() {
         isResumed = true
         applyImmersive()
         updateRunning()
+        // Cheats may have been edited from the library while this activity was in the background.
+        ui.session?.let { s -> lifecycleScope.launch { s.applyCheats() } }
     }
 
     override fun onPause() {

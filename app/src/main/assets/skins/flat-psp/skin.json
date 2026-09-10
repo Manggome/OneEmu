@@ -1,0 +1,12 @@
+{
+  "id": "flat-psp",
+  "name": "PSP 플랫",
+  "systems": [
+    "psp"
+  ],
+  "author": "hunterk, Sérgio Benjamim",
+  "license": "CC BY 4.0",
+  "source": "https://github.com/libretro/common-overlays/tree/master/gamepads/flat/psp.cfg",
+  "portraitCfg": "psp.cfg",
+  "landscapeCfg": "psp.cfg"
+}

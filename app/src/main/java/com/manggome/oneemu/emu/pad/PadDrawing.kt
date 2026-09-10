@@ -20,9 +20,10 @@ import com.manggome.oneemu.ui.theme.OneEmuColors
 
 /** Colours shared by the live pad and the layout editor. */
 object PadStyle {
-    val outline = OneEmuColors.Accent
+    // Getters so the vector pad follows theme changes at runtime.
+    val outline: Color get() = OneEmuColors.Accent
     val fill = Color(0x59000000)
-    val pressedFill = OneEmuColors.Accent.copy(alpha = 0.6f)
+    val pressedFill: Color get() = OneEmuColors.Accent.copy(alpha = 0.6f)
     val label = Color(0xFFF2F2F2)
     val selected = Color(0xFFFFD166)
 }

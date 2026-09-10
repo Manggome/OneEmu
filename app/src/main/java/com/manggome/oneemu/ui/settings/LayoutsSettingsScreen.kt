@@ -6,7 +6,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material3.Icon
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -31,7 +36,7 @@ import com.manggome.oneemu.model.SystemId
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun LayoutsSettingsScreen(onBack: () -> Unit, onEdit: (systemId: String) -> Unit) {
+internal fun LayoutsSettingsScreen(onBack: () -> Unit, onEdit: (systemId: String) -> Unit, onSkins: (systemId: String) -> Unit = {}) {
     val context = LocalContext.current
     val settings = OneEmuApp.get().settings
     val scope = rememberCoroutineScope()
@@ -45,6 +50,14 @@ internal fun LayoutsSettingsScreen(onBack: () -> Unit, onEdit: (systemId: String
                 headlineContent = { Text(system.displayName) },
                 supportingContent = { Text(system.shortName, color = MaterialTheme.colorScheme.onSurfaceVariant) },
                 leadingContent = { Box(Modifier.size(22.dp).background(system.color, CircleShape)) },
+                trailingContent = {
+                    // Pad skin picker lives in ui/skins; we only navigate there.
+                    TextButton(onClick = { onSkins(system.id) }) {
+                        Icon(Icons.Outlined.Brush, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.layouts_pad_skin))
+                    }
+                },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
             )
         }

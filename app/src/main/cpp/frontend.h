@@ -24,6 +24,19 @@ struct CoreOption {
     bool visible = true;
 };
 
+// Why the last loadCore()/loadGame() (or a later fatal event) failed. Mirrors EmulatorSession.ErrorKind.
+enum class LoadError : int {
+    None = 0,
+    CoreMissing = 1,     // .so not present / not readable
+    DlopenFailed = 2,    // dlopen() rejected the library (dlerror in the message)
+    CoreInitFailed = 3,  // symbols missing / API version mismatch
+    RomReadFailed = 4,   // ROM file unreadable
+    RomLoadFailed = 5,   // retro_load_game returned false
+    RomEncrypted = 6,    // retro_load_game failed and the core complained about encryption (3DS)
+    GlesUnsupported = 7, // the core needs a newer GLES than the device context provides
+    GlInitFailed = 8,    // EGL/GLES context could not be created at all
+};
+
 struct InputState {
     std::atomic<uint32_t> buttons{0};
     std::atomic<int16_t> analog[2][2]{{{0}, {0}}, {{0}, {0}}}; // [index][axis]
@@ -36,7 +49,7 @@ struct FrontendListener {
     virtual void onRumble(unsigned port, unsigned strength) = 0;
     virtual void onGeometryChanged(unsigned w, unsigned h, float aspect) = 0;
     virtual void onCoreShutdown() = 0;
-    virtual void onFatal(const std::string& what) = 0;
+    virtual void onFatal(const std::string& what, int errorCode) = 0;
     /** Called on the emu thread itself so the JNI layer can attach/detach it once. */
     virtual void onEmuThreadStarted() {}
     virtual void onEmuThreadStopping() {}
@@ -50,10 +63,17 @@ public:
 
     void setListener(FrontendListener* l) { listener_ = l; }
 
+    // strictGlesVersion: fail with GlesUnsupported when the device context is older than what the core
+    // requests in SET_HW_RENDER (cores whose shaders need it, e.g. Azahar); otherwise only warn and proceed.
     bool loadCore(const std::string& corePath, const std::string& systemDir, const std::string& saveDir,
-                  const std::string& optionOverrides, std::string* error);
+                  const std::string& optionOverrides, bool strictGlesVersion, std::string* error);
     bool loadGame(const std::string& romPath, std::string* error);
     void unload();
+    LoadError lastErrorCode() const { return lastError_; }
+    // Last ~40 core log lines (INFO and up), core on-screen messages and frontend load diagnostics, newest last.
+    std::string recentLog();
+    // Appends a line to the ring buffer exposed by recentLog(); also used by the retro log callback.
+    void noteLog(char level, const std::string& line);
 
     void setSurface(ANativeWindow* window);
     void setSurfaceSize(int w, int h);
@@ -111,6 +131,8 @@ private:
     bool saveSramInternal();
     void loadSram();
     void applyOptionOverrides(const std::string& overrides);
+    void logMemoryInfo();
+    void fail(LoadError code, const std::string& what, std::string* error);
     void setOptionsFromV2(const retro_core_options_v2* v2);
     void setOptionsFromV1(const retro_core_option_definition* defs);
     void setOptionsFromVariables(const retro_variable* vars);
@@ -127,6 +149,11 @@ private:
     std::atomic<bool> gameLoaded_{false};
     std::atomic<bool> paused_{true};
     std::atomic<bool> shutdownRequested_{false};
+    LoadError lastError_ = LoadError::None;
+    std::mutex logMutex_;
+    std::vector<std::string> logRing_;
+    size_t logNext_ = 0;
+    std::string lastCoreMessage_;
 
     // thread + command queue
     std::thread thread_;
@@ -145,6 +172,8 @@ private:
     bool hwRender_ = false;
     retro_hw_render_callback hwCb_{};
     bool hwContextReady_ = false;
+    bool hwUnsupported_ = false; // context version check failed; don't retry context_reset every frame
+    bool strictGlesVersion_ = false;
     bool frameIsHw_ = false;
     unsigned hwFboW_ = 0, hwFboH_ = 0;
     unsigned hwFboGrowW_ = 0, hwFboGrowH_ = 0;

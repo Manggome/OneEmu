@@ -1,0 +1,12 @@
+{
+  "id": "nes-classic",
+  "name": "패미컴 클래식",
+  "systems": [
+    "nes"
+  ],
+  "author": "libretro (twinaphex, hunterk)",
+  "license": "CC BY 4.0",
+  "source": "https://github.com/libretro/common-overlays/tree/master/gamepads/nes",
+  "portraitCfg": "nes.cfg",
+  "landscapeCfg": "nes.cfg"
+}
