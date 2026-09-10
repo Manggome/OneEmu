@@ -12,8 +12,9 @@ bool LibretroCore::load(const std::string& path, std::string* error) {
     unload();
     handle_ = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (!handle_) {
-        if (error) *error = dlerror() ? dlerror() : "dlopen failed";
-        LOGE("dlopen(%s) failed: %s", path.c_str(), error ? error->c_str() : "");
+        const char* why = dlerror();
+        if (error) *error = std::string("dlopen failed: ") + (why ? why : "unknown reason");
+        LOGE("dlopen(%s) failed: %s", path.c_str(), why ? why : "");
         return false;
     }
     LOAD_SYM(retro_init);

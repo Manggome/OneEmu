@@ -137,4 +137,6 @@
     <string name="lib_detail_title">게임 정보</string>
     <string name="lib_detail_not_found">게임을 찾을 수 없습니다</string>
     <string name="lib_detail_play_count">플레이 기록</string>
+    <string name="lib_detail_cheats">치트</string>
+    <string name="lib_detail_cheats_desc">여기서 등록한 치트는 다음 실행 때 적용됩니다.</string>
 </resources>

@@ -20,8 +20,10 @@ fun NavGraphBuilder.settingsGraph(nav: NavHostController) {
         LayoutsSettingsScreen(
             onBack = { nav.popBackStack() },
             onEdit = { systemId -> nav.navigate(Routes.layoutEditor(systemId)) },
+            onSkins = { systemId -> nav.navigate(Routes.skins(systemId)) },
         )
     }
+    composable(Routes.SETTINGS_THEME) { ThemeSettingsScreen(onBack = { nav.popBackStack() }) }
     composable(Routes.SETTINGS_CORES) {
         CoresSettingsScreen(
             onBack = { nav.popBackStack() },

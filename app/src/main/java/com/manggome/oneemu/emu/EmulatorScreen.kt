@@ -4,11 +4,17 @@ import android.content.res.Configuration
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,8 +35,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
@@ -49,7 +58,7 @@ import com.manggome.oneemu.emu.menu.SlotPickerSheet
 import com.manggome.oneemu.emu.pad.DefaultLayouts
 import com.manggome.oneemu.emu.pad.PadLayout
 import com.manggome.oneemu.emu.pad.PadLayoutStore
-import com.manggome.oneemu.emu.pad.VirtualPad
+import com.manggome.oneemu.emu.skin.PadHost
 import com.manggome.oneemu.emu.pad.computeGameRect
 import com.manggome.oneemu.ui.layout.LayoutEditor
 import com.manggome.oneemu.ui.theme.OneEmuColors
@@ -115,7 +124,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
             val hidePad = hideWithGamepad && ui.gamepadConnected
 
             if (!editorOpen) {
-                VirtualPad(
+                PadHost(
                     layout = if (hidePad) PadLayout(emptyList()) else layout,
                     system = session.system,
                     opacity = padOpacity,
@@ -143,8 +152,9 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
 
             if (state is EmulatorSession.State.Loading || state is EmulatorSession.State.Idle) LoadingOverlay(ui.title)
 
-            val error = ui.error ?: (state as? EmulatorSession.State.Error)?.message
-            if (error != null) ErrorDialog(error) { host.closeAndFinish() }
+            val sessionError = state as? EmulatorSession.State.Error
+            val error = ui.error ?: sessionError?.message
+            if (error != null) ErrorDialog(error, sessionError?.detail) { host.closeAndFinish() }
 
             val ffLabel = (if (ffSpeed <= 0) stringResource(R.string.ff_unlimited) else stringResource(R.string.ff_speed_x, ffSpeed)) +
                 " · " + stringResource(if (ui.fastForward) R.string.ff_on else R.string.ff_off)
@@ -185,7 +195,13 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     onDone = { msg -> sheet = Sheet.NONE; ui.toast = msg },
                     onDismiss = { sheet = Sheet.NONE },
                 )
-                Sheet.CHEATS -> CheatsSheet(session.game.id, onChanged = { session.applyCheats() }, onDismiss = { sheet = Sheet.NONE })
+                Sheet.CHEATS -> CheatsSheet(
+                    gameId = session.game.id,
+                    core = session.core,
+                    onChanged = { session.applyCheats() },
+                    onMessage = { ui.toast = it },
+                    onDismiss = { sheet = Sheet.NONE },
+                )
                 Sheet.SETTINGS -> QuickSettingsSheet(
                     session = session,
                     onEditLayout = { sheet = Sheet.NONE; editorOpen = true },
@@ -208,7 +224,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
             }
         } else {
             LoadingOverlay(ui.title)
-            ui.error?.let { ErrorDialog(it) { host.closeAndFinish() } }
+            ui.error?.let { ErrorDialog(it, null) { host.closeAndFinish() } }
         }
 
         if (confirmExit) {
@@ -273,12 +289,54 @@ private fun LoadingOverlay(title: String) {
     }
 }
 
+/**
+ * Load/fatal error dialog. [detail] (raw reason + recent core log) is hidden behind a "자세히" toggle and can be
+ * copied to the clipboard so users can paste it into a bug report.
+ */
 @Composable
-private fun ErrorDialog(message: String, onClose: () -> Unit) {
+private fun ErrorDialog(message: String, detail: String?, onClose: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text(stringResource(R.string.emu_error_title)) },
-        text = { Text(message) },
+        text = {
+            Column {
+                Text(message)
+                if (detail != null && expanded) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        detail,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        color = OneEmuColors.OnSurfaceMuted,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                            .background(Color(0x22000000), RoundedCornerShape(6.dp))
+                            .verticalScroll(rememberScrollState())
+                            .horizontalScroll(rememberScrollState())
+                            .padding(8.dp),
+                    )
+                    if (copied) {
+                        Text(stringResource(R.string.emu_error_copied), style = MaterialTheme.typography.labelSmall, color = OneEmuColors.Accent)
+                    }
+                }
+            }
+        },
         confirmButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.close)) } },
+        dismissButton = if (detail == null) null else {
+            {
+                Row {
+                    TextButton(onClick = { expanded = !expanded }) {
+                        Text(stringResource(if (expanded) R.string.emu_error_details_hide else R.string.emu_error_details))
+                    }
+                    TextButton(onClick = { clipboard.setText(AnnotatedString("$message\n\n$detail")); copied = true; expanded = true }) {
+                        Text(stringResource(R.string.emu_error_copy))
+                    }
+                }
+            }
+        },
     )
 }

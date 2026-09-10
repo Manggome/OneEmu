@@ -6,6 +6,7 @@
   "extensions": ["3ds", "3dsx", "z3dsx", "elf", "axf", "cci", "zcci", "cxi", "zcxi", "app"],
   "needFullPath": true,
   "hwRender": "gles3",
+  "glesMinVersion": "3.2",
   "bios": [],
   "sourceRepo": "https://github.com/azahar-emu/azahar",
   "sourceCommit": "26e608f6fa292b27cda0ae8c84e148d17600a5e6",

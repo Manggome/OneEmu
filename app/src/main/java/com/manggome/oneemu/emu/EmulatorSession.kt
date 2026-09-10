@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.util.Log
 import android.view.Surface
 import com.manggome.oneemu.OneEmuApp
+import com.manggome.oneemu.R
 import com.manggome.oneemu.core.CoreInfo
 import com.manggome.oneemu.data.db.GameEntity
 import com.manggome.oneemu.model.SystemId
@@ -27,12 +28,27 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     private val dirs: AppDirs get() = app.dirs
     val system: SystemId = SystemId.fromId(game.system) ?: SystemId.GBA
 
+    /** Why a load (or a later fatal event) failed; mirrors the C++ `LoadError` codes. */
+    enum class ErrorKind(val code: Int) {
+        UNKNOWN(0), CORE_MISSING(1), DLOPEN_FAILED(2), CORE_INIT_FAILED(3), ROM_READ_FAILED(4), ROM_LOAD_FAILED(5),
+        ROM_ENCRYPTED(6), GLES_UNSUPPORTED(7), GL_INIT_FAILED(8), CORE_SHUTDOWN(100);
+
+        companion object {
+            fun fromCode(code: Int): ErrorKind = entries.firstOrNull { it.code == code } ?: UNKNOWN
+        }
+    }
+
     sealed class State {
         data object Idle : State()
         data object Loading : State()
         data object Running : State()
         data object Paused : State()
-        data class Error(val message: String) : State()
+
+        /**
+         * [message] is the Korean text for the user; [detail] holds the raw reason plus the last core log lines
+         * for a "자세히" expander / copy button.
+         */
+        data class Error(val message: String, val detail: String? = null, val kind: ErrorKind = ErrorKind.UNKNOWN) : State()
     }
 
     private val _state = MutableStateFlow<State>(State.Idle)
@@ -61,24 +77,36 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     suspend fun load(): Boolean = withContext(Dispatchers.IO) {
         _state.value = State.Loading
         NativeBridge.listener = this@EmulatorSession
+        // The 3DS core has no .cia installer; the scanner lists .cia files so users get a clear message here.
+        if (system == SystemId.N3DS && File(game.path).extension.equals("cia", true)) {
+            _state.value = makeError(ErrorKind.ROM_ENCRYPTED, ".cia files cannot be run directly by the Azahar libretro core")
+            return@withContext false
+        }
         val libPath = app.cores.libraryPath(core)
         if (!libPath.exists()) {
-            _state.value = State.Error("이 APK에는 ${core.displayName} 코어가 포함되어 있지 않습니다.")
+            _state.value = makeError(ErrorKind.CORE_MISSING, "core library not in APK: ${libPath.absolutePath}")
             return@withContext false
         }
         app.cores.installAssets(core, dirs.system)
         val overrides = buildOptionOverrides()
-        if (!NativeBridge.loadCore(libPath.absolutePath, dirs.system.absolutePath, dirs.saves(system.id).absolutePath, overrides)) {
-            _state.value = State.Error("코어를 불러오지 못했습니다: ${NativeBridge.lastError()}")
+        val strictGles = core.glesMinVersion.isNotEmpty()
+        if (!NativeBridge.loadCore(libPath.absolutePath, dirs.system.absolutePath, dirs.saves(system.id).absolutePath, overrides, strictGles)) {
+            _state.value = makeError(ErrorKind.fromCode(NativeBridge.lastErrorCode()), NativeBridge.lastError())
             return@withContext false
         }
         val romPath = resolveRomPath() ?: run {
-            _state.value = State.Error("ROM 파일을 열 수 없습니다.")
+            _state.value = makeError(ErrorKind.ROM_READ_FAILED, "ROM not found: ${game.path}")
+            NativeBridge.unload()
             return@withContext false
         }
         if (!NativeBridge.loadGame(romPath)) {
-            val err = NativeBridge.lastError().ifEmpty { "코어가 게임을 불러오지 못했습니다" }
-            _state.value = State.Error(err)
+            _state.value = makeError(ErrorKind.fromCode(NativeBridge.lastErrorCode()), NativeBridge.lastError())
+            NativeBridge.unload()
+            return@withContext false
+        }
+        // A HW-render core may already have failed inside loadGame (context_reset runs there when the surface is
+        // attached): onFatal has set State.Error and we must not overwrite it with Paused.
+        if (_state.value is State.Error) {
             NativeBridge.unload()
             return@withContext false
         }
@@ -86,6 +114,37 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
         startedAt = System.currentTimeMillis()
         _state.value = State.Paused
         true
+    }
+
+    /** Builds the user-facing [State.Error] for [kind]: Korean summary + raw reason + recent core log. */
+    private fun makeError(kind: ErrorKind, reason: String): State.Error {
+        val name = core.displayName
+        val message = when (kind) {
+            ErrorKind.CORE_MISSING -> app.getString(R.string.emu_err_core_missing, name)
+            ErrorKind.DLOPEN_FAILED -> app.getString(R.string.emu_err_dlopen, name)
+            ErrorKind.CORE_INIT_FAILED -> app.getString(R.string.emu_err_core_init, name)
+            ErrorKind.ROM_READ_FAILED -> app.getString(R.string.emu_err_rom_read)
+            ErrorKind.ROM_LOAD_FAILED -> app.getString(R.string.emu_err_rom_load)
+            ErrorKind.ROM_ENCRYPTED -> app.getString(R.string.emu_err_rom_encrypted)
+            ErrorKind.GLES_UNSUPPORTED -> {
+                // reason: "core requires OpenGL ES 3.2 but the device context is OpenGL ES 3.1 ..."
+                val need = Regex("requires OpenGL ES (\\d\\.\\d)").find(reason)?.groupValues?.get(1) ?: "3.2"
+                val have = Regex("context is (OpenGL ES[^(]*)").find(reason)?.groupValues?.get(1)?.trim() ?: "?"
+                app.getString(R.string.emu_err_gles, name, need, have)
+            }
+            ErrorKind.GL_INIT_FAILED -> app.getString(R.string.emu_err_gl_init)
+            ErrorKind.CORE_SHUTDOWN -> app.getString(R.string.emu_err_shutdown)
+            ErrorKind.UNKNOWN -> app.getString(R.string.emu_err_unknown)
+        }
+        val log = runCatching { NativeBridge.getRecentCoreLog() }.getOrDefault("").trim()
+        val detail = buildString {
+            append(app.getString(R.string.emu_error_reason, reason.ifBlank { kind.name }))
+            append("\n").append("core=").append(core.id).append(" system=").append(system.id)
+            append("\nrom=").append(game.path)
+            if (log.isNotEmpty()) append("\n\n").append(app.getString(R.string.emu_error_core_log)).append(":\n").append(log)
+        }
+        Log.e("OneEmu", "load error [$kind]: $reason\n$log")
+        return State.Error(message, detail, kind)
     }
 
     private suspend fun buildOptionOverrides(): String {
@@ -201,9 +260,17 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     }
 
     // ---- cheats ----
+    /**
+     * Pushes the enabled cheats of this game to the core: `retro_cheat_reset` then one `retro_cheat_set` per cheat.
+     * Multi-line codes are joined with '+' (the libretro convention; mGBA/FCEUmm/melonDS/PPSSPP all split on it),
+     * because several cores do not treat a newline as a separator.
+     */
     suspend fun applyCheats() = withContext(Dispatchers.IO) {
+        if (_state.value !is State.Running && _state.value !is State.Paused) return@withContext
         NativeBridge.resetCheats()
-        app.db.cheats().forGame(game.id).filter { it.enabled }.forEachIndexed { i, c -> NativeBridge.setCheat(i, true, c.code) }
+        app.db.cheats().forGame(game.id).filter { it.enabled }
+            .mapNotNull { c -> CheatCodes.normalize(c.code).takeIf { it.isNotEmpty() } }
+            .forEachIndexed { i, code -> NativeBridge.setCheat(i, true, code) }
     }
 
     // ---- core options ----
@@ -225,8 +292,8 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     override fun onCoreMessage(message: String, durationMs: Int, priority: Int) { _messages.value = message }
     override fun onRumble(port: Int, strength: Int) { if (port == 0) _rumble.value = strength }
     override fun onGeometryChanged(width: Int, height: Int, aspect: Float) { _geometry.value = Geometry(width, height, aspect) }
-    override fun onCoreShutdown() { _state.value = State.Error("코어가 종료를 요청했습니다") }
-    override fun onFatal(what: String) { Log.e("OneEmu", "fatal: $what"); _state.value = State.Error(what) }
+    override fun onCoreShutdown() { _state.value = makeError(ErrorKind.CORE_SHUTDOWN, "RETRO_ENVIRONMENT_SHUTDOWN") }
+    override fun onFatal(what: String, errorCode: Int) { _state.value = makeError(ErrorKind.fromCode(errorCode), what) }
 
     fun consumeMessage() { _messages.value = null }
 
@@ -248,5 +315,51 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
         const val R2 = 1 shl 13
         const val L3 = 1 shl 14
         const val R3 = 1 shl 15
+    }
+}
+
+/** Cheat-code text helpers shared by the session and the editors. */
+object CheatCodes {
+    /**
+     * Trims every line, drops blanks/comments and joins the rest with '+', which every bundled core accepts as a
+     * separator. Full-width/no-break spaces (common with Korean IMEs) and zero-width characters are normalized too.
+     */
+    fun normalize(code: String): String =
+        code.replace('\u3000', ' ').replace('\u00A0', ' ').replace(Regex("[\u200B\u200C\u200D\uFEFF]"), "")
+            .lines().map { it.trim().replace(Regex("\\s+"), " ") }
+            .filter { it.isNotEmpty() && !it.startsWith("#") && !it.startsWith("//") }
+            .joinToString("+")
+
+    data class Imported(val name: String, val code: String, val enabled: Boolean)
+
+    /**
+     * Parses a RetroArch `.cht` file:
+     * ```
+     * cheats = 2
+     * cheat0_desc = "Infinite lives"
+     * cheat0_code = "82000000 0001+82000002 0063"
+     * cheat0_enable = false
+     * ```
+     * Unknown keys are ignored; entries without a code are skipped. '+' separators are turned back into lines for editing.
+     */
+    fun parseCht(text: String): List<Imported> {
+        val re = Regex("""^\s*cheat(\d+)_(desc|code|enable)\s*=\s*(.*?)\s*$""")
+        val desc = HashMap<Int, String>(); val code = HashMap<Int, String>(); val enable = HashMap<Int, Boolean>()
+        for (line in text.lineSequence()) {
+            val m = re.find(line) ?: continue
+            val idx = m.groupValues[1].toIntOrNull() ?: continue
+            val value = m.groupValues[3].trim().removeSurrounding("\"")
+            when (m.groupValues[2]) {
+                "desc" -> desc[idx] = value
+                "code" -> code[idx] = value
+                "enable" -> enable[idx] = value.equals("true", true) || value == "1"
+            }
+        }
+        return code.keys.sorted().mapNotNull { i ->
+            val c = code[i]?.trim().orEmpty()
+            if (c.isEmpty()) return@mapNotNull null
+            val lines = c.split('+').map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n")
+            Imported(desc[i]?.ifBlank { null } ?: lines.lines().first(), lines, enable[i] ?: true)
+        }
     }
 }

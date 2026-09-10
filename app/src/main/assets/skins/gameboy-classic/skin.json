@@ -1,0 +1,13 @@
+{
+  "id": "gameboy-classic",
+  "name": "게임보이 클래식",
+  "systems": [
+    "gb",
+    "gbc"
+  ],
+  "author": "libretro (twinaphex, hunterk)",
+  "license": "CC BY 4.0",
+  "source": "https://github.com/libretro/common-overlays/tree/master/gamepads/gameboy",
+  "portraitCfg": "gameboy.cfg",
+  "landscapeCfg": "gameboy.cfg"
+}

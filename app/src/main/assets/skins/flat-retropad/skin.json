@@ -1,0 +1,10 @@
+{
+  "id": "flat-retropad",
+  "name": "플랫 레트로패드",
+  "systems": [],
+  "author": "hunterk, Sérgio Benjamim",
+  "license": "CC BY 4.0",
+  "source": "https://github.com/libretro/common-overlays/tree/master/gamepads/flat/retropad-fast.cfg",
+  "portraitCfg": "retropad-fast.cfg",
+  "landscapeCfg": "retropad-fast.cfg"
+}

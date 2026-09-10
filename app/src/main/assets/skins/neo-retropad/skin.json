@@ -1,0 +1,10 @@
+{
+  "id": "neo-retropad",
+  "name": "네오 레트로패드",
+  "systems": [],
+  "author": "neil4 (nfore), jdgleaver",
+  "license": "CC BY 4.0",
+  "source": "https://github.com/libretro/common-overlays/tree/master/gamepads/neo-retropad",
+  "portraitCfg": "neo-retropad.cfg",
+  "landscapeCfg": "neo-retropad.cfg"
+}

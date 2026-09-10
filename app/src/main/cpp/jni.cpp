@@ -59,10 +59,10 @@ struct JavaListener : FrontendListener {
         }
     }
     void onEmuThreadStopping() override { if (g_vm) g_vm->DetachCurrentThread(); }
-    void onFatal(const std::string& what) override {
+    void onFatal(const std::string& what, int errorCode) override {
         ScopedEnv se; if (!se.env) return;
         jstring js = se.env->NewStringUTF(what.c_str());
-        se.env->CallStaticVoidMethod(g_bridgeClass, g_onFatal, js);
+        se.env->CallStaticVoidMethod(g_bridgeClass, g_onFatal, js, (jint)errorCode);
         se.env->DeleteLocalRef(js);
     }
 };
@@ -85,16 +85,18 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
     g_onRumble = env->GetStaticMethodID(cls, "onRumble", "(II)V");
     g_onGeometry = env->GetStaticMethodID(cls, "onGeometryChanged", "(IIF)V");
     g_onShutdown = env->GetStaticMethodID(cls, "onCoreShutdown", "()V");
-    g_onFatal = env->GetStaticMethodID(cls, "onFatal", "(Ljava/lang/String;)V");
+    g_onFatal = env->GetStaticMethodID(cls, "onFatal", "(Ljava/lang/String;I)V");
     Frontend::get().setListener(&g_listener);
     return JNI_VERSION_1_6;
 }
 
 #define BRIDGE(ret, name) JNIEXPORT ret JNICALL Java_com_manggome_oneemu_emu_NativeBridge_##name
 
-BRIDGE(jboolean, loadCore)(JNIEnv* env, jobject, jstring corePath, jstring systemDir, jstring saveDir, jstring options) {
+BRIDGE(jboolean, loadCoreNative)(JNIEnv* env, jobject, jstring corePath, jstring systemDir, jstring saveDir, jstring options,
+                                 jboolean strictGlesVersion) {
     g_lastError.clear();
-    return Frontend::get().loadCore(jstr(env, corePath), jstr(env, systemDir), jstr(env, saveDir), jstr(env, options), &g_lastError);
+    return Frontend::get().loadCore(jstr(env, corePath), jstr(env, systemDir), jstr(env, saveDir), jstr(env, options),
+                                    strictGlesVersion, &g_lastError);
 }
 
 BRIDGE(jboolean, loadGame)(JNIEnv* env, jobject, jstring romPath) {
@@ -103,6 +105,8 @@ BRIDGE(jboolean, loadGame)(JNIEnv* env, jobject, jstring romPath) {
 }
 
 BRIDGE(jstring, lastError)(JNIEnv* env, jobject) { return env->NewStringUTF(g_lastError.c_str()); }
+BRIDGE(jint, lastErrorCode)(JNIEnv*, jobject) { return (jint)Frontend::get().lastErrorCode(); }
+BRIDGE(jstring, getRecentCoreLog)(JNIEnv* env, jobject) { return env->NewStringUTF(Frontend::get().recentLog().c_str()); }
 
 BRIDGE(void, unload)(JNIEnv*, jobject) { Frontend::get().unload(); }
 

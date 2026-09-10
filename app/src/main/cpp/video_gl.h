@@ -3,6 +3,7 @@
 #include <GLES3/gl3.h>
 #include <android/native_window.h>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 enum class AspectMode : int { Core = 0, Stretch = 1, Integer = 2, Square = 3 };
@@ -20,7 +21,9 @@ class VideoGL {
 public:
     ~VideoGL();
 
-    bool init(ANativeWindow* window, bool needDepth, bool needStencil);
+    // reqMajor/reqMinor: GLES version a HW-render core asked for (0 = any ES 3.x). The exact version is
+    // tried first, then ES 3.2 and finally any ES 3.x; check glMajor()/glMinor() for what was granted.
+    bool init(ANativeWindow* window, bool needDepth, bool needStencil, int reqMajor = 0, int reqMinor = 0);
     void setWindow(ANativeWindow* window); // swap the EGLSurface without recreating the context
     void destroy();
     bool ready() const { return context_ != EGL_NO_CONTEXT && surface_ != EGL_NO_SURFACE; }
@@ -29,6 +32,11 @@ public:
     void setSwapInterval(int interval);
     int width() const { return surfaceW_; }
     int height() const { return surfaceH_; }
+    // Actual context version parsed from GL_VERSION ("OpenGL ES 3.1 ..."), valid after init().
+    int glMajor() const { return glMajor_; }
+    int glMinor() const { return glMinor_; }
+    const std::string& versionString() const { return glVersion_; }
+    const std::string& rendererString() const { return glRenderer_; }
 
     // Software path: format is one of RETRO_PIXEL_FORMAT_*. data may be nullptr to re-present last frame.
     void uploadSoftwareFrame(const void* data, unsigned w, unsigned h, size_t pitch, int format);
@@ -56,6 +64,8 @@ private:
     EGLSurface surface_ = EGL_NO_SURFACE;
     ANativeWindow* window_ = nullptr;
     int surfaceW_ = 0, surfaceH_ = 0;
+    int glMajor_ = 0, glMinor_ = 0;
+    std::string glVersion_, glRenderer_;
 
     GLuint program_ = 0, vbo_ = 0, vao_ = 0;
     GLint uTex_ = -1, uSwizzleBGR_ = -1, uMvp_ = -1, uFlipY_ = -1;

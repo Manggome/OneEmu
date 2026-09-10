@@ -1,6 +1,7 @@
 #include "video_gl.h"
 #include "libretro.h"
 #include "log.h"
+#include <cctype>
 #include <cmath>
 #include <cstring>
 
@@ -43,7 +44,7 @@ static GLuint compile(GLenum type, const char* src) {
 
 VideoGL::~VideoGL() { destroy(); }
 
-bool VideoGL::init(ANativeWindow* window, bool needDepth, bool needStencil) {
+bool VideoGL::init(ANativeWindow* window, bool needDepth, bool needStencil, int reqMajor, int reqMinor) {
     destroy();
     window_ = window;
     display_ = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -64,9 +65,20 @@ bool VideoGL::init(ANativeWindow* window, bool needDepth, bool needStencil) {
         LOGE("eglChooseConfig failed");
         return false;
     }
-    // Prefer an explicit ES 3.2 context (Azahar/PPSSPP use 3.2 features when present), fall back to any ES 3.x.
-    const EGLint ctxAttribs32[] = { EGL_CONTEXT_MAJOR_VERSION, 3, EGL_CONTEXT_MINOR_VERSION, 2, EGL_NONE };
-    context_ = eglCreateContext(display_, config_, EGL_NO_CONTEXT, ctxAttribs32);
+    // Ask for the version the core wants first (RetroArch does the same), then an explicit ES 3.2
+    // (Azahar/Play! need 3.2 features), then any ES 3.x. Drivers may still hand back a lower context
+    // than requested, so the real version is parsed from GL_VERSION below.
+    if (reqMajor >= 3) {
+        const EGLint attribsReq[] = { EGL_CONTEXT_MAJOR_VERSION, reqMajor, EGL_CONTEXT_MINOR_VERSION, reqMinor, EGL_NONE };
+        context_ = eglCreateContext(display_, config_, EGL_NO_CONTEXT, attribsReq);
+        if (context_ == EGL_NO_CONTEXT) LOGW("eglCreateContext(ES %d.%d) failed: 0x%x", reqMajor, reqMinor, eglGetError());
+    }
+    // Some drivers (ANGLE, a few Mali builds) hand out exactly 3.0 for a bare CLIENT_VERSION 3 request even
+    // though they support 3.1/3.2, so walk down explicit minors before the generic request.
+    for (int minor = 2; minor >= 1 && context_ == EGL_NO_CONTEXT; minor--) {
+        const EGLint attribs3x[] = { EGL_CONTEXT_MAJOR_VERSION, 3, EGL_CONTEXT_MINOR_VERSION, minor, EGL_NONE };
+        context_ = eglCreateContext(display_, config_, EGL_NO_CONTEXT, attribs3x);
+    }
     if (context_ == EGL_NO_CONTEXT) {
         const EGLint ctxAttribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
         context_ = eglCreateContext(display_, config_, EGL_NO_CONTEXT, ctxAttribs);
@@ -78,7 +90,20 @@ bool VideoGL::init(ANativeWindow* window, bool needDepth, bool needStencil) {
     if (!createSurface()) return false;
     if (!makeCurrent()) return false;
     ensureProgram();
-    LOGI("GL ready: %s / %s", glGetString(GL_RENDERER), glGetString(GL_VERSION));
+    const char* ver = (const char*)glGetString(GL_VERSION);
+    const char* ren = (const char*)glGetString(GL_RENDERER);
+    glVersion_ = ver ? ver : "";
+    glRenderer_ = ren ? ren : "";
+    // "OpenGL ES 3.1 ..." / "OpenGL ES-CM 1.1" — take the first "<digit>.<digit>" pair.
+    glMajor_ = glMinor_ = 0;
+    for (size_t i = 0; i + 2 < glVersion_.size(); i++) {
+        if (isdigit((unsigned char)glVersion_[i]) && glVersion_[i + 1] == '.' && isdigit((unsigned char)glVersion_[i + 2])) {
+            glMajor_ = glVersion_[i] - '0';
+            glMinor_ = glVersion_[i + 2] - '0';
+            break;
+        }
+    }
+    LOGI("GL ready: %s / %s (parsed ES %d.%d)", glRenderer_.c_str(), glVersion_.c_str(), glMajor_, glMinor_);
     return true;
 }
 

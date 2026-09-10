@@ -1,0 +1,12 @@
+{
+  "id": "lite-nds",
+  "name": "DS 라이트",
+  "systems": [
+    "nds"
+  ],
+  "author": "neil4 (nfore)",
+  "license": "CC BY 4.0",
+  "source": "https://github.com/libretro/common-overlays/tree/master/gamepads/lite/NDS.cfg",
+  "portraitCfg": "NDS.cfg",
+  "landscapeCfg": "NDS.cfg"
+}

@@ -1,9 +1,9 @@
 <resources>
     <style name="Theme.OneEmu" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#FF1E1E1E</item>
-        <item name="android:statusBarColor">#FF1E1E1E</item>
-        <item name="android:navigationBarColor">#FF1E1E1E</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">#FFF4F4F4</item>
+        <item name="android:statusBarColor">#FFF4F4F4</item>
+        <item name="android:navigationBarColor">#FFF4F4F4</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
     <style name="Theme.OneEmu.Emulator" parent="Theme.OneEmu">
         <item name="android:windowBackground">@android:color/black</item>

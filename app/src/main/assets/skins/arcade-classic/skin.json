@@ -1,0 +1,12 @@
+{
+  "id": "arcade-classic",
+  "name": "아케이드 클래식",
+  "systems": [
+    "arcade"
+  ],
+  "author": "hunterk, Benoit Felix",
+  "license": "CC BY 4.0",
+  "source": "https://github.com/libretro/common-overlays/tree/master/gamepads/arcade",
+  "portraitCfg": "arcade.cfg",
+  "landscapeCfg": "arcade.cfg"
+}
