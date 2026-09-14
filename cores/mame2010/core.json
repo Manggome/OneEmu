@@ -1,0 +1,50 @@
+{
+  "id": "mame2010",
+  "displayName": "MAME 2010",
+  "libFile": "libmame2010_libretro.so",
+  "systems": [
+    "arcade"
+  ],
+  "extensions": [
+    "zip",
+    "chd"
+  ],
+  "needFullPath": true,
+  "hwRender": "none",
+  "bios": [
+    {
+      "system": "arcade",
+      "file": "mame2010/hiscore.dat",
+      "required": false,
+      "description": "외부 하이스코어 DB (선택). 코어 옵션 'Use external hiscore.dat' 를 켰을 때만 읽고, 없으면 내장 hiscore.dat 사용 (소스 metadata/hiscore.dat). ※ BIOS 롬셋(neogeo.zip, pgm.zip, naomi.zip 등)은 이 폴더가 아니라 게임 롬과 같은 폴더에 두세요"
+    },
+    {
+      "system": "arcade",
+      "file": "mame2010/cheat.zip",
+      "required": false,
+      "description": "치트 모음 (선택, 소스 metadata/cheat.zip). 그대로 두거나 mame2010/cheat/<게임>.xml 로 풀어 넣기. <savedir>/mame2010/ini/mame.ini 의 'cheat 1' 로 켜야 동작. 샘플 zip은 mame2010/samples/, 아트워크는 mame2010/artwork/ 에 (모두 선택). BIOS zip은 게임 롬과 같은 폴더에 두세요"
+    }
+  ],
+  "sourceRepo": "https://github.com/libretro/mame2010-libretro",
+  "sourceCommit": "dff8aadd1c3f38215af3955746d6e19abe0ddcea",
+  "license": "MAME (non-commercial)",
+  "defaultOptions": {
+    "mame_current_skip_nagscreen": "enabled",
+    "mame_current_skip_gameinfo": "enabled",
+    "mame_current_skip_warnings": "enabled",
+    "mame_current_xy_type": "none",
+    "mame_current_videoapproach1_enable": "disabled",
+    "mame_current_aspect_ratio": "DAR",
+    "mame_current_turbo_button": "disabled",
+    "mame_current_turbo_delay": "medium",
+    "mame_current_frame_skip": "0",
+    "mame_current_sample_rate": "48000Hz",
+    "mame_current_multithreading": "disabled",
+    "mame_current_adj_brightness": "default",
+    "mame_current_adj_contrast": "default",
+    "mame_current_adj_gamma": "default",
+    "mame-external_hiscore": "disabled",
+    "mame2010-qsound_hle": "disabled"
+  },
+  "notes": "MAME 0.139 롬셋 필요; 2003-Plus에 없는 2003~2010년 추가 게임(남코 시스템 11/12, 철권, 블러디 로어 2 등) 실행용; 느린 게임은 기기 성능에 따라 다름. zip 파일명 = MAME 짧은 이름(예: tekken.zip); 전체 제목은 소스 metadata/mame2010.xml(DAT)로 매핑. valid_extensions 는 zip|chd|7z 이지만 7z 해제 코드가 없어 zip 만 실제 지원; CHD 는 <롬폴더>/<게임>/<이름>.chd (zip 과 같은 폴더의 게임명 하위 폴더). BIOS 롬셋(neogeo.zip, pgm.zip, naomi.zip 등)은 systemdir 가 아니라 게임 zip 과 같은 ROM 폴더(-rompath = 콘텐츠 폴더)에 둔다. systemdir: <systemdir>/mame2010/{samples,artwork,fonts,crosshairs,cheat}/ 및 hiscore.dat, cheat.zip. savedir: <savedir>/mame2010/{cfg,nvram,memcard,hi,diff,input,image,comment,ctrlr,ini}/ (첫 실행 시 ini/mame.ini 자동 생성). 나그/게임정보/경고 화면은 코어가 옵션 기본값(nag=enabled 숨김)으로 처리. 16KB 페이지 정렬 빌드, retro_* 심볼만 export."
+}

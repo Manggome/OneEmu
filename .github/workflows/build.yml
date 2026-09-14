@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        core: [mgba, fceumm, melondsds, ppsspp, mame2003plus, play, azaharplus]
+        core: [mgba, fceumm, melondsds, ppsspp, mame2003plus, play, azaharplus, mame2010]
     steps:
       - uses: actions/checkout@v4
         with:

@@ -52,6 +52,8 @@ class UpdateViewModel : ViewModel() {
             if (!settings.get(Settings.Keys.updateCheckOnStart, true)) return@launch
             val last = settings.get(Settings.Keys.updateLastCheckAt, 0L)
             val now = System.currentTimeMillis()
+            // Check on every cold start (the user asked for it); the short interval only guards against
+            // repeated Activity recreations within the same minute.
             if (now - last < CHECK_INTERVAL_MS) return@launch
             settings.set(Settings.Keys.updateLastCheckAt, now)
             when (val r = checker.check()) {
@@ -146,6 +148,6 @@ class UpdateViewModel : ViewModel() {
 
     companion object {
         private const val TAG = "UpdateViewModel"
-        const val CHECK_INTERVAL_MS = 6L * 60 * 60 * 1000
+        const val CHECK_INTERVAL_MS = 60L * 1000
     }
 }

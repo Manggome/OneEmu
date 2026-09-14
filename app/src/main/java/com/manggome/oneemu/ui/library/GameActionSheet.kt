@@ -178,7 +178,8 @@ fun RenameDialog(game: GameEntity, onDismiss: () -> Unit, onRename: (String) -> 
 fun CorePickerDialog(game: GameEntity, vm: LibraryViewModel, onDismiss: () -> Unit, onOpenCoreOptions: (String) -> Unit) {
     val system = SystemId.fromId(game.system)
     val cores = remember(game.system) { system?.let { vm.cores.coresFor(it) } ?: emptyList() }
-    val default = remember(game.system) { system?.let { vm.cores.defaultCoreFor(it) } }
+    // Arcade: the "default" is whichever MAME core's DAT lists this zip (ArcadeCoreRouter), not just the system default.
+    val default = remember(game.system, game.path) { vm.autoCoreFor(game) }
     val effective = vm.coreFor(game)
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -196,7 +197,7 @@ fun CorePickerDialog(game: GameEntity, vm: LibraryViewModel, onDismiss: () -> Un
                     for (core in cores) {
                         val available = vm.cores.isAvailable(core)
                         CoreRow(
-                            label = core.displayName,
+                            label = if (system == SystemId.ARCADE && core.id == default?.id) stringResource(R.string.lib_core_auto_of, core.displayName) else core.displayName,
                             sub = if (available) null else stringResource(R.string.lib_core_unavailable),
                             selected = game.coreId == core.id,
                             enabled = available,

@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -47,9 +48,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.db.GameEntity
+import com.manggome.oneemu.library.ArcadeCoreRouter
 import com.manggome.oneemu.library.ArcadeDatDownloader
+import com.manggome.oneemu.library.ArcadeRename
 import com.manggome.oneemu.library.ArcadeRomCheck
 import com.manggome.oneemu.library.ArcadeRomChecker
+import com.manggome.oneemu.ui.common.ConfirmDialog
 import com.manggome.oneemu.ui.theme.OneEmuColors
 import kotlinx.coroutines.launch
 
@@ -63,20 +67,24 @@ private fun severityColor(s: ArcadeRomCheck.Severity): Color = when (s) {
 }
 
 /**
- * Lazily checks an arcade zip. Returns the cached report immediately when the file is unchanged,
- * otherwise null until the bounded background check (Dispatchers.IO, 2 at a time) finishes.
- * [refresh] > 0 forces a re-check.
+ * Lazily resolves an arcade zip (which MAME core's DAT lists it + that core's report). Returns the cached
+ * resolution immediately when the file is unchanged, otherwise null until the bounded background check
+ * (Dispatchers.IO, 2 at a time) finishes. [refresh] > 0 forces a re-check.
  */
 @Composable
-fun rememberArcadeReport(game: GameEntity, refresh: Int = 0): ArcadeRomCheck.Report? {
+fun rememberArcadeResolution(game: GameEntity, refresh: Int = 0): ArcadeRomCheck.Resolution? {
     val context = LocalContext.current
     val checker = remember { ArcadeRomChecker.get(context) }
     val initial = remember(game.path) { checker.cached(game.path) }
     val state = produceState(initialValue = initial, key1 = game.path, key2 = refresh) {
-        if (value == null || refresh > 0) value = checker.check(game.path, force = refresh > 0)
+        if (value == null || refresh > 0) value = checker.resolve(game.path, force = refresh > 0)
     }
     return state.value
 }
+
+/** The resolved core's report only (list/grid status dot). */
+@Composable
+fun rememberArcadeReport(game: GameEntity, refresh: Int = 0): ArcadeRomCheck.Report? = rememberArcadeResolution(game, refresh)?.report
 
 /** Small coloured dot (green OK / amber needs something / red cannot run) for list and grid items. */
 @Composable
@@ -104,9 +112,12 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
     val context = LocalContext.current
     val checker = remember { ArcadeRomChecker.get(context) }
     var refresh by remember { mutableIntStateOf(0) }
-    val report = rememberArcadeReport(game, refresh)
+    val resolution = rememberArcadeResolution(game, refresh)
+    val report = resolution?.report
     var showFiles by rememberSaveable { mutableStateOf(false) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
+    var confirmRename by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
@@ -114,7 +125,7 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
                 Text(stringResource(R.string.lib_arcade_check_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 TextButton(onClick = { checker.invalidate(game.path); refresh++ }) { Text(stringResource(R.string.lib_arcade_recheck)) }
             }
-            if (report == null) {
+            if (resolution == null || report == null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(10.dp))
@@ -124,14 +135,23 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ArcadeStatusDot(report, size = 12.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text(checker.statusText(report), style = MaterialTheme.typography.titleSmall, color = severityColor(report.severity))
+                    Text(checker.statusText(resolution), style = MaterialTheme.typography.titleSmall, color = severityColor(report.severity))
+                }
+                // "실행 코어: MAME 2010 (MAME 0.139 롬셋)" — which bundled MAME the zip is routed to.
+                checker.runCoreText(resolution)?.let { line ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(line, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
                 Spacer(Modifier.height(6.dp))
-                Text(checker.explanation(report), style = MaterialTheme.typography.bodyMedium)
-                val notes = checker.companionNotes(report)
+                Text(checker.explanation(resolution), style = MaterialTheme.typography.bodyMedium)
+                val notes = checker.companionNotes(resolution)
                 if (notes.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
                     for (n in notes) Text("• $n", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (report.status == ArcadeRomCheck.Status.RENAME_SUGGESTED && report.suggestedName != null) {
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton(onClick = { confirmRename = true }) { Text(stringResource(R.string.lib_arcade_rename)) }
                 }
                 if (report.issues.isNotEmpty()) {
                     TextButton(onClick = { showFiles = !showFiles }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
@@ -146,14 +166,17 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
                     Spacer(Modifier.height(10.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(10.dp))
-                    SamplesSection(report, checker)
+                    SamplesSection(report, checker.samplesDir(resolution.coreId ?: ArcadeCoreRouter.MAME2003PLUS))
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(10.dp))
-            DatSection(checker, onMessage)
+            // cheat.dat / hiscore.dat downloads are MAME 2003-Plus only; hide them for games routed to MAME 2010.
+            if (resolution?.coreId == null || resolution.coreId == ArcadeCoreRouter.MAME2003PLUS) {
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(10.dp))
+                DatSection(checker, onMessage)
+            }
 
             Spacer(Modifier.height(10.dp))
             HorizontalDivider()
@@ -162,6 +185,28 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
             }
             if (showHelp) HelpSection()
         }
+    }
+
+    if (confirmRename && resolution != null && report?.suggestedName != null) {
+        val current = java.io.File(game.path).name
+        val target = "${report.suggestedName}.zip"
+        ConfirmDialog(
+            title = stringResource(R.string.lib_arcade_rename_title),
+            text = stringResource(R.string.lib_arcade_rename_confirm, current, target),
+            confirmText = stringResource(R.string.lib_arcade_rename),
+            onConfirm = {
+                scope.launch {
+                    when (val r = ArcadeRename.apply(game, resolution)) {
+                        // The detail screen observes the row, so the new path re-triggers rememberArcadeResolution.
+                        is ArcadeRename.Result.Done -> onMessage(context.getString(R.string.lib_arcade_rename_done, r.newFile.name))
+                        is ArcadeRename.Result.TargetExists -> onMessage(context.getString(R.string.lib_arcade_rename_exists, r.target.name))
+                        is ArcadeRename.Result.Failed -> onMessage(context.getString(R.string.lib_arcade_rename_failed, r.target.name))
+                        ArcadeRename.Result.SourceMissing -> onMessage(context.getString(R.string.lib_arcade_rename_missing))
+                    }
+                }
+            },
+            onDismiss = { confirmRename = false },
+        )
     }
 }
 
@@ -193,7 +238,7 @@ private fun IssueList(report: ArcadeRomCheck.Report) {
 }
 
 @Composable
-private fun SamplesSection(report: ArcadeRomCheck.Report, checker: ArcadeRomChecker) {
+private fun SamplesSection(report: ArcadeRomCheck.Report, samplesDir: java.io.File) {
     Text(stringResource(R.string.lib_arcade_samples_title), style = MaterialTheme.typography.titleSmall)
     Spacer(Modifier.height(4.dp))
     if (report.samplesPresent) {
@@ -201,7 +246,7 @@ private fun SamplesSection(report: ArcadeRomCheck.Report, checker: ArcadeRomChec
     } else {
         Text(stringResource(R.string.lib_arcade_samples_path, "${report.sampleZip}.zip"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
-        PathText(checker.samplesDir.absolutePath)
+        PathText(samplesDir.absolutePath)
     }
 }
 
@@ -258,6 +303,9 @@ private fun HelpSection() {
         TextButton(onClick = { uri.openUri(DOCS_URL) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
             Text(stringResource(R.string.lib_arcade_link_docs), fontWeight = FontWeight.Medium)
         }
+        TextButton(onClick = { uri.openUri(DOCS_2010_URL) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            Text(stringResource(R.string.lib_arcade_link_docs_2010), fontWeight = FontWeight.Medium)
+        }
         TextButton(onClick = { uri.openUri(MAMEDEV_ROMS_URL) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
             Text(stringResource(R.string.lib_arcade_link_mamedev), fontWeight = FontWeight.Medium)
         }
@@ -266,4 +314,5 @@ private fun HelpSection() {
 
 private const val MAX_ISSUE_ROWS = 40
 private const val DOCS_URL = "https://docs.libretro.com/library/mame2003_plus/"
+private const val DOCS_2010_URL = "https://docs.libretro.com/library/mame_2010/"
 private const val MAMEDEV_ROMS_URL = "https://www.mamedev.org/roms/"
