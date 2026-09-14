@@ -81,11 +81,17 @@ class RomScanner(
     private fun isSkippable(f: File, ext: String): Boolean {
         val name = f.nameWithoutExtension.lowercase()
         if (ext == "bin") return true // only reachable through .cue
-        if (ext == "zip" && name in mameBiosNames) return true
+        if (ext == "zip" && (name in mameBiosNames || isArcadeBiosSet(name))) return true
         return false
     }
 
     private val mameBiosNames = setOf("neogeo", "pgm", "stvbios", "decocass", "cvs", "playch10", "skns", "konamigx", "nss", "megaplay", "megatech")
+
+    /** BIOS sets of every bundled MAME core (runnable="no" in its DAT), e.g. psarc95.zip for MAME 2010's Namco/PSX games. */
+    private fun isArcadeBiosSet(name: String): Boolean {
+        val checker = ArcadeRomChecker.get(context)
+        return ArcadeCoreRouter.CORE_IDS.any { checker.db(it)[name]?.runnable == false }
+    }
 
     private fun identify(f: File, ext: String, folderId: Long?): GameEntity? {
         val candidates = extMap[ext] ?: return null

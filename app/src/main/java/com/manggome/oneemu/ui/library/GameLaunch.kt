@@ -8,7 +8,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -16,7 +22,10 @@ import androidx.compose.ui.unit.dp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.db.GameEntity
 import com.manggome.oneemu.emu.EmulatorActivity
+import com.manggome.oneemu.library.ArcadeRename
+import com.manggome.oneemu.ui.common.ConfirmDialog
 import com.manggome.oneemu.ui.common.InfoDialog
+import kotlinx.coroutines.launch
 
 /** Starts the emulator for [game]. Callers run [LibraryViewModel.checkLaunch] first. */
 fun launchGame(context: Context, game: GameEntity) {
@@ -32,10 +41,14 @@ fun LaunchCheckDialog(check: LaunchCheck, onDismiss: () -> Unit) {
         LaunchCheck.Ok -> Unit
         is LaunchCheck.NoCore -> InfoDialog(title = stringResource(R.string.lib_launch_no_core_title), onDismiss = onDismiss) {
             Text(
-                if (check.system != null) stringResource(R.string.lib_launch_no_core_desc_system, check.system.displayName)
-                else stringResource(R.string.lib_launch_no_core_desc),
+                when {
+                    check.neededCore != null -> stringResource(R.string.lib_launch_core_needed, check.neededCore, check.neededMameVersion)
+                    check.system != null -> stringResource(R.string.lib_launch_no_core_desc_system, check.system.displayName)
+                    else -> stringResource(R.string.lib_launch_no_core_desc)
+                },
             )
         }
+        is LaunchCheck.ArcadeRename -> ArcadeRenameLaunchDialog(check, onDismiss)
         is LaunchCheck.MissingBios -> InfoDialog(title = stringResource(R.string.lib_launch_bios_title), onDismiss = onDismiss) {
             Column {
                 Text(stringResource(R.string.lib_launch_bios_desc))
@@ -56,6 +69,40 @@ fun LaunchCheckDialog(check: LaunchCheck, onDismiss: () -> Unit) {
             Text(stringResource(R.string.lib_launch_missing_file_desc, check.path))
         }
     }
+}
+
+/**
+ * "이름 바꾸고 실행": renames the zip to the DAT short name the doctor identified by CRC, then starts the emulator.
+ * Failures are shown in place (the file is untouched then).
+ */
+@Composable
+private fun ArcadeRenameLaunchDialog(check: LaunchCheck.ArcadeRename, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var error by remember { mutableStateOf<String?>(null) }
+    val suggested = "${check.resolution.report.suggestedName}.zip"
+    val current = java.io.File(check.game.path).name
+    val failed = error
+    if (failed != null) {
+        InfoDialog(title = stringResource(R.string.lib_arcade_rename_title), onDismiss = onDismiss) { Text(failed) }
+        return
+    }
+    ConfirmDialog(
+        title = stringResource(R.string.lib_launch_rename_title),
+        text = stringResource(R.string.lib_launch_rename_desc, current, check.coreName, suggested),
+        confirmText = stringResource(R.string.lib_launch_rename_action),
+        onConfirm = {
+            scope.launch {
+                when (val r = ArcadeRename.apply(check.game, check.resolution)) {
+                    is ArcadeRename.Result.Done -> { launchGame(context, r.game); onDismiss() }
+                    is ArcadeRename.Result.TargetExists -> error = context.getString(R.string.lib_arcade_rename_exists, r.target.name)
+                    is ArcadeRename.Result.Failed -> error = context.getString(R.string.lib_arcade_rename_failed, r.target.name)
+                    ArcadeRename.Result.SourceMissing -> error = context.getString(R.string.lib_arcade_rename_missing)
+                }
+            }
+        },
+        onDismiss = { if (error == null) onDismiss() },
+    )
 }
 
 /** Monospace, selectable-looking path block used by the BIOS and help dialogs. */

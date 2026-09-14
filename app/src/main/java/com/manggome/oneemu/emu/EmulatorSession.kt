@@ -144,9 +144,13 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
         var arcadeDetail = ""
         if (system == SystemId.ARCADE && kind !in ARCADE_UNRELATED_KINDS) {
             val checker = ArcadeRomChecker.get(app)
-            val report = runCatching { checker.checkNow(File(game.path)) }.getOrNull()
-            if (report != null && report.severity != ArcadeRomCheck.Severity.OK && report.status != ArcadeRomCheck.Status.NEEDS_SAMPLES) {
-                message = message + "\n\n" + checker.summary(report)
+            val res = runCatching { checker.resolveNow(File(game.path)) }.getOrNull()
+            if (res != null) {
+                // The DAT may belong to another bundled MAME core (user forced this one): say so first.
+                checker.coreMismatchNote(res, core.id)?.let { message = message + "\n\n" + it }
+                if (res.report.severity != ArcadeRomCheck.Severity.OK && res.status != ArcadeRomCheck.Status.NEEDS_SAMPLES) {
+                    message = message + "\n\n" + checker.summary(res)
+                }
             }
             val mame = checker.mameLoadLines(log)
             if (mame.isNotEmpty()) arcadeDetail = "\n\n" + app.getString(R.string.lib_arcade_log_title) + ":\n" + mame.joinToString("\n")

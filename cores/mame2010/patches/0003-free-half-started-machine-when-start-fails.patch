@@ -1,0 +1,36 @@
+diff --git a/src/emu/mame.c b/src/emu/mame.c
+index 6ebf604..ea08b3a 100644
+--- a/src/emu/mame.c
++++ b/src/emu/mame.c
+@@ -198,7 +198,30 @@ int mame_execute(core_options *options)
+       retro_global_machine= global_alloc(running_machine(*driver, *retro_global_config, *options, started_empty));
+       global_machine = retro_global_machine;
+ 
+-      error    = retro_global_machine->run(firstrun);
++      try
++      {
++         error = retro_global_machine->run(firstrun);
++      }
++      catch (...)
++      {
++         /* OneEmu: run() threw during start() -- typically romload's
++            fatalerror for missing ROM files.  Mirror what upstream 0.139
++            running_machine::run() does after catching: fire the exit
++            notifiers (osd_exit etc.), then free the half-started machine
++            and config *now*, while the options they reference are still
++            alive.  cli_execute() frees the options right after we rethrow;
++            leaving the machine in global_resource_pool made
++            ~running_machine() call options_set_bool() on freed memory when
++            the pool was torn down at dlclose time (SIGSEGV after a
++            "required files are missing" error). */
++         retro_global_machine->call_notifiers(MACHINE_NOTIFY_EXIT);
++         global_machine = NULL;
++         global_free(retro_global_machine);
++         retro_global_machine = NULL;
++         global_free(retro_global_config);
++         retro_global_config = NULL;
++         throw;
++      }
+       firstrun = false;
+ 
+       return 1;

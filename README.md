@@ -14,6 +14,7 @@
 | 플레이스테이션 포터블 | PPSSPP | 실험적 (HW 렌더, OpenGL ES 3) |
 | 플레이스테이션 2 | Play! | 실험적 (호환성 낮음) |
 | 아케이드 | MAME 2003-Plus | 안정 (MAME 0.78 롬셋) |
+| 아케이드 (2003~2010년 게임) | MAME 2010 | 실험적, MAME 0.139 롬셋 |
 | 닌텐도 3DS | AzaharPlus | 실험적 (HW 렌더, OpenGL ES 3.2, 암호화 롬 지원) |
 
 주요 기능
@@ -43,6 +44,7 @@
    - PSP: `iso`, `cso`, `pbp`, `chd`, `elf`, `prx`, `zip`(안에 ISO/CSO가 바로 들어 있는 경우)
    - PS2: `iso`, `chd`, `cso`, `isz`, `cue`, `elf`
    - 아케이드: MAME 2003-Plus 전용 롬셋 `zip` (파일 이름 = MAME 짧은 이름, 예: `sf2.zip`)
+   - 아케이드 (MAME 2010): MAME 0.139 롬셋 `zip` (+ `chd` 는 `<게임명>/` 하위 폴더). 2003-Plus 에 없는 2003~2010년 추가 게임용
    - 3DS: `3ds`, `cci`, `cxi`, `app`, `3dsx`, `elf`, `axf`, `zcci`, `zcxi`, `z3dsx` (`cia` 설치는 지원하지 않음)
 
 ## BIOS 넣는 위치
@@ -66,6 +68,7 @@ Android/data/com.manggome.oneemu/files/system/
 | PS2 | Play! | 없음 | – | HLE 방식이라 BIOS 불필요 |
 | 3DS | AzaharPlus | `Azahar/sysdata/aes_keys.txt`, `seeddb.bin`, `boot9.bin` | 선택 | 내장 키로 대부분의 암호화 롬이 열립니다. 열리지 않는 롬이 있을 때만 본체에서 추출한 키 파일을 넣으세요 |
 | 아케이드 | MAME 2003-Plus | `mame2003-plus/cheat.dat`, `hiscore.dat`, `history.dat` | 선택 | 치트 / 하이스코어 / 히스토리 DB |
+| 아케이드 | MAME 2010 | `mame2010/hiscore.dat`, `mame2010/cheat.zip`, `mame2010/samples/` | 선택 | 외부 하이스코어 DB / 치트 / 샘플. BIOS zip(neogeo.zip 등)은 게임 롬과 같은 폴더 |
 
 - 3DS(AzaharPlus)는 업스트림 Azahar가 거부하는 **암호화된 롬**(.3ds/.cci/.cxi)도 내장 키로 복호화해 실행합니다. 키 파일은 기본적으로 필요 없고, 열리지 않는 롬이 있을 때만 3DS 본체에서 추출한 `aes_keys.txt`(GodMode9 `DumpKeys.gm9`)와 `seeddb.bin`을 `system/Azahar/sysdata/`에 넣습니다. **BIOS 파일 가져오기**로 `aes_keys.txt`를 선택하면 그 폴더에 자동으로 들어갑니다. .cia 설치는 지원하지 않습니다. 세이브는 `saves/3ds/Azahar/sdmc/` 아래 가상 SD에 저장됩니다.
 - Android 11 이상에서는 일부 파일 관리자가 `Android/data`에 쓰지 못합니다. 그 경우 앱 안의 **BIOS 파일 가져오기**를 사용하세요.
@@ -144,6 +147,7 @@ OneEmu 앱 코드는 **GPL-3.0**입니다 (GPL 코어를 함께 배포하기 때
 | PPSSPP | GPL-2.0-or-later | https://github.com/hrydgard/ppsspp |
 | Play! | BSD-2-Clause | https://github.com/jpd002/Play- |
 | MAME 2003-Plus | MAME 라이선스 (비상업적) | https://github.com/libretro/mame2003-plus-libretro |
+| MAME 2010 | MAME 라이선스 (비상업적) | https://github.com/libretro/mame2010-libretro |
 | AzaharPlus | GPL-2.0-or-later | https://github.com/AzaharPlus/AzaharPlus (Azahar 포크) |
 
 OneEmu는 ROM, BIOS, 펌웨어를 포함하거나 배포하지 않습니다. 사용자가 합법적으로 소유한 파일만 사용해야 하며, 이에 대한 책임은 사용자에게 있습니다.

@@ -1,0 +1,90 @@
+diff --git a/src/emu/clifront.c b/src/emu/clifront.c
+index 88552e5..3725f41 100644
+--- a/src/emu/clifront.c
++++ b/src/emu/clifront.c
+@@ -178,21 +178,21 @@ int cli_execute(int argc, char **argv, const options_entry *osd_options)
+ 	}
+ 	catch (emu_fatalerror &fatal)
+ 	{
+-		fprintf(stderr, "%s\n", fatal.string());
++		mame_printf_error("%s\n", fatal.string());
+ 		if (fatal.exitcode() != 0)
+ 			result = fatal.exitcode();
+ 	}
+ 	catch (emu_exception &)
+ 	{
+-		fprintf(stderr, "Caught unhandled emulator exception\n");
++		mame_printf_error("Caught unhandled emulator exception\n");
+ 	}
+ 	catch (std::bad_alloc &)
+ 	{
+-		fprintf(stderr, "Out of memory!\n");
++		mame_printf_error("Out of memory!\n");
+ 	}
+ 	catch (...)
+ 	{
+-		fprintf(stderr, "Caught unhandled exception\n");
++		mame_printf_error("Caught unhandled exception\n");
+ 	}
+ 
+ error:
+diff --git a/src/osd/retro/retromain.c b/src/osd/retro/retromain.c
+index 5263bdd..ccdcc84 100755
+--- a/src/osd/retro/retromain.c
++++ b/src/osd/retro/retromain.c
+@@ -266,12 +266,44 @@ void retro_set_input_poll(retro_input_poll_t cb) { input_poll_cb = cb; }
+ void retro_set_video_refresh(retro_video_refresh_t cb) { video_cb = cb; }
+ void retro_set_audio_sample(retro_audio_sample_t cb) { }
+ 
++/* OneEmu: route MAME's own output channels (mame_printf_error/warning/info:
++ * romload "xxx NOT FOUND", "required files are missing", audit results...)
++ * to the libretro log instead of stderr, which is invisible on Android.
++ * One retro_log call per line so frontends keeping a per-line ring buffer do
++ * not truncate multi-line ROM reports. */
++static void retro_mame_output_cb(void *param, const char *format, va_list argptr)
++{
++   char buf[4096];
++   enum retro_log_level level = (enum retro_log_level)(intptr_t)param;
++   char *line = buf;
++
++   vsnprintf(buf, sizeof(buf), format, argptr);
++   if (retro_log == NULL)
++   {
++      fputs(buf, stderr);
++      return;
++   }
++   while (line != NULL && *line != '\0')
++   {
++      char *nl = strchr(line, '\n');
++      if (nl != NULL)
++         *nl = '\0';
++      if (*line != '\0')
++         retro_log(level, "[MAME 2010] %s\n", line);
++      line = (nl != NULL) ? nl + 1 : NULL;
++   }
++}
++
+ void retro_init (void)
+ {   
+     struct retro_log_callback log_cb;
+ 
+     if (environ_cb(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &log_cb))
+         retro_log = log_cb.log;
++
++    mame_set_output_channel(OUTPUT_CHANNEL_ERROR,   retro_mame_output_cb, (void*)(intptr_t)RETRO_LOG_ERROR, NULL, NULL);
++    mame_set_output_channel(OUTPUT_CHANNEL_WARNING, retro_mame_output_cb, (void*)(intptr_t)RETRO_LOG_WARN,  NULL, NULL);
++    mame_set_output_channel(OUTPUT_CHANNEL_INFO,    retro_mame_output_cb, (void*)(intptr_t)RETRO_LOG_INFO,  NULL, NULL);
+     	
+    const char *system_dir  = NULL;
+    const char *save_dir    = NULL;
+@@ -304,6 +336,10 @@ void retro_init (void)
+     path_mkdir(fontpath);
+     snprintf(crosshairpath, sizeof(crosshairpath), "%s%s%s", libretro_system_directory, path_default_slash(), "crosshairs");
+     path_mkdir(crosshairpath);
++    /* OneEmu: cheatpath was never assigned (empty string = cwd), so cheat.c
++     * could not find <game>.xml / cheat.zip. Point it under the system dir. */
++    snprintf(cheatpath, sizeof(cheatpath), "%s%s%s", libretro_system_directory, path_default_slash(), "cheat");
++    path_mkdir(cheatpath);
+ 
+     // user-generated content loaded from mame2010 subfolder within the libretro save folder
+     snprintf(ctrlrpath, sizeof(ctrlrpath), "%s%s%s", libretro_save_directory, path_default_slash(), "ctrlr");

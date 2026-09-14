@@ -1,0 +1,28 @@
+diff --git a/jni/Android.mk b/jni/Android.mk
+index 48828bd..f74124b 100644
+--- a/jni/Android.mk
++++ b/jni/Android.mk
+@@ -34,6 +34,12 @@ include $(CORE_DIR)/Makefile.common
+ 
+ COREFLAGS := $(DEFS) $(INCFLAGS)
+ COREFLAGS += -DCRLF=2 -DINLINE="static inline" -Wno-c++11-narrowing -Wno-reserved-user-defined-literal -Wno-deprecated
++# OneEmu: MAME 0.139 relies on null `this` checks (device_config::subtag is
++# called through a NULL owner for every top-level MDRV_*_ADD; also video.h
++# frame_period(), machine.h generic_pointers). The Makefile builds pass this
++# flag (Makefile line ~807) but Android.mk did not, so clang -O2 deleted the
++# checks and every game crashed in machine_config::detokenize (SIGSEGV @0x100).
++COREFLAGS += -fno-delete-null-pointer-checks
+ 
+ # For testing only, remove before PR
+ COREFLAGS += -Wno-implicit-exception-spec-mismatch -Wno-inline-new-delete -Wno-tautological-undefined-compare
+@@ -56,6 +62,10 @@ LOCAL_CPPFLAGS      := -std=gnu++11 $(COREFLAGS)
+ LOCAL_CPP_FEATURES  := exceptions rtti
+ LOCAL_CPP_EXTENSION := .c
+ LOCAL_LDLIBS        := -lz
++# OneEmu: export only retro_* (same version script the Makefile builds use);
++# otherwise ~50k C++ symbols land in .dynsym/.dynstr and every one of them
++# needs a symbolic relocation at load time.
++LOCAL_LDFLAGS       := -Wl,--version-script=$(CORE_DIR)/src/osd/retro/link.T
+ 
+ ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
+   LOCAL_ARM_NEON := true

@@ -27,7 +27,7 @@ import com.manggome.oneemu.R
 import kotlin.math.roundToInt
 
 /**
- * Drop-in for MainActivity: checks for updates once per launch (respecting the 6 hour interval and
+ * Drop-in for MainActivity: checks for updates on every app start (a 1 minute guard avoids repeats on Activity recreation, and
  * the "시작할 때 업데이트 확인" preference) and shows [UpdateDialog] when a non-skipped update exists.
  * Network failures are silent.
  */

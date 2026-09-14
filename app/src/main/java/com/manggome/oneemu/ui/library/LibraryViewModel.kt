@@ -15,6 +15,9 @@ import com.manggome.oneemu.data.SortMode
 import com.manggome.oneemu.data.ViewMode
 import com.manggome.oneemu.data.db.FolderEntity
 import com.manggome.oneemu.data.db.GameEntity
+import com.manggome.oneemu.library.ArcadeCoreRouter
+import com.manggome.oneemu.library.ArcadeRomCheck
+import com.manggome.oneemu.library.ArcadeRomChecker
 import com.manggome.oneemu.library.RomScanner
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.util.StorageAccess
@@ -65,9 +68,12 @@ data class LibraryMessage(val resId: Int, val args: List<Any> = emptyList())
 /** Result of the pre-launch check (core present, required BIOS present, file present). */
 sealed class LaunchCheck {
     data object Ok : LaunchCheck()
-    data class NoCore(val system: SystemId?) : LaunchCheck()
+    /** [neededCore] names the core the game's DAT calls for when that core is not bundled (arcade routing). */
+    data class NoCore(val system: SystemId?, val neededCore: String? = null, val neededMameVersion: String = "") : LaunchCheck()
     data class MissingBios(val core: CoreInfo, val files: List<BiosEntry>, val dir: File) : LaunchCheck()
     data class MissingFile(val path: String) : LaunchCheck()
+    /** Arcade zip whose name no DAT knows but whose contents match [resolution.report.suggestedName]; rename then launch. */
+    data class ArcadeRename(val game: GameEntity, val resolution: ArcadeRomCheck.Resolution, val coreName: String) : LaunchCheck()
 }
 
 class LibraryViewModel : ViewModel() {
@@ -188,12 +194,32 @@ class LibraryViewModel : ViewModel() {
         val system = SystemId.fromId(game.system)
         val override = game.coreId?.let { cores.core(it) }
         if (override != null && cores.isAvailable(override)) return override
+        if (system == SystemId.ARCADE) ArcadeCoreRouter.pick(game, app)?.let { return it }
         return system?.let { cores.defaultCoreFor(it) } ?: override
     }
+
+    /** The core arcade routing would choose for [game] ignoring its override (for the "(자동 선택)" mark). */
+    fun autoCoreFor(game: GameEntity): CoreInfo? =
+        if (SystemId.fromId(game.system) == SystemId.ARCADE) ArcadeCoreRouter.pick(game.copy(coreId = null), app)
+        else SystemId.fromId(game.system)?.let { cores.defaultCoreFor(it) }
 
     fun checkLaunch(game: GameEntity): LaunchCheck {
         if (!File(game.path).exists()) return LaunchCheck.MissingFile(game.path)
         val system = SystemId.fromId(game.system)
+        if (system == SystemId.ARCADE && game.coreId == null) {
+            val route = ArcadeCoreRouter.route(game, app)
+            if (route.neededCoreId != null) {
+                return LaunchCheck.NoCore(system, ArcadeCoreRouter.displayName(cores, route.neededCoreId), ArcadeCoreRouter.mameVersion(route.neededCoreId))
+            }
+            if (route.resolvedCoreId == null) {
+                // Name unknown to every DAT: the doctor may have identified the set by CRC → offer the rename.
+                val checker = ArcadeRomChecker.get(app)
+                val res = checker.cached(game.path) ?: checker.resolveNow(File(game.path))
+                if (res.status == ArcadeRomCheck.Status.RENAME_SUGGESTED && res.coreId != null) {
+                    return LaunchCheck.ArcadeRename(game, res, ArcadeCoreRouter.displayName(cores, res.coreId))
+                }
+            }
+        }
         val core = coreFor(game)
         if (core == null || !cores.isAvailable(core)) return LaunchCheck.NoCore(system)
         val systemDir = dirs.system

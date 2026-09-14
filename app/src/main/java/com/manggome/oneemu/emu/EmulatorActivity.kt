@@ -22,6 +22,7 @@ import com.manggome.oneemu.R
 import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.input.GamepadInput
 import com.manggome.oneemu.emu.pad.PadInput
+import com.manggome.oneemu.library.ArcadeCoreRouter
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.ui.theme.OneEmuTheme
 import com.manggome.oneemu.util.AppDirs
@@ -97,7 +98,13 @@ class EmulatorActivity : ComponentActivity() {
         val game = app.db.games().get(gameId) ?: run { ui.error = getString(R.string.emu_game_not_found); return }
         ui.title = game.title
         val system = SystemId.fromId(game.system)
-        val core = game.coreId?.let { app.cores.core(it) } ?: system?.let { app.cores.defaultCoreFor(it) }
+        // Arcade zips are routed to the MAME core whose DAT lists them (same rule as the library's launch check).
+        val route = if (system == SystemId.ARCADE) ArcadeCoreRouter.route(game, app) else null
+        if (route?.neededCoreId != null) {
+            ui.error = getString(R.string.lib_launch_core_needed, ArcadeCoreRouter.displayName(app.cores, route.neededCoreId), ArcadeCoreRouter.mameVersion(route.neededCoreId))
+            return
+        }
+        val core = route?.core ?: game.coreId?.let { app.cores.core(it) } ?: system?.let { app.cores.defaultCoreFor(it) }
         if (core == null) { ui.error = getString(R.string.emu_no_core); return }
         val session = EmulatorSession(game, core)
         val missing = session.missingRequiredBios()
