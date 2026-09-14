@@ -1,0 +1,43 @@
+{
+  "id": "azaharplus",
+  "displayName": "AzaharPlus (3DS)",
+  "libFile": "libazaharplus_libretro.so",
+  "systems": ["3ds"],
+  "extensions": ["3ds", "3dsx", "z3dsx", "elf", "axf", "cci", "zcci", "cxi", "zcxi", "app"],
+  "needFullPath": true,
+  "hwRender": "gles3",
+  "glesMinVersion": "3.2",
+  "bios": [
+    { "system": "3ds", "file": "Azahar/sysdata/aes_keys.txt", "required": false, "description": "AES 키 파일 (선택). 내장 키로 열리지 않는 암호화 롬이 있을 때만 3DS 본체에서 추출해 넣습니다 (dist/dumpkeys/DumpKeys.gm9)" },
+    { "system": "3ds", "file": "Azahar/sysdata/seeddb.bin", "required": false, "description": "시드 DB (선택). 시드 암호화(9.6+) 롬 중 시드가 롬에 없는 경우에만 필요" },
+    { "system": "3ds", "file": "Azahar/sysdata/boot9.bin", "required": false, "description": "ARM9 부트롬 (선택). aes_keys.txt 대신 부트롬 키를 직접 읽게 할 때" }
+  ],
+  "sourceRepo": "https://github.com/AzaharPlus/AzaharPlus",
+  "sourceCommit": "263745c1df2cd635850424488bbf1c095dd80af5",
+  "sourceTag": "AZAHAR_PLUS_2126_0_A",
+  "license": "GPL-2.0-or-later",
+  "defaultOptions": {
+    "citra_graphics_api": "OpenGL",
+    "citra_use_hw_shader": "enabled",
+    "citra_use_shader_jit": "enabled",
+    "citra_shaders_accurate_mul": "enabled",
+    "citra_use_disk_shader_cache": "enabled",
+    "citra_resolution_factor": "1",
+    "citra_texture_filter": "none",
+    "citra_use_cpu_jit": "enabled",
+    "citra_cpu_clock_percentage": "100",
+    "citra_is_new_3ds": "New 3DS",
+    "citra_region_value": "Auto",
+    "citra_language_value": "Korean",
+    "citra_audio_emulation": "hle",
+    "citra_layout_option": "default",
+    "citra_analog_function": "c_stick_and_touchscreen",
+    "citra_enable_touch_touchscreen": "enabled",
+    "citra_enable_mouse_touchscreen": "enabled",
+    "citra_enable_touch_pointer_timeout": "enabled",
+    "citra_enable_motion": "disabled",
+    "citra_use_virtual_sd": "enabled",
+    "citra_use_libretro_save_path": "LibRetro Default"
+  },
+  "notes": "AzaharPlus AZAHAR_PLUS_2126_0_A (fork of Azahar 2126.0, src/citra_libretro, target azahar_libretro -> azahar_libretro_android.so) built with ENABLE_VULKAN=OFF (GLES only; citra_graphics_api=OpenGL pins it). ENCRYPTED ROMS: upstream Azahar refuses any NCCH with crypto (ncch_container.cpp 'Encrypted NCCH are not supported'); this fork restores the Citra decryption path and its built-in key blob (ENABLE_BUILTIN_KEYBLOB=ON, listed in clear in src/core/hw/aes/key.cpp) already contains the NCCH content keys (slot0x2C/0x25/0x18/0x1B KeyX), so normal encrypted .3ds/.cci/.cxi run WITHOUT any user file. Optional overrides read from the sysdata dir: aes_keys.txt (LoadPresetAesKeys, applied after the blob), boot9.bin (LoadBootromKeys), seeddb.bin (seed-crypto titles whose seed is not embedded). SYSDATA LOCATION: with citra_use_libretro_save_path=LibRetro Default the user dir is <GET_SAVE_DIRECTORY>/Azahar/ (nand/, sdmc/ game saves, config/, shaders/ disk shader cache); patch 0002 re-points only SysDataDir to <GET_SYSTEM_DIRECTORY>/Azahar/sysdata/ so the bios entries above are plain system-dir relative paths (Settings > 코어/BIOS importer copies files named aes_keys.txt/seeddb.bin/boot9.bin there automatically). 'Azahar Default' would fall into FileUtil's generic XDG branch (HOME-relative) and must not be used on Android. .cia install is still not available in the libretro core (valid_extensions has no cia). HW render: RETRO_HW_CONTEXT_OPENGLES3 3.2, bottom_left_origin=true, cache_context=false, XRGB8888, SET_HW_SHARED_CONTEXT; av_info max 7200x9600 - allocate the FBO lazily from base_*/SET_GEOMETRY. Unlike upstream, GetPreferredRenderer() honours GET_PREFERRED_HW_RENDER. Touch: RETRO_DEVICE_POINTER port 0 mapped by the core into the bottom-screen rect. retro_get_memory_data is NULL (no .srm); memory via SET_MEMORY_MAPS; savestates supported (format tied to core version). Optional env: GET_VFS_INTERFACE (falls back to stdio), GET_SENSOR_INTERFACE, GET_MICROPHONE_INTERFACE. Needs ~1 GB native heap for many titles. Patches: 0001 strerror_r (bionic GNU flavour, still required), 0002 sysdata dir, 0003 fork ZipPass code used AndroidUtils (app-only) under a bare #ifdef ANDROID and the network target lacked HAVE_LIBRETRO_VFS - both fixed for the libretro build."
+}

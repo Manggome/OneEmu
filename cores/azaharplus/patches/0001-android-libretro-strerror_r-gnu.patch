@@ -1,4 +1,4 @@
-From: OneEmu build <hyungjun@neptunecompany.kr>
+From: OneEmu build <Manggome@users.noreply.github.com>
 Subject: [PATCH] common/error: use the GNU strerror_r on every Android build
 
 NDK clang++ predefines _GNU_SOURCE, so bionic's strerror_r returns

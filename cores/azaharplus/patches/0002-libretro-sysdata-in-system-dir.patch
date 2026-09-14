@@ -1,0 +1,39 @@
+From: OneEmu build <Manggome@users.noreply.github.com>
+Subject: [PATCH] citra_libretro: keep sysdata under the libretro system directory
+
+With citra_use_libretro_save_path=LibRetro Default the whole user dir,
+including sysdata/ (aes_keys.txt, seeddb.bin, boot9.bin that this fork
+reads to run encrypted ROMs), lives under <GET_SAVE_DIRECTORY>/Azahar/.
+OneEmu keeps BIOS-like files in the libretro *system* directory, so
+after SetUserPath() point SysDataDir at <GET_SYSTEM_DIRECTORY>/Azahar/sysdata/.
+Saves (sdmc/, nand/), config/ and shaders/ stay in the save directory.
+
+diff --git a/src/citra_libretro/core_settings.cpp b/src/citra_libretro/core_settings.cpp
+index 085f7ac..86c120e 100644
+--- a/src/citra_libretro/core_settings.cpp
++++ b/src/citra_libretro/core_settings.cpp
+@@ -992,6 +992,24 @@ static void ParseStorageOptions(void) {
+                 FileUtil::SetUserPath(target_dir);
+                 const auto& target_dir_result = FileUtil::GetUserPath(FileUtil::UserPath::UserDir);
+                 LOG_INFO(Frontend, "User dir set to \"{}\".", target_dir_result);
++
++                // Keep sysdata (aes_keys.txt, seeddb.bin, boot9.bin, ...) next to the frontend's
++                // other system/BIOS files: <GET_SYSTEM_DIRECTORY>/Azahar/sysdata/. Saves, NAND,
++                // config and the shader cache stay under the save directory chosen above.
++                auto sysdata_dir = LibRetro::GetSystemDir();
++                if (!sysdata_dir.empty()) {
++                    if (!sysdata_dir.ends_with("/"))
++                        sysdata_dir += "/";
++                    sysdata_dir += "Azahar/sysdata/";
++                    if (FileUtil::CreateFullPath(sysdata_dir)) {
++                        FileUtil::UpdateUserPath(FileUtil::UserPath::SysDataDir, sysdata_dir);
++                        LOG_INFO(Frontend, "Sysdata dir set to \"{}\".",
++                                 FileUtil::GetUserPath(FileUtil::UserPath::SysDataDir));
++                    } else {
++                        LOG_ERROR(Frontend, "Failed to create \"{}\"; sysdata stays in the user dir.",
++                                  sysdata_dir);
++                    }
++                }
+             }
+         }
+     }

@@ -57,6 +57,9 @@ fun GameGridItem(
             if (showSystemChip && system != null) {
                 SystemChip(system, Modifier.align(Alignment.BottomStart).padding(6.dp), small = true)
             }
+            if (system == SystemId.ARCADE) {
+                ArcadeStatusDot(rememberArcadeReport(game), Modifier.align(Alignment.BottomEnd).padding(6.dp), size = 12.dp)
+            }
         }
         Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp).height(if (columns >= 4) 34.dp else 38.dp)) {
             Text(

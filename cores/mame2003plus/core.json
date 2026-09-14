@@ -15,19 +15,19 @@
       "system": "arcade",
       "file": "mame2003-plus/cheat.dat",
       "required": false,
-      "description": "치트 DB (선택). 소스 metadata/cheat.dat 를 <systemdir>/mame2003-plus/ 에 복사"
+      "description": "치트 DB (선택). 게임 상세 → 롬 검사 → 'DB 파일 내려받기'로 설치. ※ BIOS 롬셋(neogeo.zip, pgm.zip 등)은 이 폴더가 아니라 게임 롬과 같은 폴더에 두세요"
     },
     {
       "system": "arcade",
       "file": "mame2003-plus/hiscore.dat",
       "required": false,
-      "description": "하이스코어 저장 지원 DB (선택). 소스 metadata/hiscore.dat"
+      "description": "하이스코어 저장 지원 DB (선택). 게임 상세 → 롬 검사에서 내려받기. BIOS zip은 게임 롬과 같은 폴더에 두세요"
     },
     {
       "system": "arcade",
       "file": "mame2003-plus/history.dat",
       "required": false,
-      "description": "게임 히스토리 텍스트 (선택). 소스 metadata/history.dat"
+      "description": "게임 히스토리 텍스트 (선택). 게임 상세 → 롬 검사에서 내려받기. 샘플 zip은 mame2003-plus/samples/ 에, BIOS zip은 게임 롬과 같은 폴더에 두세요"
     }
   ],
   "sourceRepo": "https://github.com/libretro/mame2003-plus-libretro",

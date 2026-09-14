@@ -14,7 +14,7 @@
 | 플레이스테이션 포터블 | PPSSPP | 실험적 (HW 렌더, OpenGL ES 3) |
 | 플레이스테이션 2 | Play! | 실험적 (호환성 낮음) |
 | 아케이드 | MAME 2003-Plus | 안정 (MAME 0.78 롬셋) |
-| 닌텐도 3DS | Azahar | 실험적 (HW 렌더, OpenGL ES 3.2, 복호화된 롬만 지원) |
+| 닌텐도 3DS | AzaharPlus | 실험적 (HW 렌더, OpenGL ES 3.2, 암호화 롬 지원) |
 
 주요 기능
 
@@ -43,6 +43,7 @@
    - PSP: `iso`, `cso`, `pbp`, `chd`, `elf`, `prx`, `zip`(안에 ISO/CSO가 바로 들어 있는 경우)
    - PS2: `iso`, `chd`, `cso`, `isz`, `cue`, `elf`
    - 아케이드: MAME 2003-Plus 전용 롬셋 `zip` (파일 이름 = MAME 짧은 이름, 예: `sf2.zip`)
+   - 3DS: `3ds`, `cci`, `cxi`, `app`, `3dsx`, `elf`, `axf`, `zcci`, `zcxi`, `z3dsx` (`cia` 설치는 지원하지 않음)
 
 ## BIOS 넣는 위치
 
@@ -63,10 +64,10 @@ Android/data/com.manggome.oneemu/files/system/
 | NDS (DSi 모드) | melonDS DS | `dsi_bios7.bin`, `dsi_bios9.bin`, `dsi_firmware.bin`, `dsi_nand.bin` | 선택 | DSi 모드에서만 필요 |
 | PSP | PPSSPP | 없음 | – | BIOS 불필요. 필요한 에셋은 앱이 `system/PPSSPP/`에 자동 설치 |
 | PS2 | Play! | 없음 | – | HLE 방식이라 BIOS 불필요 |
-| 3DS | Azahar | 없음 | – | 내장 키/오픈소스 시스템 아카이브 사용 |
+| 3DS | AzaharPlus | `Azahar/sysdata/aes_keys.txt`, `seeddb.bin`, `boot9.bin` | 선택 | 내장 키로 대부분의 암호화 롬이 열립니다. 열리지 않는 롬이 있을 때만 본체에서 추출한 키 파일을 넣으세요 |
 | 아케이드 | MAME 2003-Plus | `mame2003-plus/cheat.dat`, `hiscore.dat`, `history.dat` | 선택 | 치트 / 하이스코어 / 히스토리 DB |
 
-- 3DS(Azahar)는 BIOS가 필요 없지만 **복호화된 롬**(.3ds/.cci/.cxi/.app)만 실행됩니다. .cia 설치는 지원하지 않습니다. 세이브는 `saves/3ds/Azahar/` 아래에 저장됩니다.
+- 3DS(AzaharPlus)는 업스트림 Azahar가 거부하는 **암호화된 롬**(.3ds/.cci/.cxi)도 내장 키로 복호화해 실행합니다. 키 파일은 기본적으로 필요 없고, 열리지 않는 롬이 있을 때만 3DS 본체에서 추출한 `aes_keys.txt`(GodMode9 `DumpKeys.gm9`)와 `seeddb.bin`을 `system/Azahar/sysdata/`에 넣습니다. **BIOS 파일 가져오기**로 `aes_keys.txt`를 선택하면 그 폴더에 자동으로 들어갑니다. .cia 설치는 지원하지 않습니다. 세이브는 `saves/3ds/Azahar/sdmc/` 아래 가상 SD에 저장됩니다.
 - Android 11 이상에서는 일부 파일 관리자가 `Android/data`에 쓰지 못합니다. 그 경우 앱 안의 **BIOS 파일 가져오기**를 사용하세요.
 
 ## 앱 내 업데이트
@@ -106,7 +107,7 @@ scripts/build-cores.sh            # 또는 scripts/build-cores.sh -j 3, 특정 �
 
 `.github/workflows/build.yml`이 `main`에 push될 때마다
 
-1. 코어 6종을 각각 별도 job으로 빌드합니다. 결과 `.so`는 `cores/<id>/**` 해시로 캐시되어 코어 폴더가 바뀌지 않으면 다시 빌드하지 않습니다.
+1. 코어 7종을 각각 별도 job으로 빌드합니다. 결과 `.so`는 `cores/<id>/**` 해시로 캐시되어 코어 폴더가 바뀌지 않으면 다시 빌드하지 않습니다.
 2. 코어를 모아 릴리스 APK를 서명·빌드하고 `OneEmu-v<버전>-arm64.apk`로 이름을 바꿉니다.
 3. `v<버전>` 태그로 GitHub Release를 만들고 APK를 첨부합니다 (릴리스 노트 자동 생성).
 
@@ -143,6 +144,6 @@ OneEmu 앱 코드는 **GPL-3.0**입니다 (GPL 코어를 함께 배포하기 때
 | PPSSPP | GPL-2.0-or-later | https://github.com/hrydgard/ppsspp |
 | Play! | BSD-2-Clause | https://github.com/jpd002/Play- |
 | MAME 2003-Plus | MAME 라이선스 (비상업적) | https://github.com/libretro/mame2003-plus-libretro |
-| Azahar | GPL-2.0-or-later | https://github.com/azahar-emu/azahar |
+| AzaharPlus | GPL-2.0-or-later | https://github.com/AzaharPlus/AzaharPlus (Azahar 포크) |
 
 OneEmu는 ROM, BIOS, 펌웨어를 포함하거나 배포하지 않습니다. 사용자가 합법적으로 소유한 파일만 사용해야 하며, 이에 대한 책임은 사용자에게 있습니다.

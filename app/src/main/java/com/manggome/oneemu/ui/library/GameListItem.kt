@@ -2,6 +2,7 @@ package com.manggome.oneemu.ui.library
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,7 +50,11 @@ fun GameListItem(
             .padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GameThumbnail(game, Modifier.size(56.dp), titleSize = MaterialTheme.typography.titleLarge.fontSize)
+        Box {
+            GameThumbnail(game, Modifier.size(56.dp), titleSize = MaterialTheme.typography.titleLarge.fontSize)
+            // Arcade ROM doctor badge: green OK / amber needs something / red cannot run (checked lazily in the background).
+            if (system == SystemId.ARCADE) ArcadeStatusDot(rememberArcadeReport(game), Modifier.align(Alignment.BottomEnd).padding(2.dp))
+        }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(

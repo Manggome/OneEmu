@@ -75,7 +75,8 @@ internal fun CoresSettingsScreen(onBack: () -> Unit, onCoreOptions: (coreId: Str
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         scope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { copyIntoSystemDir(context, uris, systemDir) } }
+            val subPaths = biosSubPathsByName(app.cores.cores)
+            val result = withContext(Dispatchers.IO) { runCatching { copyIntoSystemDir(context, uris, systemDir, subPaths) } }
             result.onSuccess { n -> Toast.makeText(context, context.getString(R.string.cores_import_done, n), Toast.LENGTH_SHORT).show() }
                 .onFailure { e -> Toast.makeText(context, context.getString(R.string.cores_import_failed, e.message ?: ""), Toast.LENGTH_LONG).show() }
             refresh++
@@ -244,14 +245,34 @@ private fun biosPresent(systemDir: File, entry: BiosEntry): Boolean {
     return if (entry.file.endsWith("/")) f.isDirectory else f.exists()
 }
 
-/** Copies each picked document into [systemDir], keeping its display name. Returns the number copied. */
-private fun copyIntoSystemDir(context: Context, uris: List<Uri>, systemDir: File): Int {
+/**
+ * Lower-cased basename -> relative path, for every bios[].file that lives in a subfolder of the system dir
+ * (e.g. "aes_keys.txt" -> "Azahar/sysdata/aes_keys.txt", "cheat.dat" -> "mame2003-plus/cheat.dat").
+ * Folder entries (ending with "/") are skipped. On a basename clash the first core wins.
+ */
+private fun biosSubPathsByName(cores: List<CoreInfo>): Map<String, String> {
+    val map = LinkedHashMap<String, String>()
+    for (core in cores) for (entry in core.bios) {
+        val rel = entry.file.trim('/')
+        if (entry.file.endsWith("/") || '/' !in rel) continue
+        map.putIfAbsent(rel.substringAfterLast('/').lowercase(), rel)
+    }
+    return map
+}
+
+/**
+ * Copies each picked document into [systemDir]. A file whose display name matches (case-insensitively) the
+ * basename of a core's sub-folder BIOS entry is placed at that relative path (folders created); every other
+ * file lands in the root of [systemDir] under its display name. Returns the number copied.
+ */
+private fun copyIntoSystemDir(context: Context, uris: List<Uri>, systemDir: File, subPathsByName: Map<String, String>): Int {
     var count = 0
     for (uri in uris) {
         val name = displayName(context, uri) ?: continue
         val safe = name.substringAfterLast('/').substringAfterLast('\\')
         if (safe.isBlank() || safe == "." || safe == "..") continue
-        val target = File(systemDir, safe)
+        val target = File(systemDir, subPathsByName[safe.lowercase()] ?: safe)
+        target.parentFile?.mkdirs()
         context.contentResolver.openInputStream(uri)?.use { input ->
             target.outputStream().use { out -> input.copyTo(out) }
             count++

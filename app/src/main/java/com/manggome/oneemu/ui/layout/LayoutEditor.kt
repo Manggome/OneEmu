@@ -5,29 +5,23 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.Settings
+import com.manggome.oneemu.emu.Haptics
 import com.manggome.oneemu.emu.pad.DefaultLayouts
 import com.manggome.oneemu.emu.pad.PadElement
 import com.manggome.oneemu.emu.pad.PadElementId
@@ -71,8 +66,8 @@ import com.manggome.oneemu.emu.pad.drawPadElement
 import com.manggome.oneemu.emu.pad.rectOn
 import com.manggome.oneemu.emu.skin.SkinSelection
 import com.manggome.oneemu.emu.skin.SkinStore
-import com.manggome.oneemu.ui.skins.SkinEditor
 import com.manggome.oneemu.model.SystemId
+import com.manggome.oneemu.ui.skins.SkinEditor
 import com.manggome.oneemu.ui.theme.OneEmuColors
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -84,6 +79,10 @@ import kotlin.math.roundToInt
  * background, [showMockGame] = false) and as the Routes.LAYOUT_EDITOR destination (dark background
  * with a faint mock game rectangle; [orientationToggle] lets the user switch which orientation they
  * are editing). Changes are only persisted on 저장.
+ *
+ * Editing helpers (shared with the skin editor through [EditorGuides.kt] / [EditorChrome.kt]): smart
+ * guides with snapping, axis lock (두 손가락 or 축 고정), 1 dp nudge, multi-select alignment, undo/redo,
+ * and a tool panel that gets out of the way while dragging.
  */
 @Composable
 fun LayoutEditor(
@@ -120,23 +119,30 @@ private fun VectorLayoutEditor(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current.density
     val textMeasurer = rememberTextMeasurer()
+    val haptics = remember { Haptics(context) }
 
     var layout by remember { mutableStateOf<PadLayout?>(null) }
     var dirty by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<PadElementId?>(null) }
+    var selection by remember { mutableStateOf<List<PadElementId>>(emptyList()) }
     var opacity by remember { mutableStateOf(Settings.DEFAULT_PAD_OPACITY) }
     var globalScale by remember { mutableStateOf(Settings.DEFAULT_PAD_SCALE) }
     var snap by remember { mutableStateOf(false) }
+    var vibrate by remember { mutableStateOf(true) }
     var showElementList by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
+    val history = remember { UndoHistory<PadLayout>(50) }
+    val chrome = rememberEditorChromeState()
+    val drag = remember { EditorDragState() }
 
     LaunchedEffect(system, landscape) {
         layout = PadLayoutStore.load(system, landscape)
         opacity = settings.get(Settings.Keys.padOpacity, Settings.DEFAULT_PAD_OPACITY)
         globalScale = settings.get(Settings.Keys.padScale, Settings.DEFAULT_PAD_SCALE)
         snap = settings.get(PadLayoutStore.Keys.layoutSnapToGrid, false)
-        selected = null
+        vibrate = settings.get(Settings.Keys.padVibration, true)
+        selection = emptyList()
+        history.clear()
         dirty = false
     }
 
@@ -155,9 +161,95 @@ private fun VectorLayoutEditor(
         }
     }
 
+    /** Applies [transform] to the layout as one undo step ([key] coalesces slider/nudge bursts). */
+    fun edit(key: String? = null, transform: (PadLayout) -> PadLayout) {
+        val l = layout ?: return
+        history.record(l, key)
+        layout = transform(l)
+        dirty = true
+    }
+    fun undo() { val l = layout ?: return; history.undo(l)?.let { layout = it; dirty = true } }
+    fun redo() { val l = layout ?: return; history.redo(l)?.let { layout = it; dirty = true } }
+
     val layoutState = rememberUpdatedState(layout)
     val scaleState = rememberUpdatedState(globalScale)
     val snapState = rememberUpdatedState(snap)
+    val vibrateState = rememberUpdatedState(vibrate)
+    val selectionState = rememberUpdatedState(selection)
+    val canvasState = rememberUpdatedState(canvasSize)
+    val landscapeState = rememberUpdatedState(landscape)
+
+    fun PadElement.rect(size: Size = canvasState.value) = rectOn(size, density, scaleState.value)
+
+    val host = remember {
+        object : EditorDragHost<PadElementId> {
+            private var startLayout: PadLayout? = null
+            private var startRects: Map<PadElementId, Rect> = emptyMap()
+
+            override fun hitTest(pos: Offset): PadElementId? =
+                layoutState.value?.elements?.asReversed()?.firstOrNull { e -> e.visible && inflate(e.rect(), 0.2f).contains(pos) }?.id
+            override fun rectOf(id: PadElementId): Rect? = layoutState.value?.get(id)?.rect()
+            override fun selection(): List<PadElementId> = selectionState.value
+            override fun otherRects(exclude: Set<PadElementId>): List<Rect> =
+                layoutState.value?.elements.orEmpty().filter { it.visible && it.id !in exclude }.map { it.rect() }
+            override fun fixedRects(): List<Rect> =
+                if (showMockGame) listOf(mockGameRect(canvasState.value, landscapeState.value)) else emptyList()
+            override fun axisLockOn(): Boolean = chrome.axisLock
+            override fun onTap(id: PadElementId?) { selection = if (id == null) emptyList() else listOf(id) }
+            override fun onLongPress(id: PadElementId) { selection = if (id in selection) selection - id else selection + id }
+            override fun onDragStart(ids: Set<PadElementId>) {
+                val l = layoutState.value ?: return
+                startLayout = l
+                startRects = ids.mapNotNull { id -> l[id]?.let { id to it.rect() } }.toMap()
+                history.record(l)
+            }
+            override fun onDragMove(ids: Set<PadElementId>, delta: Offset) {
+                val s = canvasState.value
+                if (s == Size.Zero) return
+                var l = startLayout ?: return
+                for (id in ids) {
+                    val c = (startRects[id] ?: continue).center + delta
+                    l = l.update(id) { it.copy(x = (c.x / s.width).coerceIn(0f, 1f), y = (c.y / s.height).coerceIn(0f, 1f)) }
+                }
+                layout = l
+            }
+            override fun onDragEnd(ids: Set<PadElementId>) { dirty = true }
+            override fun adjust(rect: Rect, snappedX: Boolean, snappedY: Boolean): Rect {
+                if (!snapState.value) return rect
+                val s = canvasState.value
+                var cx = rect.center.x
+                var cy = rect.center.y
+                if (!snappedX) cx = snapTo(cx / s.width) * s.width
+                if (!snappedY) cy = snapTo(cy / s.height) * s.height
+                return Rect(Offset(cx - rect.width / 2f, cy - rect.height / 2f), rect.size)
+            }
+            override fun haptic() { if (vibrateState.value) haptics.tick(0) }
+        }
+    }
+
+    fun nudge(dxDp: Int, dyDp: Int) {
+        val s = canvasSize
+        if (s == Size.Zero || selection.isEmpty()) return
+        val ids = selection.toSet()
+        edit("nudge") { l ->
+            PadLayout(l.elements.map { e ->
+                if (e.id in ids) e.copy(x = (e.x + dxDp * density / s.width).coerceIn(0f, 1f), y = (e.y + dyDp * density / s.height).coerceIn(0f, 1f)) else e
+            })
+        }
+    }
+
+    fun align(op: (List<Rect>) -> List<Offset>) {
+        val s = canvasSize
+        val l = layout ?: return
+        val members = selection.mapNotNull { l[it] }
+        if (members.size < 2 || s == Size.Zero) return
+        val centers = op(members.map { it.rect(s) })
+        edit { cur ->
+            var out = cur
+            members.forEachIndexed { i, e -> out = out.update(e.id) { it.copy(x = (centers[i].x / s.width).coerceIn(0f, 1f), y = (centers[i].y / s.height).coerceIn(0f, 1f)) } }
+            out
+        }
+    }
 
     Box(modifier.fillMaxSize().background(if (showMockGame) OneEmuColors.Background else Color(0x66000000))) {
         if (showMockGame) MockGame(landscape)
@@ -167,36 +259,7 @@ private fun VectorLayoutEditor(
             Modifier
                 .fillMaxSize()
                 .onSizeChanged { canvasSize = Size(it.width.toFloat(), it.height.toFloat()) }
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown()
-                        val l = layoutState.value ?: return@awaitEachGesture
-                        val size = Size(this.size.width.toFloat(), this.size.height.toFloat())
-                        val hit = l.elements.asReversed().firstOrNull { e ->
-                            e.visible && inflate(e.rectOn(size, density, scaleState.value), 0.2f).contains(down.position)
-                        }
-                        selected = hit?.id
-                        if (hit == null) return@awaitEachGesture
-                        down.consume()
-                        val startRect = hit.rectOn(size, density, scaleState.value)
-                        val grabOffset = down.position - startRect.center
-                        var moved = false
-                        drag(down.id) { change ->
-                            change.consume()
-                            moved = true
-                            val center = change.position - grabOffset
-                            val nx = (center.x / size.width).coerceIn(0f, 1f)
-                            val ny = (center.y / size.height).coerceIn(0f, 1f)
-                            layout = layoutState.value?.update(hit.id) { it.copy(x = nx, y = ny) }
-                        }
-                        if (moved) {
-                            dirty = true
-                            if (snapState.value) {
-                                layout = layoutState.value?.update(hit.id) { it.copy(x = snapTo(it.x), y = snapTo(it.y)) }
-                            }
-                        }
-                    }
-                },
+                .pointerInput(Unit) { editorGestures(host, drag, density) },
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 val l = layout ?: return@Canvas
@@ -206,71 +269,87 @@ private fun VectorLayoutEditor(
                     val rect = e.rectOn(canvasSize, density, globalScale)
                     val alpha = if (e.visible) opacity else 0.15f
                     drawContext.canvas.saveLayer(Rect(Offset.Zero, canvasSize), androidx.compose.ui.graphics.Paint().apply { this.alpha = alpha })
-                    drawPadElement(e, rect, system, PadElementVisual(selected = e.id == selected), textMeasurer)
+                    drawPadElement(e, rect, system, PadElementVisual(selected = e.id in selection), textMeasurer)
                     drawContext.canvas.restore()
                 }
+                drawGuides(drag.guides, OneEmuColors.Accent, density)
             }
         }
 
-        // Top bar.
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(stringResource(R.string.le_title), style = MaterialTheme.typography.titleMedium, color = OneEmuColors.OnSurface, modifier = Modifier.padding(start = 8.dp))
-            Spacer(Modifier.width(12.dp))
-            orientationToggle?.invoke()
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { requestClose() }) { Text(stringResource(R.string.le_cancel)) }
-            TextButton(onClick = { save() }) { Text(stringResource(R.string.le_save)) }
+        val readout = drag.dragRect?.takeIf { canvasSize != Size.Zero }?.let { r ->
+            stringResource(
+                R.string.le_readout,
+                (r.center.x / density).roundToInt(), (r.center.x / canvasSize.width * 100f).roundToInt(),
+                (r.center.y / density).roundToInt(), (r.center.y / canvasSize.height * 100f).roundToInt(),
+            )
         }
 
-        // Bottom bar.
-        Surface(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-            color = OneEmuColors.Surface.copy(alpha = 0.92f),
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        EditorChrome(
+            state = chrome,
+            title = stringResource(R.string.le_title),
+            subtitle = null,
+            orientationToggle = orientationToggle,
+            onCancel = { requestClose() },
+            onSave = { save() },
+            saveEnabled = layout != null,
+            canUndo = history.canUndo,
+            canRedo = history.canRedo,
+            onUndo = { undo() },
+            onRedo = { redo() },
+            dragging = drag.dragging,
+            hint = stringResource(R.string.le_hint),
+            readout = readout,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                val sel = selected?.let { id -> layout?.get(id) }
-                if (sel != null) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(sel.id.displayName, style = MaterialTheme.typography.labelLarge, color = OneEmuColors.Accent, modifier = Modifier.weight(1f))
-                        Text(stringResource(R.string.le_visible), style = MaterialTheme.typography.bodyMedium)
-                        Switch(
-                            checked = sel.visible,
-                            onCheckedChange = { v -> layout = layout?.update(sel.id) { it.copy(visible = v) }; dirty = true },
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
-                    }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.le_scale), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp))
-                        Slider(
-                            value = sel.scale,
-                            onValueChange = { s -> layout = layout?.update(sel.id) { it.copy(scale = s) }; dirty = true },
-                            valueRange = 0.6f..1.8f,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text("${(sel.scale * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
-                    }
-                } else {
-                    Text(stringResource(R.string.le_hint), style = MaterialTheme.typography.bodyMedium, color = OneEmuColors.OnSurfaceMuted)
+            val sel = selection.singleOrNull()?.let { id -> layout?.get(id) }
+            if (selection.size >= 2) {
+                AlignToolbar(
+                    count = selection.size,
+                    onAlignRow = { align(AlignOps::alignRow) },
+                    onAlignColumn = { align(AlignOps::alignColumn) },
+                    onDistributeH = { align(AlignOps::distributeHorizontally) },
+                    onDistributeV = { align(AlignOps::distributeVertically) },
+                    onMirror = { align { AlignOps.mirrorHorizontally(it, canvasSize.width) } },
+                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
+                }
+            } else if (sel != null) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
+                    Text(sel.id.displayName, style = MaterialTheme.typography.labelLarge, color = OneEmuColors.Accent, modifier = Modifier.weight(1f).padding(start = 4.dp))
+                    Text(stringResource(R.string.le_visible), style = MaterialTheme.typography.bodyMedium)
+                    Switch(
+                        checked = sel.visible,
+                        onCheckedChange = { v -> edit { l -> l.update(sel.id) { it.copy(visible = v) } } },
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.le_opacity), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp))
-                    Slider(value = opacity, onValueChange = { opacity = it; dirty = true }, valueRange = 0.15f..1f, modifier = Modifier.weight(1f))
-                    Text("${(opacity * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
+                    Text(stringResource(R.string.le_scale), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp))
+                    Slider(
+                        value = sel.scale,
+                        onValueChange = { s -> edit("scale") { l -> l.update(sel.id) { it.copy(scale = s) } } },
+                        onValueChangeFinished = { history.endCoalesce() },
+                        valueRange = 0.6f..1.8f,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("${(sel.scale * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(selected = snap, onClick = { snap = !snap }, label = { Text(stringResource(R.string.le_snap)) })
-                    TextButton(onClick = { showElementList = true }) { Text(stringResource(R.string.le_elements)) }
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { layout = DefaultLayouts.forSystem(system, landscape); selected = null; dirty = true }) {
-                        Text(stringResource(R.string.le_reset))
-                    }
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.le_opacity), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp))
+                Slider(value = opacity, onValueChange = { opacity = it; dirty = true }, valueRange = 0.15f..1f, modifier = Modifier.weight(1f))
+                Text("${(opacity * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
+            }
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(selected = snap, onClick = { snap = !snap }, label = { Text(stringResource(R.string.le_snap)) })
+                TextButton(onClick = { showElementList = true }) { Text(stringResource(R.string.le_elements)) }
+                TextButton(onClick = { edit { DefaultLayouts.forSystem(system, landscape) }; selection = emptyList() }) {
+                    Text(stringResource(R.string.le_reset), maxLines = 1)
                 }
             }
         }
@@ -285,10 +364,10 @@ private fun VectorLayoutEditor(
                 LazyColumn(Modifier.height(360.dp)) {
                     items(l?.elements.orEmpty(), key = { it.id }) { e ->
                         Row(
-                            Modifier.fillMaxWidth().clickable { layout = layout?.update(e.id) { it.copy(visible = !it.visible) }; dirty = true }.padding(vertical = 4.dp),
+                            Modifier.fillMaxWidth().clickable { edit { it.update(e.id) { el -> el.copy(visible = !el.visible) } } }.padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Checkbox(checked = e.visible, onCheckedChange = { v -> layout = layout?.update(e.id) { it.copy(visible = v) }; dirty = true })
+                            Checkbox(checked = e.visible, onCheckedChange = { v -> edit { it.update(e.id) { el -> el.copy(visible = v) } } })
                             Text(e.id.displayName, style = MaterialTheme.typography.bodyLarge)
                         }
                     }
@@ -330,15 +409,7 @@ private fun MockGame(landscape: Boolean) {
     val textMeasurer = rememberTextMeasurer()
     val label = stringResource(R.string.le_mock_game)
     Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = 0.6f }) {
-        val aspect = 4f / 3f
-        val rect = if (landscape) {
-            val h = size.height * 0.92f
-            val w = minOf(h * aspect, size.width * 0.6f)
-            Rect(Offset((size.width - w) / 2f, (size.height - h) / 2f), Size(w, w / aspect))
-        } else {
-            val w = size.width
-            Rect(Offset(0f, size.height * 0.06f), Size(w, w / aspect))
-        }
+        val rect = mockGameRect(size, landscape)
         drawRect(Color(0xFF2B2B2B), rect.topLeft, rect.size)
         drawRect(OneEmuColors.Divider, rect.topLeft, rect.size, style = Stroke(2f))
         val t = textMeasurer.measure(label, TextStyle(color = OneEmuColors.OnSurfaceMuted, fontSize = 14.sp))

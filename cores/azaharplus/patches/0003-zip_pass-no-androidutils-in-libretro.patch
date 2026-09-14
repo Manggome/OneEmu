@@ -1,0 +1,81 @@
+From: OneEmu build <Manggome@users.noreply.github.com>
+Subject: [PATCH] libretro/Android: fix the fork's ZipPass code in the libretro core build
+
+AzaharPlus's ZipPass feature (core/zip_pass.cpp, network/room_member.cpp)
+calls AndroidUtils::TranslateFilePath() under a plain `#ifdef ANDROID`,
+but AndroidUtils is only compiled into the Android *app* (JNI) build:
+
+  zip_pass.cpp: error: use of undeclared identifier 'AndroidUtils'
+  ld.lld: undefined symbol: AndroidUtils::TranslateFilePath (room_member.cpp)
+
+Guard those calls the way common/file_util.cpp does
+(`ANDROID && !HAVE_LIBRETRO_VFS`), and give the `network` target the same
+HAVE_LIBRETRO_VFS define / libretro_common link as citra_common: it
+includes common/file_util.h, whose IOFile uses RFILE instead of std::FILE
+under that define, so compiling it without the define was also an ODR
+mismatch waiting to happen.
+
+diff --git a/src/citra_libretro/CMakeLists.txt b/src/citra_libretro/CMakeLists.txt
+index 00589c4..f23ddfe 100644
+--- a/src/citra_libretro/CMakeLists.txt
++++ b/src/citra_libretro/CMakeLists.txt
+@@ -67,11 +67,15 @@ if(ANDROID)
+   target_compile_definitions(citra_common PRIVATE HAVE_LIBRETRO_VFS)
+   target_compile_definitions(citra_core PRIVATE HAVE_LIBRETRO_VFS)
+   target_compile_definitions(video_core PRIVATE HAVE_LIBRETRO_VFS)
++  # network includes common/file_util.h (CORE_FILE = RFILE under HAVE_LIBRETRO_VFS) and, in this
++  # fork, uses AndroidUtils in the ZipPass code: it must see the same defines as citra_common.
++  target_compile_definitions(network PRIVATE HAVE_LIBRETRO_VFS)
+   target_compile_definitions(azahar_libretro_common PRIVATE USING_GLES HAVE_LIBRETRO_VFS)
+   target_compile_definitions(azahar_libretro PRIVATE USING_GLES HAVE_LIBRETRO_VFS)
+   target_link_libraries(citra_common PRIVATE libretro_common)
+   target_link_libraries(citra_core PRIVATE libretro_common)
+   target_link_libraries(video_core PRIVATE libretro_common)
++  target_link_libraries(network PRIVATE libretro_common)
+   target_link_libraries(azahar_libretro_common PRIVATE libretro_common)
+   target_link_libraries(azahar_libretro PRIVATE libretro_common)
+   # Link Android log library for __android_log_print
+diff --git a/src/core/zip_pass.cpp b/src/core/zip_pass.cpp
+index e6c2ee6..9c0f763 100644
+--- a/src/core/zip_pass.cpp
++++ b/src/core/zip_pass.cpp
+@@ -46,7 +46,7 @@ int exportZipPass(std::string path)
+ 			const auto callback2 = [za, virtual_name](u64* num_entries_out, const std::string& directory,
+ 												  const std::string& v_name) -> bool {
+ 				std::string real_name = directory + DIR_SEP + v_name;
+-#ifdef ANDROID
++#if defined(ANDROID) && !defined(HAVE_LIBRETRO_VFS)
+ 				real_name = AndroidUtils::TranslateFilePath(real_name);
+ #endif
+ 				if (v_name[0] == '_' && v_name.length() == 12) {
+@@ -416,7 +416,7 @@ int importQueuedZipPass()
+ 		{
+ 			std::string zip_path = file;
+ 			
+-#ifdef ANDROID
++#if defined(ANDROID) && !defined(HAVE_LIBRETRO_VFS)
+ 			zip_path = AndroidUtils::TranslateFilePath(file);
+ #endif
+ 
+diff --git a/src/network/room_member.cpp b/src/network/room_member.cpp
+index 7ad4aad..a8cca52 100644
+--- a/src/network/room_member.cpp
++++ b/src/network/room_member.cpp
+@@ -451,7 +451,7 @@ void RoomMember::RoomMemberImpl::HandleAzaharPlusPecificPacket(const ENetEvent*
+ 			
+ 			std::string zip_path = path;
+ 			
+-#ifdef ANDROID
++#if defined(ANDROID) && !defined(HAVE_LIBRETRO_VFS)
+ 			zip_path = AndroidUtils::TranslateFilePath(path);
+ #endif
+ 
+@@ -536,7 +536,7 @@ void RoomMember::RoomMemberImpl::HandleAzaharPlusPecificPacket(const ENetEvent*
+ 					if(dir == "history") {
+ 						std::string zip_path = path;
+ 						
+-#ifdef ANDROID
++#if defined(ANDROID) && !defined(HAVE_LIBRETRO_VFS)
+ 						zip_path = AndroidUtils::TranslateFilePath(path);
+ #endif
+ 						Core::importZipPass(zip_path);
