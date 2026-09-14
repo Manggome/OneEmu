@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# OneEmu core build: Azahar (Nintendo 3DS) official libretro core -> arm64-v8a libazahar_libretro.so
+# OneEmu core build: AzaharPlus (Nintendo 3DS, encrypted-ROM capable Azahar fork) libretro core
+#                    -> arm64-v8a libazaharplus_libretro.so
 #
-# Usage (from project root):  bash cores/azahar/build.sh [--clean]
+# Usage (from project root):  bash cores/azaharplus/build.sh [--clean]
 # Works on macOS (arm64/x86_64) and Ubuntu (GitHub Actions).
 #
 # Deviations from the generic core convention, all deliberate:
@@ -9,15 +10,21 @@
 #    cmake/3.22.1 cannot configure it. We use a cmake >= 3.25 from PATH if one exists,
 #    otherwise pip-install one into a venv under build/ (portable: no brew/apt/sdkmanager).
 #    Ninja still comes from the SDK cmake/3.22.1 dir (or PATH).
-#  * ENABLE_VULKAN=OFF: on Android the core ignores the frontend's preferred renderer and
-#    forces Vulkan when built with Vulkan support; OneEmu only provides GLES 3.x HW render.
-#  * Requires a *recursive* clone (~50 submodules, ~550 MB); shallow clone is used to save time.
+#  * ENABLE_VULKAN=OFF: OneEmu only provides a GLES 3.x HW render context. (Unlike upstream
+#    Azahar, this fork's GetPreferredRenderer() honours the frontend preference, but leaving
+#    Vulkan out keeps the binary smaller and the renderer choice unambiguous.)
+#  * Requires a *recursive* clone (~50 submodules, ~580 MB); shallow clone is used to save time.
+#  * The fork's own CI (.github/workflows/libretro.yml) builds with only -DENABLE_LIBRETRO=ON,
+#    NDK 26.2, API 21, c++_static, CMake 3.30.3; ENABLE_BUILTIN_KEYBLOB stays ON (default).
+#  * Fork-specific behaviour: re-adds encrypted-ROM support (reads <sysdata>/aes_keys.txt,
+#    seeddb.bin, boot9.bin). Patch 0002 moves that sysdata dir into the libretro *system*
+#    directory (<system>/Azahar/sysdata/) so the files sit with the other BIOS files.
 set -euo pipefail
 
-CORE_ID="azahar"
-REPO_URL="https://github.com/azahar-emu/azahar"
-TAG="2126.1"                                            # release tag (2026-09-09)
-COMMIT="26e608f6fa292b27cda0ae8c84e148d17600a5e6"      # == tag 2126.1; bump deliberately after re-verifying the build
+CORE_ID="azaharplus"
+REPO_URL="https://github.com/AzaharPlus/AzaharPlus"
+TAG="AZAHAR_PLUS_2126_0_A"                              # release tag (fork of Azahar 2126.0; commit 2026-07-18)
+COMMIT="263745c1df2cd635850424488bbf1c095dd80af5"      # == tag AZAHAR_PLUS_2126_0_A; bump deliberately after re-verifying the build
 NDK_VERSION="28.2.13676358"
 API_LEVEL=26
 ABI="arm64-v8a"
@@ -114,7 +121,7 @@ fi
 
 if command -v nproc >/dev/null 2>&1; then JOBS="$(nproc)"; else JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"; fi
 
-echo "== Azahar (3DS) libretro core build"
+echo "== AzaharPlus (3DS) libretro core build"
 echo "   NDK:     $NDK ($HOST_TAG)"
 echo "   CMake:   $CMAKE ($("$CMAKE" --version | head -n1))"
 echo "   Ninja:   $NINJA"
@@ -155,12 +162,12 @@ for p in ${PATCHES[@]+"${PATCHES[@]}"}; do
 done
 
 # ---------------------------------------------------------------- configure
-# Flags mirror .github/workflows/libretro.yml (libretro-android job) with these changes:
+# Flags mirror the fork's .github/workflows/libretro.yml (android job) with these changes:
 #   ANDROID_PLATFORM android-26 (OneEmu minimum; CI uses 21), Ninja generator,
 #   ENABLE_VULKAN=OFF (see header), ENABLE_OPENGL=ON pinned (default, but the
 #   citra_graphics_api=OpenGL option only exists when it is on),
 #   ENABLE_TESTS=OFF (not built anyway; skips Catch2 configure),
-#   CITRA_WARNINGS_AS_ERRORS=OFF (CI uses NDK 29 / clang 21; we use NDK 28 / clang 19).
+#   CITRA_WARNINGS_AS_ERRORS=OFF (fork CI uses NDK 26 / clang 17; we use NDK 28 / clang 19).
 mkdir -p "$CMAKE_BUILD_DIR" "$OUT_DIR"
 "$CMAKE" -S "$SRC_DIR" -B "$CMAKE_BUILD_DIR" -G Ninja \
   -DCMAKE_MAKE_PROGRAM="$NINJA" \
@@ -177,10 +184,11 @@ mkdir -p "$CMAKE_BUILD_DIR" "$OUT_DIR"
   -DCITRA_WARNINGS_AS_ERRORS=OFF
 
 # ---------------------------------------------------------------- build
-echo "== Building azahar_libretro (-j$JOBS)"
+echo "== Building azahar_libretro (AzaharPlus, -j$JOBS)"
 "$CMAKE" --build "$CMAKE_BUILD_DIR" --target azahar_libretro -j "$JOBS"
 
-BUILT_SO="$CMAKE_BUILD_DIR/bin/Release/azahar_libretro.so"
+# The fork gives the Android libretro target SUFFIX "_android.so" (src/citra_libretro/CMakeLists.txt).
+BUILT_SO="$CMAKE_BUILD_DIR/bin/Release/azahar_libretro_android.so"
 [ -f "$BUILT_SO" ] || { echo "error: $BUILT_SO not produced" >&2; exit 1; }
 
 # ---------------------------------------------------------------- strip + install

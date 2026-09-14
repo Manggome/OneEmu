@@ -168,6 +168,10 @@ fun GameDetailScreen(nav: NavHostController, gameId: Long, vm: LibraryViewModel 
                     InfoRow(stringResource(R.string.lib_info_play_time), playTimeText(g.playTimeSec))
                 }
             }
+            if (system == SystemId.ARCADE) {
+                Spacer(Modifier.height(16.dp))
+                ArcadeRomCard(g, onMessage = { cheatMessage = it })
+            }
             Spacer(Modifier.height(16.dp))
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(vertical = 12.dp)) {

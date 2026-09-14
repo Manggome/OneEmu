@@ -7,6 +7,8 @@ import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.core.CoreInfo
 import com.manggome.oneemu.data.db.GameEntity
+import com.manggome.oneemu.library.ArcadeRomCheck
+import com.manggome.oneemu.library.ArcadeRomChecker
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.util.AppDirs
 import kotlinx.coroutines.Dispatchers
@@ -119,7 +121,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     /** Builds the user-facing [State.Error] for [kind]: Korean summary + raw reason + recent core log. */
     private fun makeError(kind: ErrorKind, reason: String): State.Error {
         val name = core.displayName
-        val message = when (kind) {
+        var message = when (kind) {
             ErrorKind.CORE_MISSING -> app.getString(R.string.emu_err_core_missing, name)
             ErrorKind.DLOPEN_FAILED -> app.getString(R.string.emu_err_dlopen, name)
             ErrorKind.CORE_INIT_FAILED -> app.getString(R.string.emu_err_core_init, name)
@@ -137,10 +139,23 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
             ErrorKind.UNKNOWN -> app.getString(R.string.emu_err_unknown)
         }
         val log = runCatching { NativeBridge.getRecentCoreLog() }.getOrDefault("").trim()
+        // Arcade: say what the MAME set lacks (BIOS/parent zip, wrong-version files) instead of a generic load failure,
+        // and pull MAME's own "NOT FOUND" / "WRONG CHECKSUMS" lines out of the log for the detail box.
+        var arcadeDetail = ""
+        if (system == SystemId.ARCADE && kind !in ARCADE_UNRELATED_KINDS) {
+            val checker = ArcadeRomChecker.get(app)
+            val report = runCatching { checker.checkNow(File(game.path)) }.getOrNull()
+            if (report != null && report.severity != ArcadeRomCheck.Severity.OK && report.status != ArcadeRomCheck.Status.NEEDS_SAMPLES) {
+                message = message + "\n\n" + checker.summary(report)
+            }
+            val mame = checker.mameLoadLines(log)
+            if (mame.isNotEmpty()) arcadeDetail = "\n\n" + app.getString(R.string.lib_arcade_log_title) + ":\n" + mame.joinToString("\n")
+        }
         val detail = buildString {
             append(app.getString(R.string.emu_error_reason, reason.ifBlank { kind.name }))
             append("\n").append("core=").append(core.id).append(" system=").append(system.id)
             append("\nrom=").append(game.path)
+            append(arcadeDetail)
             if (log.isNotEmpty()) append("\n\n").append(app.getString(R.string.emu_error_core_log)).append(":\n").append(log)
         }
         Log.e("OneEmu", "load error [$kind]: $reason\n$log")
@@ -292,6 +307,13 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     override fun onCoreMessage(message: String, durationMs: Int, priority: Int) { _messages.value = message }
     override fun onRumble(port: Int, strength: Int) { if (port == 0) _rumble.value = strength }
     override fun onGeometryChanged(width: Int, height: Int, aspect: Float) { _geometry.value = Geometry(width, height, aspect) }
+    private companion object {
+        /** Failures that have nothing to do with the ROM set; the arcade ROM check is skipped for these. */
+        val ARCADE_UNRELATED_KINDS = setOf(
+            ErrorKind.CORE_MISSING, ErrorKind.DLOPEN_FAILED, ErrorKind.ROM_READ_FAILED, ErrorKind.GLES_UNSUPPORTED, ErrorKind.GL_INIT_FAILED,
+        )
+    }
+
     override fun onCoreShutdown() { _state.value = makeError(ErrorKind.CORE_SHUTDOWN, "RETRO_ENVIRONMENT_SHUTDOWN") }
     override fun onFatal(what: String, errorCode: Int) { _state.value = makeError(ErrorKind.fromCode(errorCode), what) }
 

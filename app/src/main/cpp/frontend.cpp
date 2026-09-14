@@ -372,8 +372,9 @@ bool Frontend::loadGame(const std::string& romPath, std::string* error) {
             // Azahar reports encrypted/unsupported ROMs through SET_MESSAGE, not a return code.
             std::string reason = lastCoreMessage_.empty() ? "retro_load_game returned false" : lastCoreMessage_;
             std::string haystack = lastCoreMessage_ + "\n" + recentLog();
-            bool encrypted = containsNoCase(haystack, "encrypt") || containsNoCase(haystack, "decrypt") ||
-                             containsNoCase(haystack, "NCSD") || containsNoCase(haystack, "CIA");
+            // Only explicit wording counts: "NCSD"/"CIA" appear in ordinary load logs as format names.
+            bool encrypted = containsNoCase(haystack, "encrypted") || containsNoCase(haystack, "not decrypted") ||
+                             containsNoCase(haystack, "decrypt");
             fail(encrypted ? LoadError::RomEncrypted : LoadError::RomLoadFailed, reason, error);
             return;
         }

@@ -1,0 +1,269 @@
+package com.manggome.oneemu.ui.library
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.manggome.oneemu.OneEmuApp
+import com.manggome.oneemu.R
+import com.manggome.oneemu.data.db.GameEntity
+import com.manggome.oneemu.library.ArcadeDatDownloader
+import com.manggome.oneemu.library.ArcadeRomCheck
+import com.manggome.oneemu.library.ArcadeRomChecker
+import com.manggome.oneemu.ui.theme.OneEmuColors
+import kotlinx.coroutines.launch
+
+private val StatusOk = Color(0xFF5CC489)
+private val StatusWarn = Color(0xFFF0B429)
+
+private fun severityColor(s: ArcadeRomCheck.Severity): Color = when (s) {
+    ArcadeRomCheck.Severity.OK -> StatusOk
+    ArcadeRomCheck.Severity.WARN -> StatusWarn
+    ArcadeRomCheck.Severity.ERROR -> OneEmuColors.Danger
+}
+
+/**
+ * Lazily checks an arcade zip. Returns the cached report immediately when the file is unchanged,
+ * otherwise null until the bounded background check (Dispatchers.IO, 2 at a time) finishes.
+ * [refresh] > 0 forces a re-check.
+ */
+@Composable
+fun rememberArcadeReport(game: GameEntity, refresh: Int = 0): ArcadeRomCheck.Report? {
+    val context = LocalContext.current
+    val checker = remember { ArcadeRomChecker.get(context) }
+    val initial = remember(game.path) { checker.cached(game.path) }
+    val state = produceState(initialValue = initial, key1 = game.path, key2 = refresh) {
+        if (value == null || refresh > 0) value = checker.check(game.path, force = refresh > 0)
+    }
+    return state.value
+}
+
+/** Small coloured dot (green OK / amber needs something / red cannot run) for list and grid items. */
+@Composable
+fun ArcadeStatusDot(report: ArcadeRomCheck.Report?, modifier: Modifier = Modifier, size: Dp = 10.dp) {
+    if (report == null) return
+    val label = stringResource(
+        when (report.severity) {
+            ArcadeRomCheck.Severity.OK -> R.string.lib_arcade_badge_ok
+            ArcadeRomCheck.Severity.WARN -> R.string.lib_arcade_badge_warn
+            ArcadeRomCheck.Severity.ERROR -> R.string.lib_arcade_badge_error
+        },
+    )
+    Box(
+        modifier
+            .size(size)
+            .background(severityColor(report.severity), CircleShape)
+            .border(1.dp, Color(0x99000000), CircleShape)
+            .semantics { contentDescription = label },
+    )
+}
+
+/** Detail-screen card: status, explanation, missing files, samples/DB helpers and the help text. */
+@Composable
+fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
+    val context = LocalContext.current
+    val checker = remember { ArcadeRomChecker.get(context) }
+    var refresh by remember { mutableIntStateOf(0) }
+    val report = rememberArcadeReport(game, refresh)
+    var showFiles by rememberSaveable { mutableStateOf(false) }
+    var showHelp by rememberSaveable { mutableStateOf(false) }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.lib_arcade_check_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = { checker.invalidate(game.path); refresh++ }) { Text(stringResource(R.string.lib_arcade_recheck)) }
+            }
+            if (report == null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text(stringResource(R.string.lib_arcade_checking), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ArcadeStatusDot(report, size = 12.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(checker.statusText(report), style = MaterialTheme.typography.titleSmall, color = severityColor(report.severity))
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(checker.explanation(report), style = MaterialTheme.typography.bodyMedium)
+                val notes = checker.companionNotes(report)
+                if (notes.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    for (n in notes) Text("• $n", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (report.issues.isNotEmpty()) {
+                    TextButton(onClick = { showFiles = !showFiles }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                        Text(
+                            if (showFiles) stringResource(R.string.lib_arcade_files_hide)
+                            else stringResource(R.string.lib_arcade_files_show, report.issues.size),
+                        )
+                    }
+                    if (showFiles) IssueList(report)
+                }
+                if (report.game?.needsSamples == true) {
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    SamplesSection(report, checker)
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(10.dp))
+            DatSection(checker, onMessage)
+
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider()
+            TextButton(onClick = { showHelp = !showHelp }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                Text(stringResource(R.string.lib_arcade_help_title))
+            }
+            if (showHelp) HelpSection()
+        }
+    }
+}
+
+@Composable
+private fun IssueList(report: ArcadeRomCheck.Report) {
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (i in report.issues.take(MAX_ISSUE_ROWS)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    i.name,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (i.missing) "${stringResource(R.string.lib_arcade_file_missing)} · ${i.owner}.zip"
+                    else "${stringResource(R.string.lib_arcade_file_found, i.foundCrc ?: "?")} ≠ ${i.expectedCrc}",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    color = if (i.missing) OneEmuColors.Danger else StatusWarn,
+                )
+            }
+        }
+        if (report.issues.size > MAX_ISSUE_ROWS) {
+            Text("… +${report.issues.size - MAX_ISSUE_ROWS}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SamplesSection(report: ArcadeRomCheck.Report, checker: ArcadeRomChecker) {
+    Text(stringResource(R.string.lib_arcade_samples_title), style = MaterialTheme.typography.titleSmall)
+    Spacer(Modifier.height(4.dp))
+    if (report.samplesPresent) {
+        Text(stringResource(R.string.lib_arcade_samples_present, report.sampleZip ?: ""), style = MaterialTheme.typography.bodySmall, color = StatusOk)
+    } else {
+        Text(stringResource(R.string.lib_arcade_samples_path, "${report.sampleZip}.zip"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        PathText(checker.samplesDir.absolutePath)
+    }
+}
+
+/** One shared downloader so progress survives leaving the screen. */
+private var sharedDownloader: ArcadeDatDownloader? = null
+
+@Composable
+private fun DatSection(checker: ArcadeRomChecker, onMessage: (String) -> Unit) {
+    val context = LocalContext.current
+    val downloader = remember { sharedDownloader ?: ArcadeDatDownloader(checker.datDir).also { sharedDownloader = it } }
+    val state by downloader.state.collectAsStateWithLifecycle()
+    var installed by remember { mutableStateOf(downloader.installed()) }
+    LaunchedEffect(state) {
+        when (val s = state) {
+            is ArcadeDatDownloader.State.Done -> { installed = downloader.installed(); onMessage(context.getString(R.string.lib_arcade_dat_done, s.files.size)) }
+            is ArcadeDatDownloader.State.Failed -> { installed = downloader.installed(); onMessage(context.getString(R.string.lib_arcade_dat_failed, s.message)) }
+            else -> Unit
+        }
+    }
+    Text(stringResource(R.string.lib_arcade_dat_title), style = MaterialTheme.typography.titleSmall)
+    Spacer(Modifier.height(4.dp))
+    Text(stringResource(R.string.lib_arcade_dat_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(4.dp))
+    Text(
+        if (installed.isEmpty()) stringResource(R.string.lib_arcade_dat_none) else stringResource(R.string.lib_arcade_dat_installed, installed.joinToString(", ")),
+        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        color = if (installed.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else StatusOk,
+    )
+    Spacer(Modifier.height(6.dp))
+    val running = state as? ArcadeDatDownloader.State.Running
+    if (running != null) {
+        if (running.progress < 0f) LinearProgressIndicator(Modifier.fillMaxWidth()) else LinearProgressIndicator(progress = { running.progress }, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (running.progress < 0f) stringResource(R.string.lib_arcade_dat_connecting, running.source)
+            else stringResource(R.string.lib_arcade_dat_progress, (running.progress * 100).toInt()),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else if (installed.size < ArcadeDatDownloader.DAT_FILES.size) {
+        OutlinedButton(onClick = {
+            // App scope: the download keeps going if the user leaves the screen.
+            OneEmuApp.get().appScope.launch { runCatching { downloader.download() } }
+        }) { Text(stringResource(R.string.lib_arcade_dat_download)) }
+    }
+}
+
+@Composable
+private fun HelpSection() {
+    val uri = LocalUriHandler.current
+    Column(Modifier.padding(top = 4.dp)) {
+        Text(stringResource(R.string.lib_arcade_help_body), style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(6.dp))
+        TextButton(onClick = { uri.openUri(DOCS_URL) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            Text(stringResource(R.string.lib_arcade_link_docs), fontWeight = FontWeight.Medium)
+        }
+        TextButton(onClick = { uri.openUri(MAMEDEV_ROMS_URL) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+            Text(stringResource(R.string.lib_arcade_link_mamedev), fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+private const val MAX_ISSUE_ROWS = 40
+private const val DOCS_URL = "https://docs.libretro.com/library/mame2003_plus/"
+private const val MAMEDEV_ROMS_URL = "https://www.mamedev.org/roms/"
