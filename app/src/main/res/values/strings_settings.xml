@@ -124,4 +124,41 @@
     <string name="update_perm_body">업데이트를 설치하려면 OneEmu가 APK를 설치할 수 있도록 허용해야 합니다. 설정 화면에서 \'이 출처 허용\'을 켠 뒤 돌아와 다시 설치를 누르세요.</string>
     <string name="update_perm_open">설정 열기</string>
     <string name="update_release_page">릴리스 페이지</string>
+
+    <!-- 내려받기형 코어 (distribution: download) -->
+    <string name="cores_core_not_installed">(미설치)</string>
+    <string name="core_dl_title">내려받기형 코어</string>
+    <string name="core_dl_explain">이 코어는 크기가 커서 필요할 때 내려받습니다. 설치 위치: 앱 내부 저장공간 (cores/%1$s/)</string>
+    <string name="core_dl_size">약 %1$s</string>
+    <string name="core_dl_installed">설치됨 · 버전 %1$s</string>
+    <string name="core_dl_not_installed">설치되지 않음</string>
+    <string name="core_dl_latest">최신 버전 %1$s · %2$s</string>
+    <string name="core_dl_update_available">새 버전이 있습니다</string>
+    <string name="core_dl_loading">코어 목록을 가져오는 중…</string>
+    <string name="core_dl_action_download">내려받기</string>
+    <string name="core_dl_action_update">업데이트</string>
+    <string name="core_dl_action_delete">삭제</string>
+    <string name="core_dl_action_retry">다시 시도</string>
+    <string name="core_dl_action_refresh">목록 새로 고침</string>
+    <string name="core_dl_progress">내려받는 중… %1$d%% (%2$s / %3$s)</string>
+    <string name="core_dl_progress_unknown">내려받는 중… %1$s</string>
+    <string name="core_dl_connecting">연결 중…</string>
+    <string name="core_dl_extracting">설치 중…</string>
+    <string name="core_dl_done">%1$s 코어를 설치했습니다</string>
+    <string name="core_dl_deleted">%1$s 코어를 삭제했습니다</string>
+    <string name="core_dl_delete_confirm">%1$s 코어를 삭제할까요? 이 코어가 필요한 게임을 실행하려면 다시 내려받아야 합니다.</string>
+    <string name="core_dl_dialog_title">코어 내려받기</string>
+    <string name="core_dl_dialog_need">이 게임은 %1$s 코어가 필요합니다 (%2$s). 지금 내려받을까요?</string>
+    <string name="core_dl_dialog_need_nosize">이 게임은 %1$s 코어가 필요합니다. 지금 내려받을까요?</string>
+    <string name="core_dl_dialog_installed">%1$s 코어를 설치했습니다. 게임을 시작합니다…</string>
+    <string name="core_dl_err_no_release">아직 배포된 코어가 없습니다. 이후 업데이트를 기다려 주세요.</string>
+    <string name="core_dl_err_network">코어 목록을 가져올 수 없습니다. 네트워크 연결을 확인해 주세요.</string>
+    <string name="core_dl_err_network_during">내려받는 중 연결이 끊어졌습니다. 네트워크를 확인하고 다시 시도해 주세요.</string>
+    <string name="core_dl_err_not_in_manifest">%1$s 코어는 아직 배포되지 않았습니다.</string>
+    <string name="core_dl_err_http">서버 오류 (HTTP %1$d)</string>
+    <string name="core_dl_err_size">내려받은 크기가 다릅니다 (%1$d / %2$d 바이트)</string>
+    <string name="core_dl_err_sha">내려받은 파일이 손상되었습니다 (체크섬 불일치). 다시 시도해 주세요.</string>
+    <string name="core_dl_err_lib_missing">내려받은 파일에 코어 라이브러리(%1$s)가 없습니다.</string>
+    <string name="core_dl_err_app_too_old">이 코어는 앱 버전 %1$s 이상이 필요합니다. 앱을 먼저 업데이트해 주세요.</string>
+    <string name="core_dl_err_generic">내려받기 실패: %1$s</string>
 </resources>

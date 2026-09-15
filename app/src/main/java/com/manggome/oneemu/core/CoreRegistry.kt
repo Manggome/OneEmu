@@ -6,8 +6,9 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 /**
- * Knows which libretro cores are bundled in this APK (from the JSON files in assets/cores/) and where
- * their .so files live. Cores whose .so is missing from the APK are reported but marked unavailable.
+ * Knows which libretro cores this APK knows about (from the JSON files in assets/cores/) and where their .so
+ * files live: bundled cores in the APK's native folder, `distribution: download` cores under
+ * <filesDir>/cores/<id>/. Cores whose .so is missing are reported but marked unavailable.
  */
 class CoreRegistry(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -36,9 +37,23 @@ class CoreRegistry(private val context: Context) {
         return candidates.firstOrNull { isAvailable(it) } ?: candidates.firstOrNull()
     }
 
-    fun libraryPath(core: CoreInfo): File = File(context.applicationInfo.nativeLibraryDir, core.libFile)
+    /** Where a downloadable core is installed: `<filesDir>/cores/<id>/` (the .so plus `version.txt`). */
+    fun downloadDir(core: CoreInfo): File = File(File(context.filesDir, "cores"), core.id)
+
+    /**
+     * Absolute path the frontend dlopens: the APK's native folder for bundled cores, [downloadDir] for
+     * `distribution: download` cores (present only after [CoreDownloadManager] installed them).
+     */
+    fun libraryPath(core: CoreInfo): File =
+        if (core.isDownloadable) File(downloadDir(core), core.libFile) else File(context.applicationInfo.nativeLibraryDir, core.libFile)
 
     fun isAvailable(core: CoreInfo): Boolean = libraryPath(core).exists()
+
+    /** Installed version (manifest `version`, i.e. sourceCommit[0..12]) of a downloadable core, from `version.txt`; null when absent. */
+    fun installedVersion(core: CoreInfo): String? {
+        if (!core.isDownloadable || !isAvailable(core)) return null
+        return runCatching { File(downloadDir(core), VERSION_FILE).readText().trim().ifEmpty { null } }.getOrNull()
+    }
 
     /** All file extensions (lowercase, no dot) any bundled core can open, mapped to candidate systems. */
     fun extensionToSystems(): Map<String, List<SystemId>> {
@@ -76,6 +91,8 @@ class CoreRegistry(private val context: Context) {
         target.mkdirs()
         for (c in children) copyAssetDir("$assetPath/$c", File(target, c))
     }
+
+    companion object { const val VERSION_FILE = "version.txt" }
 
     private fun versionName(): String =
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0" }.getOrDefault("0")

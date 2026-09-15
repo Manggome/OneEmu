@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
+import com.manggome.oneemu.ui.common.CoreDownloadDialog
 import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.menu.CheatsSheet
 import com.manggome.oneemu.emu.menu.InGameMenuDialog
@@ -248,6 +249,8 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
         } else {
             LoadingOverlay(ui.title)
             ui.error?.let { ErrorDialog(it, null) { host.closeAndFinish() } }
+            // Downloadable core missing: "이 게임은 … 코어가 필요합니다 (약 N MB). 지금 내려받을까요?" → install → start.
+            ui.downloadCore?.let { core -> CoreDownloadDialog(core, onDismiss = { host.closeAndFinish() }, onInstalled = { host.retryStart() }) }
         }
 
         if (confirmExit) {

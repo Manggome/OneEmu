@@ -112,8 +112,10 @@ class ArcadeRomChecker private constructor(private val context: Context) {
 
     private fun coreName(coreId: String): String = ArcadeCoreRouter.displayName(com.manggome.oneemu.OneEmuApp.get().cores, coreId)
 
-    /** "MAME 2010 (MAME 0.139 롬셋)" */
-    fun coreLabel(coreId: String): String = context.getString(R.string.lib_arcade_core_label, coreName(coreId), ArcadeCoreRouter.mameVersion(coreId))
+    /** "MAME 2010 (MAME 0.139 롬셋)"; current MAME: "MAME (최신 MAME 롬셋)". */
+    fun coreLabel(coreId: String): String =
+        if (coreId == ArcadeCoreRouter.MAME) context.getString(R.string.lib_arcade_core_label_latest, coreName(coreId))
+        else context.getString(R.string.lib_arcade_core_label, coreName(coreId), ArcadeCoreRouter.mameVersion(coreId))
 
     /** "MAME 2003-Plus, MAME 2010" */
     private fun allCoreNames(): String = ArcadeCoreRouter.CORE_IDS.joinToString(", ") { coreName(it) }
@@ -131,6 +133,7 @@ class ArcadeRomChecker private constructor(private val context: Context) {
             Status.CHD_UNSUPPORTED -> context.getString(R.string.lib_arcade_status_chd)
             Status.NOT_IN_DAT -> context.getString(R.string.lib_arcade_status_not_in_dat, allCoreNames())
             Status.RENAME_SUGGESTED -> context.getString(R.string.lib_arcade_status_rename, "${r.suggestedName}.zip")
+            Status.UNVERIFIED -> context.getString(R.string.lib_arcade_status_unverified)
         }
     }
 
@@ -155,6 +158,7 @@ class ArcadeRomChecker private constructor(private val context: Context) {
             Status.RENAME_SUGGESTED -> context.getString(
                 R.string.lib_arcade_desc_rename, name, r.suggestedName ?: "", r.game?.description ?: "", r.shortName,
             )
+            Status.UNVERIFIED -> context.getString(R.string.lib_arcade_desc_unverified, coreLabel(coreId))
         }
     }
 
@@ -269,7 +273,7 @@ class ArcadeRomChecker private constructor(private val context: Context) {
     /** Lines of the core log that MAME prints while loading ROMs (NOT FOUND / WRONG CHECKSUMS / …). */
     fun mameLoadLines(log: String): List<String> =
         log.lineSequence().map { it.trim() }.filter { MAME_LOAD_LINE.containsMatchIn(it) }
-            .map { it.removePrefix("[MAME 2003+]").removePrefix("[MAME 2010]").trim() }.toList()
+            .map { it.removePrefix("[MAME 2003+]").removePrefix("[MAME 2010]").removePrefix("[MAME]").trim() }.toList()
 
     companion object {
         private const val TAG = "ArcadeRomChecker"

@@ -162,7 +162,7 @@ fun GameDetailScreen(nav: NavHostController, gameId: Long, vm: LibraryViewModel 
                 Column(Modifier.padding(16.dp)) {
                     InfoRow(stringResource(R.string.lib_info_path), g.path, mono = true)
                     InfoRow(stringResource(R.string.lib_info_size), formatFileSize(g.fileSize))
-                    InfoRow(stringResource(R.string.lib_info_core), vm.coreFor(g)?.displayName ?: stringResource(R.string.lib_no_core_short))
+                    InfoRow(stringResource(R.string.lib_info_core), vm.coreDisplayFor(g) ?: stringResource(R.string.lib_no_core_short))
                     InfoRow(stringResource(R.string.lib_info_added), formatDateTime(g.addedAt))
                     InfoRow(stringResource(R.string.lib_info_last_played), if (g.lastPlayedAt > 0) formatDateTime(g.lastPlayedAt) else stringResource(R.string.lib_info_never))
                     InfoRow(stringResource(R.string.lib_info_play_time), playTimeText(g.playTimeSec))

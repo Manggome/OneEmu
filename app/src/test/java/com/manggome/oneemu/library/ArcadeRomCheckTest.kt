@@ -368,6 +368,72 @@ class ArcadeRomCheckTest {
         assertFalse(ArcadeRomCheck.resolve(statusDbs, zip(dir, "prelim", "p.bin" to p1)).knownUnstable)
     }
 
+    // ---- three DBs: 2003-Plus → 2010 → current MAME (downloadable) ---------------------------------
+
+    /** Current MAME's romdb may carry no status column (UNKNOWN = rated like GOOD) and `.cpp` source names. */
+    private val statusDbMame = ArcadeRomCheck.Db.parse(
+        listOf(
+            row("stvgood", rom("s.bin", biosRomUs), "", "stv.cpp"),          // ST-V: crashes in both older cores → current MAME
+            row("bothbad", rom("b.bin", c1), "", "segac2.cpp"),              // preliminary in both older cores, unrated here → current MAME
+            row("prelim", rom("p.bin", p1), "good", "zn.cpp"),               // 2010 already rates it better than 2003 → 2010 keeps it
+            row("goodgame", rom("g.bin", sfix), "good", "cps1.cpp"),         // good in 2003-Plus → stays there
+            row("stv2010", rom("z.bin", p1), "imperfect", "stv.cpp"),        // only 2010 (crashing) and current MAME list it → current MAME
+            row("stvalone", rom("t.bin", chdX), "good", "stv.cpp"),          // 2003-Plus "good" on a crashing driver → current MAME
+            row("onlymame", rom("o.bin", weirdRom), "", "namcos12.cpp"),     // nobody else lists it → current MAME, plain first match
+            row("zipnamed", "", "", "cps2.cpp"),                             // zip-level only entry (no rom rows)
+        ).joinToString("\n").byteInputStream(),
+    )
+    private val threeDbs = listOf("mame2003plus" to statusDb2003, "mame2010" to statusDb2010, "mame" to statusDbMame)
+
+    @Test fun routeByNameWithThreeDbsSendsStvAndDoublyPreliminaryGamesToCurrentMame() {
+        fun rt(n: String) = ArcadeRomCheck.routeByName(threeDbs, n)!!
+        assertNull(ArcadeRomCheck.UNSTABLE_DRIVERS["mame"])
+        assertEquals("stv", statusDbMame["stvgood"]!!.driverName)
+        assertEquals(ArcadeRomCheck.DriverStatus.UNKNOWN, statusDbMame["stvgood"]!!.driverStatus)
+
+        // ST-V: both bundled MAMEs crash on the driver; current MAME lists the game → it goes there and is no longer "known unstable".
+        val stv = rt("stvgood")
+        assertEquals("mame", stv.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_UNSTABLE, stv.reason); assertEquals("mame2003plus", stv.skippedCoreId)
+        assertFalse(stv.knownUnstable)
+        val stv2010 = rt("stv2010")
+        assertEquals("mame", stv2010.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_UNSTABLE, stv2010.reason); assertEquals("mame2010", stv2010.skippedCoreId)
+        assertFalse(stv2010.knownUnstable)
+        val alone = rt("stvalone")
+        assertEquals("mame", alone.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_UNSTABLE, alone.reason); assertFalse(alone.knownUnstable)
+        // Preliminary in the first two, unrated (= OK) in current MAME → current MAME.
+        val both = rt("bothbad")
+        assertEquals("mame", both.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_PRELIMINARY, both.reason); assertEquals("mame2003plus", both.skippedCoreId)
+        // The first strictly better later core still wins: 2010 rates it imperfect, so current MAME is not needed.
+        assertEquals("mame2010", rt("prelim").coreId)
+        // Good in the preferred core → stays; unknown to the older cores → current MAME as a plain first match.
+        assertEquals("mame2003plus", rt("goodgame").coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, rt("goodgame").reason)
+        assertEquals("mame", rt("onlymame").coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, rt("onlymame").reason); assertFalse(rt("onlymame").knownUnstable)
+        // A preliminary game nobody else lists still stays where it is.
+        assertEquals("mame2003plus", rt("onlyhere").coreId)
+        // The two-DB behaviour is unchanged when current MAME does not list the game.
+        assertEquals("mame2003plus", rt("prelimvsstv").coreId)
+        assertNull(ArcadeRomCheck.routeByName(threeDbs, "nothing"))
+    }
+
+    /** A DB without per-file rows (zip-level only) cannot judge the contents: UNVERIFIED, severity OK, not an error. */
+    @Test fun zipLevelOnlyDbReportsUnverified() {
+        val dir = tmp.newFolder()
+        val g = statusDbMame["zipnamed"]!!
+        assertTrue(g.roms.isEmpty()); assertTrue(g.runnable)
+        val r = ArcadeRomCheck.check(statusDbMame, zip(dir, "zipnamed", "anything.bin" to p1))
+        assertEquals(Status.UNVERIFIED, r.status); assertEquals(ArcadeRomCheck.Severity.OK, r.severity)
+        assertTrue(r.issues.isEmpty()); assertEquals("zipnamed", r.game!!.name)
+        // Through resolve with three DBs: routed to current MAME, still UNVERIFIED (no crash, no MISSING_FILES).
+        val res = ArcadeRomCheck.resolve(threeDbs, zip(dir, "zipnamed", "anything.bin" to p1), chdSupported = { it != "mame2003plus" })
+        assertEquals("mame", res.coreId); assertEquals(Status.UNVERIFIED, res.status); assertFalse(res.knownUnstable)
+        // ST-V through resolve: current MAME, OK, and the report's game comes from the current MAME DB.
+        val stv = ArcadeRomCheck.resolve(threeDbs, zip(dir, "stvgood", "s.bin" to biosRomUs))
+        assertEquals("mame", stv.coreId); assertEquals(Status.OK, stv.status); assertFalse(stv.knownUnstable)
+        assertEquals(ArcadeRomCheck.DriverStatus.UNKNOWN, stv.driverStatus)
+        // A DB with rom rows keeps checking files as before.
+        assertEquals(Status.MISSING_FILES, ArcadeRomCheck.check(statusDbMame, zip(dir, "onlymame", "other.bin" to p1)).status)
+    }
+
     @Test fun resolveCarriesRoutingReasonAndStatus() {
         val dir = tmp.newFolder()
         val r = ArcadeRomCheck.resolve(statusDbs, zip(dir, "prelim", "p.bin" to p1))

@@ -34,4 +34,16 @@ data class CoreInfo(
      * context_reset (which would crash or black-screen). Leave empty for cores whose requested version is nominal.
      */
     val glesMinVersion: String = "",
-)
+    /**
+     * "bundled" (default): the .so ships inside the APK. "download": the .so is fetched on demand from the
+     * `cores` GitHub release into <filesDir>/cores/<id>/ (see cores/README.md, [CoreRegistry.libraryPath]).
+     */
+    val distribution: String = "bundled",
+) {
+    val isDownloadable: Boolean get() = distribution == DISTRIBUTION_DOWNLOAD
+
+    companion object {
+        const val DISTRIBUTION_BUNDLED = "bundled"
+        const val DISTRIBUTION_DOWNLOAD = "download"
+    }
+}

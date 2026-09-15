@@ -18,6 +18,13 @@ fun gitCommitCount(): Int = runCatching {
 val commitCount = (findProperty("oneemu.versionCode") as String?)?.toInt() ?: gitCommitCount()
 val appVersionName = (findProperty("oneemu.versionName") as String?) ?: "0.1.$commitCount"
 
+// Cores whose core.json says "distribution": "download" are fetched at runtime from the `cores` GitHub release
+// (cores/README.md) and must never be packaged, even when a locally built .so sits in jniLibs.
+val downloadableCoreLibs: Set<String> = rootProject.file("cores")
+    .listFiles { f -> f.isDirectory && f.resolve("core.json").exists() }
+    ?.filter { dir -> Regex("\"distribution\"\\s*:\\s*\"download\"").containsMatchIn(dir.resolve("core.json").readText()) }
+    ?.map { "**/lib${it.name}_libretro.so" }?.toSet() ?: emptySet()
+
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
     if (f.exists()) f.inputStream().use { load(it) }
@@ -93,7 +100,10 @@ android {
     }
 
     packaging {
-        jniLibs { useLegacyPackaging = true } // extract cores to disk so dlopen() by path works
+        jniLibs {
+            useLegacyPackaging = true // extract cores to disk so dlopen() by path works
+            excludes += downloadableCoreLibs
+        }
         resources.excludes += setOf("META-INF/*.version", "META-INF/LICENSE*")
     }
 }

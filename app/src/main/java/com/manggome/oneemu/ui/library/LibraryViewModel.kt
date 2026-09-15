@@ -70,6 +70,8 @@ sealed class LaunchCheck {
     data object Ok : LaunchCheck()
     /** [neededCore] names the core the game's DAT calls for when that core is not bundled (arcade routing). */
     data class NoCore(val system: SystemId?, val neededCore: String? = null, val neededMameVersion: String = "") : LaunchCheck()
+    /** The core the game needs is a `distribution: download` core that is not installed yet: offer the download, then launch. */
+    data class CoreDownload(val game: GameEntity, val core: CoreInfo) : LaunchCheck()
     data class MissingBios(val core: CoreInfo, val files: List<BiosEntry>, val dir: File) : LaunchCheck()
     data class MissingFile(val path: String) : LaunchCheck()
     /** Arcade zip whose name no DAT knows but whose contents match [resolution.report.suggestedName]; rename then launch. */
@@ -203,6 +205,18 @@ class LibraryViewModel : ViewModel() {
         return system?.let { cores.defaultCoreFor(it) } ?: override
     }
 
+    /**
+     * Core name for the detail screen: like [coreFor], but an arcade zip routed to a downloadable core that is not
+     * installed says so ("MAME 2010 (미설치)") instead of showing the fallback core it would not actually run with.
+     */
+    fun coreDisplayFor(game: GameEntity): String? {
+        if (SystemId.fromId(game.system) == SystemId.ARCADE && game.coreId == null) {
+            val route = ArcadeCoreRouter.route(game, app)
+            ArcadeCoreRouter.needsDownload(cores, route.neededCoreId)?.let { return "${it.displayName} ${app.getString(R.string.cores_core_not_installed)}" }
+        }
+        return coreFor(game)?.displayName
+    }
+
     /** The core arcade routing would choose for [game] ignoring its override (for the "(자동 선택)" mark). */
     fun autoCoreFor(game: GameEntity): CoreInfo? =
         if (SystemId.fromId(game.system) == SystemId.ARCADE) ArcadeCoreRouter.pick(game.copy(coreId = null), app)
@@ -214,6 +228,7 @@ class LibraryViewModel : ViewModel() {
         if (system == SystemId.ARCADE && game.coreId == null) {
             val route = ArcadeCoreRouter.route(game, app)
             if (route.neededCoreId != null) {
+                ArcadeCoreRouter.needsDownload(cores, route.neededCoreId)?.let { return LaunchCheck.CoreDownload(game, it) }
                 return LaunchCheck.NoCore(system, ArcadeCoreRouter.displayName(cores, route.neededCoreId), ArcadeCoreRouter.mameVersion(route.neededCoreId))
             }
             if (route.resolvedCoreId == null) {
@@ -226,7 +241,12 @@ class LibraryViewModel : ViewModel() {
             }
         }
         val core = coreFor(game)
-        if (core == null || !cores.isAvailable(core)) return LaunchCheck.NoCore(system)
+        if (core == null || !cores.isAvailable(core)) {
+            // A downloadable core (explicit override or the only core for the system) that is not installed yet.
+            val wanted = game.coreId?.let { cores.core(it) }?.takeIf { it.isDownloadable } ?: core?.takeIf { it.isDownloadable }
+            if (wanted != null) return LaunchCheck.CoreDownload(game, wanted)
+            return LaunchCheck.NoCore(system)
+        }
         val systemDir = dirs.system
         val missing = core.bios.filter { b ->
             b.required && (b.system.isEmpty() || system == null || b.system == system.id) && !File(systemDir, b.file).exists()

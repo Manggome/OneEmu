@@ -1,0 +1,260 @@
+# Downloadable cores (cores/README.md, "내려받기형 코어"): every cores/<id>/core.json with
+# "distribution": "download" is built here — not in build.yml — and published on the rolling GitHub release
+# tagged `cores` as <id>-<sourceCommit[0..12]>-arm64.zip (contents: lib<id>_libretro.so + core.json). The
+# same release carries manifest.json (schema in cores/README.md), which the app reads to offer the download.
+#
+# The manifest is merged, not replaced: entries of cores built in this run are updated, everything else is
+# kept. Older zips of a core that was just rebuilt are deleted from the release to save space.
+name: Downloadable cores
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cores/mame/**"
+      - "cores/mame2010/**"
+      - ".github/workflows/cores.yml"
+  workflow_dispatch:
+    inputs:
+      core:
+        description: "Core id to build (empty = every downloadable core)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cores-release
+  cancel-in-progress: false
+
+env:
+  NDK_VERSION: 28.2.13676358
+  CMAKE_VERSION: 3.22.1
+  # Bump to invalidate every downloadable-core cache at once (toolchain change etc.).
+  CORE_CACHE_SALT: v1
+  RELEASE_TAG: cores
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Which cores are downloadable? (jq over cores/*/core.json; optional single-core filter)
+  # ---------------------------------------------------------------------------
+  discover:
+    name: discover
+    runs-on: ubuntu-latest
+    outputs:
+      cores: ${{ steps.list.outputs.cores }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: List downloadable cores
+        id: list
+        env:
+          ONLY: ${{ github.event.inputs.core }}
+        run: |
+          command -v jq >/dev/null || { sudo apt-get update && sudo apt-get install -y --no-install-recommends jq; }
+          ids=()
+          for cj in cores/*/core.json; do
+            dist="$(jq -r '.distribution // "bundled"' "$cj")"
+            id="$(jq -r '.id' "$cj")"
+            [ "$dist" = "download" ] || continue
+            if [ -n "$ONLY" ] && [ "$ONLY" != "$id" ]; then continue; fi
+            [ -f "cores/$id/build.sh" ] || { echo "::warning::cores/$id has no build.sh, skipped"; continue; }
+            ids+=("$id")
+          done
+          json="$(printf '%s\n' "${ids[@]:-}" | jq -R . | jq -sc 'map(select(length > 0))')"
+          echo "downloadable cores: $json"
+          echo "cores=$json" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # One job per downloadable core (MAME is huge: several hours on a free runner → 350 min limit).
+  # ---------------------------------------------------------------------------
+  build:
+    name: core ${{ matrix.core }}
+    needs: discover
+    if: needs.discover.outputs.cores != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        core: ${{ fromJSON(needs.discover.outputs.cores) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore cached core
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/jniLibs/arm64-v8a/lib${{ matrix.core }}_libretro.so
+          key: dlcore-${{ env.CORE_CACHE_SALT }}-${{ runner.os }}-${{ matrix.core }}-${{ hashFiles(format('cores/{0}/build.sh', matrix.core), format('cores/{0}/core.json', matrix.core), format('cores/{0}/patches/**', matrix.core)) }}
+
+      - name: Install build tools
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build nasm python3 python3-venv python3-pip ccache pkg-config autoconf automake libtool make patch unzip zip
+
+      - name: Set up JDK 17
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+          packages: ""
+
+      - name: Install NDK + CMake
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;${NDK_VERSION}" "cmake;${CMAKE_VERSION}"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "${ANDROID_HOME}/cmake/${CMAKE_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Build ${{ matrix.core }}
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${NDK_VERSION}"
+          bash "cores/${{ matrix.core }}/build.sh"
+          ls -la "app/src/main/jniLibs/arm64-v8a/lib${{ matrix.core }}_libretro.so"
+
+      # <id>-<commit12>-arm64.zip + <id>.entry.json (one manifest entry: size, sha256, url …)
+      - name: Package
+        id: pkg
+        env:
+          CORE: ${{ matrix.core }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          SO="app/src/main/jniLibs/arm64-v8a/lib${CORE}_libretro.so"
+          CJ="cores/${CORE}/core.json"
+          test -s "$SO"
+          COMMIT12="$(jq -r '.sourceCommit' "$CJ" | cut -c1-12)"
+          [ -n "$COMMIT12" ] && [ "$COMMIT12" != "null" ] || { echo "core.json has no sourceCommit"; exit 1; }
+          LIBFILE="$(jq -r '.libFile' "$CJ")"
+          MINAPP="$(jq -r '.minAppVersion // "0.1.0"' "$CJ")"
+          FILE="${CORE}-${COMMIT12}-arm64.zip"
+          mkdir -p dist stage
+          cp "$SO" "stage/${LIBFILE}"
+          cp "$CJ" stage/core.json
+          (cd stage && zip -9 -X "../dist/${FILE}" "${LIBFILE}" core.json)
+          SIZE="$(stat -c %s "dist/${FILE}")"
+          SHA="$(sha256sum "dist/${FILE}" | cut -d' ' -f1)"
+          jq -n --arg id "$CORE" --arg version "$COMMIT12" --arg file "$FILE" \
+                --arg url "https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${FILE}" \
+                --argjson size "$SIZE" --arg sha256 "$SHA" --arg libFile "$LIBFILE" --arg minAppVersion "$MINAPP" \
+                '{id:$id, version:$version, file:$file, url:$url, size:$size, sha256:$sha256, libFile:$libFile, minAppVersion:$minAppVersion}' \
+                > "dist/${CORE}.entry.json"
+          cat "dist/${CORE}.entry.json"
+          ls -la dist
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.core }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Merge manifest.json with what the `cores` release already has, drop superseded zips, upload.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: publish cores release
+    needs: build
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          merge-multiple: true
+          path: dist
+
+      - name: Fetch current manifest and merge
+        id: manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          # Existing manifest (the release or the asset may not exist yet → start from an empty one).
+          if gh release download "$RELEASE_TAG" --repo "$REPO" --pattern manifest.json --output old-manifest.json 2>/dev/null; then
+            echo "existing manifest:"; cat old-manifest.json
+          else
+            echo '{"schema":1,"cores":[]}' > old-manifest.json
+            echo "no existing manifest (first cores release)"
+          fi
+          jq -e '.cores | type == "array"' old-manifest.json >/dev/null || echo '{"schema":1,"cores":[]}' > old-manifest.json
+
+          # New entries from this run; ids being replaced.
+          jq -s '.' dist/*.entry.json > new-entries.json
+          jq -r '.[].id' new-entries.json > built-ids.txt
+          echo "built: $(paste -sd' ' built-ids.txt)"
+
+          # Zips of the same core id that the old manifest pointed at and that this run replaces → delete later.
+          jq -r --slurpfile new new-entries.json '
+              ($new[0] | map(.id)) as $ids
+              | .cores[] | select(.id as $i | $ids | index($i)) | .file' old-manifest.json > superseded.txt || true
+          # Do not delete a file we are about to upload again (same commit rebuilt).
+          for f in dist/*.zip; do basename "$f"; done > uploading.txt
+          grep -vxF -f uploading.txt superseded.txt > superseded-final.txt || true
+          echo "superseded: $(paste -sd' ' superseded-final.txt)"
+
+          jq --slurpfile new new-entries.json '
+              ($new[0] | map(.id)) as $ids
+              | .schema = 1
+              | .cores = ((.cores | map(select(.id as $i | $ids | index($i) | not))) + $new[0] | sort_by(.id))' \
+              old-manifest.json > dist/manifest.json
+          rm -f dist/*.entry.json
+          echo "new manifest:"; cat dist/manifest.json
+
+      - name: Delete superseded zips from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$REPO" >/dev/null 2>&1; then
+            while read -r f; do
+              [ -n "$f" ] || continue
+              echo "deleting superseded asset $f"
+              gh release delete-asset "$RELEASE_TAG" "$f" --repo "$REPO" --yes || echo "::warning::could not delete $f"
+            done < superseded-final.txt
+          else
+            echo "release $RELEASE_TAG does not exist yet; nothing to delete"
+          fi
+
+      # Creates the `cores` release when missing; existing assets with the same name (manifest.json, a rebuilt
+      # zip) are replaced, unrelated assets (other cores' zips) are left alone.
+      - name: Upload to the rolling `cores` release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Downloadable cores
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.zip
+            dist/manifest.json
+          body: |
+            OneEmu 내려받기형 코어 (arm64-v8a). 이 릴리스는 고정 태그 `cores`로 계속 갱신됩니다.
+
+            - 앱이 **설정 → 코어 / BIOS** 또는 게임 실행 시 `manifest.json`을 읽어 필요한 코어를 내려받습니다. 직접 설치할 필요는 없습니다.
+            - 파일 이름: `<코어 id>-<소스 커밋 12자리>-arm64.zip` (내용: `lib<id>_libretro.so`, `core.json`)
+            - ROM/BIOS 는 포함되어 있지 않습니다.
