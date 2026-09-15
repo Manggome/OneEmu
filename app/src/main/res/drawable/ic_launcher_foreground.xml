@@ -2,16 +2,16 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- Handheld body -->
+    <!-- Handheld body (mint) -->
     <path android:fillColor="#FF7FD1C8"
-        android:pathData="M22,34 h64 a8,8 0 0 1 8,8 v24 a8,8 0 0 1 -8,8 h-64 a8,8 0 0 1 -8,-8 v-24 a8,8 0 0 1 8,-8 z"/>
-    <!-- Screen -->
+        android:pathData="M31,39 h46 a8,8 0 0 1 8,8 v14 a8,8 0 0 1 -8,8 h-46 a8,8 0 0 1 -8,-8 v-14 a8,8 0 0 1 8,-8 z"/>
+    <!-- Screen (dark) -->
     <path android:fillColor="#FF1B2432"
-        android:pathData="M40,40 h28 a3,3 0 0 1 3,3 v22 a3,3 0 0 1 -3,3 h-28 a3,3 0 0 1 -3,-3 v-22 a3,3 0 0 1 3,-3 z"/>
+        android:pathData="M45,44 h18 a2,2 0 0 1 2,2 v16 a2,2 0 0 1 -2,2 h-18 a2,2 0 0 1 -2,-2 v-16 a2,2 0 0 1 2,-2 z"/>
     <!-- D-pad -->
     <path android:fillColor="#FF1B2432"
-        android:pathData="M25,50 h4 v-4 h4 v4 h4 v4 h-4 v4 h-4 v-4 h-4 z"/>
-    <!-- A/B -->
-    <path android:fillColor="#FF1B2432" android:pathData="M78,49 a3,3 0 1 0 0.01,0 z"/>
-    <path android:fillColor="#FF1B2432" android:pathData="M84,55 a3,3 0 1 0 0.01,0 z"/>
+        android:pathData="M33.5,49.5 h2.5 v-2.5 h2.5 v2.5 h2.5 v2.5 h-2.5 v2.5 h-2.5 v-2.5 h-2.5 z"/>
+    <!-- A / B buttons -->
+    <path android:fillColor="#FF1B2432" android:pathData="M69,49 m-2,0 a2,2 0 1 0 4,0 a2,2 0 1 0 -4,0"/>
+    <path android:fillColor="#FF1B2432" android:pathData="M73.5,53 m-2,0 a2,2 0 1 0 4,0 a2,2 0 1 0 -4,0"/>
 </vector>
