@@ -40,15 +40,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,6 +53,9 @@ import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.Haptics
+import com.manggome.oneemu.emu.ScreenConfig
+import com.manggome.oneemu.emu.ViewportRect
+import com.manggome.oneemu.emu.ViewportStore
 import com.manggome.oneemu.emu.pad.DefaultLayouts
 import com.manggome.oneemu.emu.pad.PadElement
 import com.manggome.oneemu.emu.pad.PadElementId
@@ -73,25 +73,27 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
- * Drag-to-arrange editor for the virtual pad of one (system, orientation).
+ * Drag-to-arrange editor for the virtual pad *and* the game viewport of one (system, screen configuration).
  *
- * Used in two places: over the paused game from the in-game quick settings (transparent
- * background, [showMockGame] = false) and as the Routes.LAYOUT_EDITOR destination (dark background
- * with a faint mock game rectangle; [orientationToggle] lets the user switch which orientation they
- * are editing). Changes are only persisted on 저장.
+ * Used in two places: over the paused game from the in-game quick settings (transparent background,
+ * [showMockGame] = false, [onViewportPreview] pushes the dashed 화면 rectangle to the native renderer live)
+ * and as the Routes.LAYOUT_EDITOR destination (dark background, the viewport doubles as the mock game
+ * rectangle; [configSelector] lets the user switch which configuration they are editing). Changes are only
+ * persisted on 저장.
  *
- * Editing helpers (shared with the skin editor through [EditorGuides.kt] / [EditorChrome.kt]): smart
- * guides with snapping, axis lock (두 손가락 or 축 고정), 1 dp nudge, multi-select alignment, undo/redo,
- * and a tool panel that gets out of the way while dragging.
+ * Editing helpers (shared with the skin editor through [EditorGuides.kt] / [EditorChrome.kt] /
+ * [ViewportEditing.kt]): smart guides with snapping, axis lock (두 손가락 or 축 고정), 1 dp nudge, multi-select
+ * alignment, undo/redo, viewport corner handles, and a tool panel that gets out of the way while dragging.
  */
 @Composable
 fun LayoutEditor(
     system: SystemId,
-    landscape: Boolean,
+    config: ScreenConfig,
     showMockGame: Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
-    orientationToggle: (@Composable () -> Unit)? = null,
+    configSelector: (@Composable () -> Unit)? = null,
+    onViewportPreview: ((ViewportRect) -> Unit)? = null,
 ) {
     // An image skin selected for this system gets its own editor; the vector pad keeps the original one.
     val context = LocalContext.current
@@ -100,19 +102,23 @@ fun LayoutEditor(
     }
     when (val sel = selection) {
         SkinSelection.Loading -> Box(modifier.fillMaxSize().background(if (showMockGame) OneEmuColors.Background else Color(0x66000000)))
-        is SkinSelection.Skin -> SkinEditor(system, landscape, sel.info, showMockGame, onClose, modifier, orientationToggle)
-        SkinSelection.Vector -> VectorLayoutEditor(system, landscape, showMockGame, onClose, modifier, orientationToggle)
+        is SkinSelection.Skin -> SkinEditor(system, config, sel.info, showMockGame, onClose, modifier, configSelector, onViewportPreview)
+        SkinSelection.Vector -> VectorLayoutEditor(system, config, showMockGame, onClose, modifier, configSelector, onViewportPreview)
     }
 }
+
+/** One undo step of the vector editor: pad layout + viewport together. */
+private data class VectorEditState(val layout: PadLayout, val viewport: ViewportRect)
 
 @Composable
 private fun VectorLayoutEditor(
     system: SystemId,
-    landscape: Boolean,
+    config: ScreenConfig,
     showMockGame: Boolean,
     onClose: () -> Unit,
     modifier: Modifier,
-    orientationToggle: (@Composable () -> Unit)?,
+    configSelector: (@Composable () -> Unit)?,
+    onViewportPreview: ((ViewportRect) -> Unit)?,
 ) {
     val context = LocalContext.current
     val settings = remember { OneEmuApp.get().settings }
@@ -122,6 +128,11 @@ private fun VectorLayoutEditor(
     val haptics = remember { Haptics(context) }
 
     var layout by remember { mutableStateOf<PadLayout?>(null) }
+    /** null = never customised → [ViewportStore.default] for the current canvas. */
+    var savedViewport by remember { mutableStateOf<ViewportRect?>(null) }
+    var viewport by remember { mutableStateOf<ViewportRect?>(null) }
+    var viewportSelected by remember { mutableStateOf(false) }
+    var keepAspect by remember { mutableStateOf(true) }
     var dirty by remember { mutableStateOf(false) }
     var selection by remember { mutableStateOf<List<PadElementId>>(emptyList()) }
     var opacity by remember { mutableStateOf(Settings.DEFAULT_PAD_OPACITY) }
@@ -131,89 +142,140 @@ private fun VectorLayoutEditor(
     var showElementList by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
-    val history = remember { UndoHistory<PadLayout>(50) }
+    val history = remember { UndoHistory<VectorEditState>(50) }
     val chrome = rememberEditorChromeState()
     val drag = remember { EditorDragState() }
 
-    LaunchedEffect(system, landscape) {
-        layout = PadLayoutStore.load(system, landscape)
+    LaunchedEffect(system, config) {
+        layout = PadLayoutStore.load(system, config)
+        savedViewport = ViewportStore.loadSaved(system, config)
+        viewport = savedViewport
         opacity = settings.get(Settings.Keys.padOpacity, Settings.DEFAULT_PAD_OPACITY)
         globalScale = settings.get(Settings.Keys.padScale, Settings.DEFAULT_PAD_SCALE)
         snap = settings.get(PadLayoutStore.Keys.layoutSnapToGrid, false)
+        keepAspect = settings.get(ViewportPrefs.keepAspect, true)
         vibrate = settings.get(Settings.Keys.padVibration, true)
         selection = emptyList()
+        viewportSelected = false
         history.clear()
         dirty = false
     }
+
+    val defaultViewport = remember(system, config, canvasSize) { ViewportStore.default(system, config, canvasSize) }
+    val currentViewport = viewport ?: defaultViewport
+    val gameAspect = remember(system) { ViewportStore.nominalAspect(system) }
+
+    // Live preview on the paused game: push every change, the host restores the saved value when we close.
+    LaunchedEffect(currentViewport, canvasSize) { if (canvasSize != Size.Zero) onViewportPreview?.invoke(currentViewport) }
 
     fun requestClose() { if (dirty) confirmDiscard = true else onClose() }
     BackHandler { requestClose() }
 
     fun save() {
         val l = layout ?: return
+        val vp = currentViewport
         scope.launch {
-            PadLayoutStore.save(system, landscape, l)
+            PadLayoutStore.save(system, config, l)
+            ViewportStore.save(system, config, vp)
             settings.set(Settings.Keys.padOpacity, opacity)
             settings.set(PadLayoutStore.Keys.layoutSnapToGrid, snap)
+            settings.set(ViewportPrefs.keepAspect, keepAspect)
             Toast.makeText(context, R.string.le_saved, Toast.LENGTH_SHORT).show()
             dirty = false
             onClose()
         }
     }
 
+    fun snapshot(): VectorEditState? = layout?.let { VectorEditState(it, currentViewport) }
+    fun restore(s: VectorEditState) { layout = s.layout; viewport = s.viewport; dirty = true }
+
     /** Applies [transform] to the layout as one undo step ([key] coalesces slider/nudge bursts). */
     fun edit(key: String? = null, transform: (PadLayout) -> PadLayout) {
-        val l = layout ?: return
-        history.record(l, key)
-        layout = transform(l)
+        val before = snapshot() ?: return
+        history.record(before, key)
+        layout = transform(before.layout)
         dirty = true
     }
-    fun undo() { val l = layout ?: return; history.undo(l)?.let { layout = it; dirty = true } }
-    fun redo() { val l = layout ?: return; history.redo(l)?.let { layout = it; dirty = true } }
+    fun editViewport(key: String? = null, transform: (ViewportRect) -> ViewportRect) {
+        val before = snapshot() ?: return
+        history.record(before, key)
+        viewport = transform(before.viewport).normalized()
+        dirty = true
+    }
+    fun undo() { val cur = snapshot() ?: return; history.undo(cur)?.let(::restore) }
+    fun redo() { val cur = snapshot() ?: return; history.redo(cur)?.let(::restore) }
 
     val layoutState = rememberUpdatedState(layout)
+    val viewportState = rememberUpdatedState(currentViewport)
     val scaleState = rememberUpdatedState(globalScale)
     val snapState = rememberUpdatedState(snap)
     val vibrateState = rememberUpdatedState(vibrate)
     val selectionState = rememberUpdatedState(selection)
+    val viewportSelectedState = rememberUpdatedState(viewportSelected)
     val canvasState = rememberUpdatedState(canvasSize)
-    val landscapeState = rememberUpdatedState(landscape)
 
     fun PadElement.rect(size: Size = canvasState.value) = rectOn(size, density, scaleState.value)
+    fun viewportRect(size: Size = canvasState.value) = viewportState.value.toRect(size)
 
     val host = remember {
-        object : EditorDragHost<PadElementId> {
+        object : EditorDragHost<Any> {
             private var startLayout: PadLayout? = null
             private var startRects: Map<PadElementId, Rect> = emptyMap()
+            private var startViewport: Rect = Rect.Zero
 
-            override fun hitTest(pos: Offset): PadElementId? =
-                layoutState.value?.elements?.asReversed()?.firstOrNull { e -> e.visible && inflate(e.rect(), 0.2f).contains(pos) }?.id
-            override fun rectOf(id: PadElementId): Rect? = layoutState.value?.get(id)?.rect()
-            override fun selection(): List<PadElementId> = selectionState.value
-            override fun otherRects(exclude: Set<PadElementId>): List<Rect> =
-                layoutState.value?.elements.orEmpty().filter { it.visible && it.id !in exclude }.map { it.rect() }
-            override fun fixedRects(): List<Rect> =
-                if (showMockGame) listOf(mockGameRect(canvasState.value, landscapeState.value)) else emptyList()
-            override fun axisLockOn(): Boolean = chrome.axisLock
-            override fun onTap(id: PadElementId?) { selection = if (id == null) emptyList() else listOf(id) }
-            override fun onLongPress(id: PadElementId) { selection = if (id in selection) selection - id else selection + id }
-            override fun onDragStart(ids: Set<PadElementId>) {
-                val l = layoutState.value ?: return
-                startLayout = l
-                startRects = ids.mapNotNull { id -> l[id]?.let { id to it.rect() } }.toMap()
-                history.record(l)
+            override fun hitTest(pos: Offset): Any? {
+                val pad = layoutState.value?.elements?.asReversed()?.firstOrNull { e -> e.visible && inflate(e.rect(), 0.2f).contains(pos) }?.id
+                if (pad != null) return pad
+                return if (viewportRect().contains(pos)) ViewportItem else null
             }
-            override fun onDragMove(ids: Set<PadElementId>, delta: Offset) {
+            override fun rectOf(id: Any): Rect? = if (id === ViewportItem) viewportRect() else layoutState.value?.get(id as PadElementId)?.rect()
+            override fun selection(): List<Any> = selectionState.value
+            override fun otherRects(exclude: Set<Any>): List<Rect> =
+                if (ViewportItem in exclude) emptyList()
+                else layoutState.value?.elements.orEmpty().filter { it.visible && it.id !in exclude }.map { it.rect() }
+            override fun fixedRects(): List<Rect> = listOf(viewportRect())
+            override fun fixedRects(moving: Set<Any>): List<Rect> {
+                val s = canvasState.value
+                // The viewport snaps to the screen edges/centre; buttons snap to the viewport's edges/centre.
+                return if (ViewportItem in moving) listOf(Rect(Offset.Zero, s)) else listOf(viewportRect())
+            }
+            override fun axisLockOn(): Boolean = chrome.axisLock
+            override fun onTap(id: Any?) {
+                if (id === ViewportItem) {
+                    viewportSelected = !viewportSelectedState.value
+                    selection = emptyList()
+                } else {
+                    viewportSelected = false
+                    selection = if (id == null) emptyList() else listOf(id as PadElementId)
+                }
+            }
+            override fun onLongPress(id: Any) {
+                if (id === ViewportItem) { viewportSelected = true; return }
+                val pid = id as PadElementId
+                selection = if (pid in selection) selection - pid else selection + pid
+            }
+            override fun onDragStart(ids: Set<Any>) {
+                val before = snapshot() ?: return
+                startLayout = before.layout
+                startRects = ids.filterIsInstance<PadElementId>().mapNotNull { id -> before.layout[id]?.let { id to it.rect() } }.toMap()
+                startViewport = viewportRect()
+                history.record(before)
+            }
+            override fun onDragMove(ids: Set<Any>, delta: Offset) {
                 val s = canvasState.value
                 if (s == Size.Zero) return
+                if (ViewportItem in ids) {
+                    viewport = ViewportRect.fromRect(clampInside(startViewport.translate(delta), s), s)
+                    return
+                }
                 var l = startLayout ?: return
                 for (id in ids) {
                     val c = (startRects[id] ?: continue).center + delta
-                    l = l.update(id) { it.copy(x = (c.x / s.width).coerceIn(0f, 1f), y = (c.y / s.height).coerceIn(0f, 1f)) }
+                    l = l.update(id as PadElementId) { it.copy(x = (c.x / s.width).coerceIn(0f, 1f), y = (c.y / s.height).coerceIn(0f, 1f)) }
                 }
                 layout = l
             }
-            override fun onDragEnd(ids: Set<PadElementId>) { dirty = true }
+            override fun onDragEnd(ids: Set<Any>) { dirty = true }
             override fun adjust(rect: Rect, snappedX: Boolean, snappedY: Boolean): Rect {
                 if (!snapState.value) return rect
                 val s = canvasState.value
@@ -229,7 +291,14 @@ private fun VectorLayoutEditor(
 
     fun nudge(dxDp: Int, dyDp: Int) {
         val s = canvasSize
-        if (s == Size.Zero || selection.isEmpty()) return
+        if (s == Size.Zero) return
+        if (viewportSelected) {
+            editViewport("nudge") { v ->
+                ViewportRect.fromRect(clampInside(v.toRect(s).translate(Offset(dxDp * density, dyDp * density)), s), s)
+            }
+            return
+        }
+        if (selection.isEmpty()) return
         val ids = selection.toSet()
         edit("nudge") { l ->
             PadLayout(l.elements.map { e ->
@@ -251,9 +320,9 @@ private fun VectorLayoutEditor(
         }
     }
 
-    Box(modifier.fillMaxSize().background(if (showMockGame) OneEmuColors.Background else Color(0x66000000))) {
-        if (showMockGame) MockGame(landscape)
+    val viewportLabel = stringResource(R.string.vp_label)
 
+    Box(modifier.fillMaxSize().background(if (showMockGame) OneEmuColors.Background else Color(0x66000000))) {
         // Elements + drag handling.
         Box(
             Modifier
@@ -265,6 +334,8 @@ private fun VectorLayoutEditor(
                 val l = layout ?: return@Canvas
                 if (canvasSize == Size.Zero) return@Canvas
                 if (snap) drawGrid()
+                val label = textMeasurer.measure(viewportLabel, TextStyle(color = OneEmuColors.Accent, fontSize = 11.sp))
+                drawViewport(currentViewport.toRect(canvasSize), gameAspect, viewportSelected, filled = showMockGame, density = density, label = label)
                 for (e in l.elements) {
                     val rect = e.rectOn(canvasSize, density, globalScale)
                     val alpha = if (e.visible) opacity else 0.15f
@@ -274,6 +345,24 @@ private fun VectorLayoutEditor(
                 }
                 drawGuides(drag.guides, OneEmuColors.Accent, density)
             }
+        }
+
+        if (viewportSelected && canvasSize != Size.Zero) {
+            var resizeStart by remember { mutableStateOf(Rect.Zero) }
+            ViewportHandles(
+                rect = currentViewport.toRect(canvasSize),
+                onDragStart = {
+                    resizeStart = currentViewport.toRect(canvasSize)
+                    snapshot()?.let { history.record(it) }
+                },
+                onDrag = { corner, total ->
+                    val s = canvasSize
+                    val minPx = Size(ViewportRect.MIN_SIZE * s.width, ViewportRect.MIN_SIZE * s.height)
+                    viewport = ViewportRect.fromRect(resizeViewport(resizeStart, corner, total, keepAspect, s, minPx), s)
+                    dirty = true
+                },
+                onDragEnd = { dirty = true },
+            )
         }
 
         val readout = drag.dragRect?.takeIf { canvasSize != Size.Zero }?.let { r ->
@@ -288,7 +377,7 @@ private fun VectorLayoutEditor(
             state = chrome,
             title = stringResource(R.string.le_title),
             subtitle = null,
-            orientationToggle = orientationToggle,
+            orientationToggle = configSelector ?: { ScreenConfigSelector(config, onSelect = null) },
             onCancel = { requestClose() },
             onSave = { save() },
             saveEnabled = layout != null,
@@ -301,7 +390,23 @@ private fun VectorLayoutEditor(
             readout = readout,
         ) {
             val sel = selection.singleOrNull()?.let { id -> layout?.get(id) }
-            if (selection.size >= 2) {
+            if (viewportSelected) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
+                    Text(
+                        stringResource(R.string.vp_size_readout, (currentViewport.w * 100).roundToInt(), (currentViewport.h * 100).roundToInt()),
+                        style = MaterialTheme.typography.bodySmall, color = OneEmuColors.OnSurfaceMuted, modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+                ViewportToolbar(
+                    keepAspect = keepAspect,
+                    onKeepAspect = { keepAspect = it; dirty = true },
+                    onTop = { editViewport { ViewportQuick.top(it) } },
+                    onCenter = { editViewport { ViewportQuick.center(it) } },
+                    onFull = { editViewport { ViewportQuick.full() } },
+                    onDefault = { editViewport { defaultViewport } },
+                )
+            } else if (selection.size >= 2) {
                 AlignToolbar(
                     count = selection.size,
                     onAlignRow = { align(AlignOps::alignRow) },
@@ -347,8 +452,20 @@ private fun VectorLayoutEditor(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 FilterChip(selected = snap, onClick = { snap = !snap }, label = { Text(stringResource(R.string.le_snap)) })
+                FilterChip(
+                    selected = viewportSelected,
+                    onClick = { viewportSelected = !viewportSelected; if (viewportSelected) selection = emptyList() },
+                    label = { Text(stringResource(R.string.vp_select)) },
+                )
                 TextButton(onClick = { showElementList = true }) { Text(stringResource(R.string.le_elements)) }
-                TextButton(onClick = { edit { DefaultLayouts.forSystem(system, landscape) }; selection = emptyList() }) {
+                TextButton(onClick = {
+                    val before = snapshot()
+                    if (before != null) history.record(before)
+                    layout = DefaultLayouts.forSystem(system, config)
+                    viewport = defaultViewport
+                    dirty = true
+                    selection = emptyList()
+                }) {
                     Text(stringResource(R.string.le_reset), maxLines = 1)
                 }
             }
@@ -401,18 +518,4 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGrid() {
     while (x <= size.width) { drawLine(color, Offset(x, 0f), Offset(x, size.height)); x += size.width * 0.02f }
     var y = 0f
     while (y <= size.height) { drawLine(color, Offset(0f, y), Offset(size.width, y)); y += size.height * 0.02f }
-}
-
-/** A faint rectangle where the game image would be, so users can place controls around it. */
-@Composable
-private fun MockGame(landscape: Boolean) {
-    val textMeasurer = rememberTextMeasurer()
-    val label = stringResource(R.string.le_mock_game)
-    Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = 0.6f }) {
-        val rect = mockGameRect(size, landscape)
-        drawRect(Color(0xFF2B2B2B), rect.topLeft, rect.size)
-        drawRect(OneEmuColors.Divider, rect.topLeft, rect.size, style = Stroke(2f))
-        val t = textMeasurer.measure(label, TextStyle(color = OneEmuColors.OnSurfaceMuted, fontSize = 14.sp))
-        drawText(t, topLeft = Offset(rect.center.x - t.size.width / 2f, rect.center.y - t.size.height / 2f))
-    }
 }

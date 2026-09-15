@@ -148,6 +148,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
             if (res != null) {
                 // The DAT may belong to another bundled MAME core (user forced this one): say so first.
                 checker.coreMismatchNote(res, core.id)?.let { message = message + "\n\n" + it }
+                checker.preliminaryNote(res, core.id)?.let { if (it !in message) message = message + "\n\n" + it }
                 if (res.report.severity != ArcadeRomCheck.Severity.OK && res.status != ArcadeRomCheck.Status.NEEDS_SAMPLES) {
                     message = message + "\n\n" + checker.summary(res)
                 }

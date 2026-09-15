@@ -4,6 +4,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.EmulatorSession.Buttons
+import com.manggome.oneemu.emu.ScreenConfig
 import com.manggome.oneemu.model.SystemId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -143,7 +144,7 @@ data class PadLayout(val elements: List<PadElement>) {
     }
 }
 
-/** Loads/saves per-(system, orientation) layouts through [Settings.Keys.layout]. */
+/** Loads/saves per-(system, screen configuration) layouts through [Settings.Keys.layout]. */
 object PadLayoutStore {
     /** Preferences owned by the emulator package. */
     object Keys {
@@ -152,20 +153,20 @@ object PadLayoutStore {
 
     private val settings get() = OneEmuApp.get().settings
 
-    fun observe(system: SystemId, landscape: Boolean): Flow<PadLayout> =
-        settings.observe(Settings.Keys.layout(system.id, landscape), "").map { resolve(system, landscape, it) }
+    fun observe(system: SystemId, config: ScreenConfig): Flow<PadLayout> =
+        settings.observe(Settings.Keys.layout(system.id, config), "").map { resolve(system, config, it) }
 
-    suspend fun load(system: SystemId, landscape: Boolean): PadLayout =
-        resolve(system, landscape, settings.get(Settings.Keys.layout(system.id, landscape), ""))
+    suspend fun load(system: SystemId, config: ScreenConfig): PadLayout =
+        resolve(system, config, settings.get(Settings.Keys.layout(system.id, config), ""))
 
-    suspend fun save(system: SystemId, landscape: Boolean, layout: PadLayout) =
-        settings.set(Settings.Keys.layout(system.id, landscape), layout.toJson())
+    suspend fun save(system: SystemId, config: ScreenConfig, layout: PadLayout) =
+        settings.set(Settings.Keys.layout(system.id, config), layout.toJson())
 
-    suspend fun reset(system: SystemId, landscape: Boolean) = settings.remove(Settings.Keys.layout(system.id, landscape))
+    suspend fun reset(system: SystemId, config: ScreenConfig) = settings.remove(Settings.Keys.layout(system.id, config))
 
     /** Saved layout merged with the default so elements added in newer versions still show up. */
-    private fun resolve(system: SystemId, landscape: Boolean, saved: String): PadLayout {
-        val def = DefaultLayouts.forSystem(system, landscape)
+    private fun resolve(system: SystemId, config: ScreenConfig, saved: String): PadLayout {
+        val def = DefaultLayouts.forSystem(system, config)
         val stored = saved.takeIf { it.isNotBlank() }?.let { PadLayout.fromJson(it) } ?: return def
         val known = stored.elements.map { it.id }.toSet()
         return PadLayout(stored.elements + def.elements.filter { it.id !in known })

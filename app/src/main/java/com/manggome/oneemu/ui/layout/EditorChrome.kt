@@ -151,8 +151,7 @@ fun BoxScope.EditorChrome(
                 if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.labelSmall, color = OneEmuColors.OnSurfaceMuted)
             }
             Spacer(Modifier.width(12.dp))
-            orientationToggle?.invoke()
-            Spacer(Modifier.weight(1f))
+            Box(Modifier.weight(1f)) { orientationToggle?.invoke() }
             TextButton(onClick = onCancel) { Text(stringResource(R.string.le_cancel)) }
             TextButton(onClick = onSave, enabled = saveEnabled) { Text(stringResource(R.string.le_save)) }
         }

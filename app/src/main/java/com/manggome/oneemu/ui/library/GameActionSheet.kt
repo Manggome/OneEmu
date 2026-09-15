@@ -42,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -53,6 +54,8 @@ import androidx.compose.ui.unit.sp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.db.GameEntity
 import com.manggome.oneemu.model.SystemId
+import com.manggome.oneemu.library.ArcadeCoreRouter
+import com.manggome.oneemu.library.ArcadeRomChecker
 import com.manggome.oneemu.ui.common.ConfirmDialog
 import com.manggome.oneemu.ui.common.GameThumbnail
 import com.manggome.oneemu.ui.common.InfoDialog
@@ -180,6 +183,11 @@ fun CorePickerDialog(game: GameEntity, vm: LibraryViewModel, onDismiss: () -> Un
     val cores = remember(game.system) { system?.let { vm.cores.coresFor(it) } ?: emptyList() }
     // Arcade: the "default" is whichever MAME core's DAT lists this zip (ArcadeCoreRouter), not just the system default.
     val default = remember(game.system, game.path) { vm.autoCoreFor(game) }
+    // Why the auto pick skipped the preferred core ("MAME 2003-Plus에서는 미완성 드라이버라 …"), shown under that row.
+    val context = LocalContext.current
+    val autoReason = remember(game.system, game.path) {
+        if (system == SystemId.ARCADE) ArcadeRomChecker.get(context).routeReasonText(ArcadeCoreRouter.route(game.copy(coreId = null))) else null
+    }
     val effective = vm.coreFor(game)
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -198,7 +206,11 @@ fun CorePickerDialog(game: GameEntity, vm: LibraryViewModel, onDismiss: () -> Un
                         val available = vm.cores.isAvailable(core)
                         CoreRow(
                             label = if (system == SystemId.ARCADE && core.id == default?.id) stringResource(R.string.lib_core_auto_of, core.displayName) else core.displayName,
-                            sub = if (available) null else stringResource(R.string.lib_core_unavailable),
+                            sub = when {
+                                !available -> stringResource(R.string.lib_core_unavailable)
+                                system == SystemId.ARCADE && core.id == default?.id -> autoReason
+                                else -> null
+                            },
                             selected = game.coreId == core.id,
                             enabled = available,
                         ) { vm.setCore(game, core.id) }

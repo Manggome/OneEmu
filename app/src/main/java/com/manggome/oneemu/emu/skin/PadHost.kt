@@ -1,14 +1,13 @@
 package com.manggome.oneemu.emu.skin
 
-import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import com.manggome.oneemu.emu.Haptics
+import com.manggome.oneemu.emu.rememberScreenConfig
 import com.manggome.oneemu.emu.pad.PadInput
 import com.manggome.oneemu.emu.pad.PadLayout
 import com.manggome.oneemu.emu.pad.VirtualPad
@@ -36,7 +35,8 @@ fun PadHost(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val config = rememberScreenConfig()
+    val landscape = config.landscape
     val selection by produceState<SkinSelection>(SkinSelection.Loading, system) {
         SkinStore.observeSelectedSkin(context, system).collect { value = it }
     }
@@ -52,8 +52,8 @@ fun PadHost(
             val loaded by produceState<Result<LoadedSkin>?>(null, sel.info.id) {
                 value = runCatching { SkinLoader.load(context, sel.info) }
             }
-            val skinLayout by produceState(SkinLayout.EMPTY, sel.info.id, landscape) {
-                SkinStore.observeLayout(sel.info.id, system.id, landscape).collect { value = it }
+            val skinLayout by produceState(SkinLayout.EMPTY, sel.info.id, config) {
+                SkinStore.observeLayout(sel.info.id, system.id, config).collect { value = it }
             }
             val result = loaded ?: return
             val skin = result.getOrNull()

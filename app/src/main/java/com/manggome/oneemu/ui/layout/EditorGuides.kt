@@ -390,6 +390,8 @@ interface EditorDragHost<Id : Any> {
     fun selection(): List<Id>
     fun otherRects(exclude: Set<Id>): List<Rect>
     fun fixedRects(): List<Rect>
+    /** Fixed snap targets for a drag of [moving]; defaults to [fixedRects]. */
+    fun fixedRects(moving: Set<Id>): List<Rect> = fixedRects()
     fun axisLockOn(): Boolean
     fun onTap(id: Id?)
     fun onLongPress(id: Id)
@@ -457,7 +459,7 @@ suspend fun <Id : Any> PointerInputScope.editorGestures(host: EditorDragHost<Id>
         if (ids.size == 1) host.onTap(id)
         val startUnion = unionOf(ids.mapNotNull { host.rectOf(it) }) ?: return@awaitEachGesture
         val others = host.otherRects(ids)
-        val fixed = host.fixedRects()
+        val fixed = host.fixedRects(ids)
         val canvas = Size(size.width.toFloat(), size.height.toFloat())
         val lock = AxisLock(AXIS_LOCK_DECIDE_DP * densityPx)
         val threshold = SNAP_THRESHOLD_DP * densityPx

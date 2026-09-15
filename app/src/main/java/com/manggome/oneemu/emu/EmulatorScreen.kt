@@ -1,6 +1,5 @@
 package com.manggome.oneemu.emu
 
-import android.content.res.Configuration
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.foundation.background
@@ -34,9 +33,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -68,6 +67,12 @@ import kotlinx.coroutines.launch
 private enum class Sheet { NONE, SAVE, LOAD, CHEATS, SETTINGS }
 
 /**
+ * Core OSD lines we never show. melonDS DS prints "Layout 1/2" (its `melonds_show_current_layout` option)
+ * every time it refreshes its status line; we disable the option in core.json, this is the safety net.
+ */
+private val IGNORED_CORE_MESSAGES = Regex("^\\s*Layout \\d+/\\d+", RegexOption.IGNORE_CASE)
+
+/**
  * Whole emulator window: SurfaceView underneath, virtual pad + HUD on top, then the pause menu and
  * its sheets. Any open overlay pauses the session through [EmulatorActivity.setOverlayOpen].
  */
@@ -77,7 +82,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
     val settings = remember { OneEmuApp.get().settings }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val config = rememberScreenConfig()
     val session = ui.session
 
     var surfaceSize by remember { mutableStateOf(IntSize.Zero) }
@@ -118,9 +123,17 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
         if (session != null) {
             val state by session.state.collectAsState()
             val geometry by session.geometry.collectAsState()
-            val layout by remember(session.system, landscape) { PadLayoutStore.observe(session.system, landscape) }
-                .collectAsState(initial = DefaultLayouts.forSystem(session.system, landscape))
-            val gameRect = if (session.system.hasTouchScreen) computeGameRect(surfaceSize, geometry, aspectMode) else null
+            val layout by remember(session.system, config) { PadLayoutStore.observe(session.system, config) }
+                .collectAsState(initial = DefaultLayouts.forSystem(session.system, config))
+            // Game viewport for this (system, screen configuration): saved value or the top-anchored default.
+            val savedViewport by remember(session.system, config) { ViewportStore.observeSaved(session.system, config) }.collectAsState(initial = null)
+            val viewport = savedViewport ?: ViewportStore.default(session.system, config, Size(surfaceSize.width.toFloat(), surfaceSize.height.toFloat()))
+            // Applied on session start and whenever it changes; re-applied after the editor closes because the
+            // editor previews its unsaved rectangle live on the paused frame.
+            LaunchedEffect(session, viewport, editorOpen, surfaceSize) {
+                if (!editorOpen && surfaceSize != IntSize.Zero) NativeBridge.setViewport(viewport.x, viewport.y, viewport.w, viewport.h)
+            }
+            val gameRect = if (session.system.hasTouchScreen) computeGameRect(surfaceSize, geometry, aspectMode, viewport = viewport) else null
             val hidePad = hideWithGamepad && ui.gamepadConnected
 
             if (!editorOpen) {
@@ -144,8 +157,12 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
 
             val message by session.messages.collectAsState()
             message?.let { msg ->
-                Banner(msg, Modifier.align(Alignment.TopCenter))
-                LaunchedEffect(msg) { delay(3000); session.consumeMessage() }
+                if (IGNORED_CORE_MESSAGES.containsMatchIn(msg)) {
+                    LaunchedEffect(msg) { session.consumeMessage() }
+                } else {
+                    Banner(msg, Modifier.align(Alignment.TopCenter))
+                    LaunchedEffect(msg) { delay(3000); session.consumeMessage() }
+                }
             }
 
             if (showFps) FpsOverlay(Modifier.align(Alignment.TopStart))
@@ -211,7 +228,13 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
             }
 
             if (editorOpen) {
-                LayoutEditor(system = session.system, landscape = landscape, showMockGame = false, onClose = { editorOpen = false })
+                LayoutEditor(
+                    system = session.system,
+                    config = config,
+                    showMockGame = false,
+                    onClose = { editorOpen = false },
+                    onViewportPreview = { v -> NativeBridge.setViewport(v.x, v.y, v.w, v.h) },
+                )
             }
 
             if (confirmReset) {

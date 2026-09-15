@@ -13,6 +13,9 @@ struct VideoConfig {
     AspectMode aspect = AspectMode::Core;
     unsigned rotation = 0;        // 0..3, multiples of 90° clockwise, from RETRO_ENVIRONMENT_SET_ROTATION
     bool bottomLeftOrigin = false; // HW render cores draw with GL's origin
+    // Viewport the game image is letterboxed into, normalized 0..1 of the surface with a top-left origin
+    // (x,y = top-left corner). 0,0,1,1 = the whole surface (legacy behaviour).
+    float vpX = 0.f, vpY = 0.f, vpW = 1.f, vpH = 1.f;
 };
 
 // Owns the EGL display/context/surface and presents either a software framebuffer

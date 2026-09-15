@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.manggome.oneemu.emu.ScreenConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -21,7 +22,7 @@ enum class SortMode { TITLE, RECENT, ADDED }
 
 /**
  * App-wide preferences. Per-core option overrides are stored as "key=value\n" blobs under
- * `coreopts.<coreId>`; per-system control layouts as JSON under `layout.<systemId>.<orientation>`.
+ * `coreopts.<coreId>`; per-system control layouts as JSON under `layout.<systemId>.<screen config>`.
  */
 class Settings(private val context: Context) {
     private val ds get() = context.dataStore
@@ -54,7 +55,10 @@ class Settings(private val context: Context) {
 
         fun coreOptions(coreId: String) = stringPreferencesKey("coreopts.$coreId")
         fun coreForSystem(systemId: String) = stringPreferencesKey("core.$systemId")
-        fun layout(systemId: String, landscape: Boolean) = stringPreferencesKey("layout.$systemId.${if (landscape) "land" else "port"}")
+        /** Per-(system, screen configuration) pad layout JSON: `layout.<system>.<port|land|port_wide|land_wide>`. */
+        fun layout(systemId: String, config: ScreenConfig) = stringPreferencesKey("layout.$systemId.${config.key}")
+        /** Legacy orientation-only accessor; maps to the folded/phone configs so existing saves keep working. */
+        fun layout(systemId: String, landscape: Boolean) = layout(systemId, if (landscape) ScreenConfig.LANDSCAPE else ScreenConfig.PORTRAIT)
         fun gamepadMapping(deviceKey: String) = stringPreferencesKey("gamepad.$deviceKey")
     }
 

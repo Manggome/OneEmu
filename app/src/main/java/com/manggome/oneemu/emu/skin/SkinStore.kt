@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.documentfile.provider.DocumentFile
 import com.manggome.oneemu.OneEmuApp
+import com.manggome.oneemu.emu.ScreenConfig
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.util.AppDirs
 import kotlinx.coroutines.Dispatchers
@@ -60,7 +61,7 @@ data class SkinInfo(
     }
 }
 
-/** User edits for one (skin, system, orientation): per-desc offsets (normalized to the screen), scale, visibility. */
+/** User edits for one (skin, system, screen configuration): per-desc offsets (normalized to the screen), scale, visibility. */
 @Serializable
 data class DescEdit(val dx: Float = 0f, val dy: Float = 0f, val scale: Float = 1f, val visible: Boolean = true)
 
@@ -84,7 +85,7 @@ data class SkinLayout(val items: Map<String, DescEdit> = emptyMap()) {
 /**
  * Skin discovery, per-system selection and per-skin layout persistence.
  *
- * Settings keys owned here: `skin.<systemId>` = skin id or [VECTOR]; `skin_layout.<skinId>.<systemId>.<port|land>` = [SkinLayout] JSON.
+ * Settings keys owned here: `skin.<systemId>` = skin id or [VECTOR]; `skin_layout.<skinId>.<systemId>.<port|land|port_wide|land_wide>` = [SkinLayout] JSON.
  * Imported skins live in `<externalFilesDir>/skins/<name>/`.
  */
 object SkinStore {
@@ -94,8 +95,8 @@ object SkinStore {
 
     object Keys {
         fun selected(systemId: String) = stringPreferencesKey("skin.$systemId")
-        fun layout(skinId: String, systemId: String, landscape: Boolean) =
-            stringPreferencesKey("skin_layout.$skinId.$systemId.${if (landscape) "land" else "port"}")
+        fun layout(skinId: String, systemId: String, config: ScreenConfig) =
+            stringPreferencesKey("skin_layout.$skinId.$systemId.${config.key}")
     }
 
     private val settings get() = OneEmuApp.get().settings
@@ -191,16 +192,16 @@ object SkinStore {
 
     // ---- layouts ----
 
-    fun observeLayout(skinId: String, systemId: String, landscape: Boolean): Flow<SkinLayout> =
-        settings.observe(Keys.layout(skinId, systemId, landscape), "").map { it.takeIf(String::isNotBlank)?.let(SkinLayout::fromJson) ?: SkinLayout.EMPTY }
+    fun observeLayout(skinId: String, systemId: String, config: ScreenConfig): Flow<SkinLayout> =
+        settings.observe(Keys.layout(skinId, systemId, config), "").map { it.takeIf(String::isNotBlank)?.let(SkinLayout::fromJson) ?: SkinLayout.EMPTY }
 
-    suspend fun loadLayout(skinId: String, systemId: String, landscape: Boolean): SkinLayout =
-        settings.get(Keys.layout(skinId, systemId, landscape), "").takeIf(String::isNotBlank)?.let(SkinLayout::fromJson) ?: SkinLayout.EMPTY
+    suspend fun loadLayout(skinId: String, systemId: String, config: ScreenConfig): SkinLayout =
+        settings.get(Keys.layout(skinId, systemId, config), "").takeIf(String::isNotBlank)?.let(SkinLayout::fromJson) ?: SkinLayout.EMPTY
 
-    suspend fun saveLayout(skinId: String, systemId: String, landscape: Boolean, layout: SkinLayout) =
-        settings.set(Keys.layout(skinId, systemId, landscape), layout.toJson())
+    suspend fun saveLayout(skinId: String, systemId: String, config: ScreenConfig, layout: SkinLayout) =
+        settings.set(Keys.layout(skinId, systemId, config), layout.toJson())
 
-    suspend fun resetLayout(skinId: String, systemId: String, landscape: Boolean) = settings.remove(Keys.layout(skinId, systemId, landscape))
+    suspend fun resetLayout(skinId: String, systemId: String, config: ScreenConfig) = settings.remove(Keys.layout(skinId, systemId, config))
 
     // ---- import / delete ----
 

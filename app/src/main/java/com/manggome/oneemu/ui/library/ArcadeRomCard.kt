@@ -137,10 +137,27 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
                     Spacer(Modifier.width(8.dp))
                     Text(checker.statusText(resolution), style = MaterialTheme.typography.titleSmall, color = severityColor(report.severity))
                 }
-                // "실행 코어: MAME 2010 (MAME 0.139 롬셋)" — which bundled MAME the zip is routed to.
+                // "실행 코어: MAME 2010 (MAME 0.139 롬셋)" — which bundled MAME the zip is routed to, and why it left
+                // the preferred core ("MAME 2003-Plus에서는 미완성 드라이버라 MAME 2010으로 실행") when it did.
                 checker.runCoreText(resolution)?.let { line ->
                     Spacer(Modifier.height(4.dp))
                     Text(line, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    checker.routeReasonText(resolution)?.let { why ->
+                        Text(why, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                // "에뮬레이션 상태: 양호 / 불완전(…) / 미완성(실행 불안정)" from the chosen core's DAT.
+                checker.driverStatusText(resolution)?.let { line ->
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        line,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = when (resolution.driverStatus) {
+                            ArcadeRomCheck.DriverStatus.PRELIMINARY -> OneEmuColors.Danger
+                            ArcadeRomCheck.DriverStatus.IMPERFECT -> StatusWarn
+                            else -> StatusOk
+                        },
+                    )
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(checker.explanation(resolution), style = MaterialTheme.typography.bodyMedium)
