@@ -29,6 +29,7 @@ object CrashMarker {
     private fun file(context: Context) = File(context.cacheDir, "last_session.txt")
 
     fun write(context: Context, gameTitle: String, gamePath: String, coreId: String) {
+        clearNativeCrash(context) // a stale record must not be attributed to this session
         runCatching { file(context).writeText("$gameTitle\n$gamePath\n$coreId\n${System.currentTimeMillis()}") }
     }
 

@@ -36,7 +36,9 @@ object OpenWithHandler {
             Toast.makeText(context, "지원하지 않는 파일입니다: ${file.name}", Toast.LENGTH_LONG).show()
             return true
         }
-        context.startActivity(EmulatorActivity.intent(context, game.id))
+        val launch = EmulatorActivity.intent(context, game.id)
+        intent.getStringExtra(EmulatorActivity.EXTRA_CORE_ID)?.let { launch.putExtra(EmulatorActivity.EXTRA_CORE_ID, it) }
+        context.startActivity(launch)
         return true
     }
 }
