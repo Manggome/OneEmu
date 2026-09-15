@@ -19,6 +19,7 @@ import com.manggome.oneemu.ui.library.libraryGraph
 import com.manggome.oneemu.ui.settings.settingsGraph
 import com.manggome.oneemu.ui.skins.skinsGraph
 import com.manggome.oneemu.ui.theme.OneEmuTheme
+import com.manggome.oneemu.emu.CrashReportPrompt
 import com.manggome.oneemu.update.UpdatePrompt
 
 class MainActivity : ComponentActivity() {
@@ -40,6 +41,7 @@ class MainActivity : ComponentActivity() {
                     AppNavHost(nav)
                     // Checks GitHub Releases occasionally and offers to install a newer APK.
                     UpdatePrompt()
+                    CrashReportPrompt()
                 }
             }
         }

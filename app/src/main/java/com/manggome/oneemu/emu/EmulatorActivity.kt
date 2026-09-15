@@ -110,6 +110,7 @@ class EmulatorActivity : ComponentActivity() {
         val missing = session.missingRequiredBios()
         if (missing.isNotEmpty()) { ui.error = getString(R.string.emu_missing_bios, missing.joinToString(", ")); return }
         ui.session = session
+        CrashMarker.write(this, game.title, game.path, core.id)
         if (session.load()) {
             session.applyCheats()
             updateRunning()
@@ -220,7 +221,7 @@ class EmulatorActivity : ComponentActivity() {
         if (!closed) {
             closed = true
             val s = ui.session
-            ioScope.launch { s?.close() }
+            ioScope.launch { s?.close(); CrashMarker.clear(this@EmulatorActivity) }
         }
         gamepad.stopWatching()
         haptics.cancel()
@@ -252,6 +253,7 @@ class EmulatorActivity : ComponentActivity() {
                 ) s.saveState(AppDirs.AUTO_SLOT)
                 s.close()
             }
+            CrashMarker.clear(this@EmulatorActivity)
             finish()
         }
     }
