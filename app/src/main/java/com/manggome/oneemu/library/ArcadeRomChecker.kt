@@ -129,6 +129,7 @@ class ArcadeRomChecker private constructor(private val context: Context) {
             Status.WRONG_SET -> context.getString(R.string.lib_arcade_status_wrong_set)
             Status.NEEDS_PARENT -> context.getString(R.string.lib_arcade_status_needs_parent, "${r.neededZip ?: r.parentZip}.zip")
             Status.NEEDS_BIOS -> context.getString(R.string.lib_arcade_status_needs_bios, "${r.neededZip ?: r.biosZip}.zip")
+            Status.NEEDS_DEVICE -> context.getString(R.string.lib_arcade_status_needs_device, "${r.neededZip ?: r.deviceZips.firstOrNull()}.zip")
             Status.NEEDS_SAMPLES -> context.getString(R.string.lib_arcade_status_needs_samples, "${r.sampleZip}.zip")
             Status.CHD_UNSUPPORTED -> context.getString(R.string.lib_arcade_status_chd)
             Status.NOT_IN_DAT -> context.getString(R.string.lib_arcade_status_not_in_dat, allCoreNames())
@@ -152,6 +153,7 @@ class ArcadeRomChecker private constructor(private val context: Context) {
                 context.getString(R.string.lib_arcade_desc_needs_parent, db(coreId)[p]?.description ?: p, p)
             }
             Status.NEEDS_BIOS -> context.getString(R.string.lib_arcade_desc_needs_bios, r.neededZip ?: r.biosZip ?: "")
+            Status.NEEDS_DEVICE -> context.getString(R.string.lib_arcade_desc_needs_device, r.neededZip ?: r.deviceZips.firstOrNull() ?: "")
             Status.NEEDS_SAMPLES -> context.getString(R.string.lib_arcade_desc_needs_samples, r.sampleZip ?: "")
             Status.CHD_UNSUPPORTED -> context.getString(R.string.lib_arcade_desc_chd, r.disks, name)
             Status.NOT_IN_DAT -> context.getString(R.string.lib_arcade_desc_not_in_dat, r.shortName, allCoreNames())
@@ -238,21 +240,84 @@ class ArcadeRomChecker private constructor(private val context: Context) {
         return context.getString(R.string.lib_arcade_core_mismatch, coreName(runningCoreId), coreName(target))
     }
 
-    /** Facts about companion zips ("neogeo.zip BIOS가 같은 폴더에 없습니다" …), one per line; empty when nothing to say. */
+    /**
+     * Facts about companion zips ("neogeo.zip BIOS가 같은 폴더에 없습니다", "segabill.zip 장치 롬이 같은 폴더에 없습니다",
+     * "stvbios.zip에 epr-23603.ic8 없음 — 이 코어(MAME 0.289) 기준 BIOS 세트가 필요합니다" …), one per line; empty when
+     * nothing to say. An absent device zip is only mentioned when the game actually lacks that device's files (MAME
+     * also finds them inside the game/parent/BIOS zips).
+     */
     fun companionNotes(res: Resolution): List<String> = buildList {
         val r = res.report
+        val coreId = res.coreId ?: ArcadeCoreRouter.MAME2003PLUS
         r.biosZip?.let { b ->
             add(if (r.biosPresent) context.getString(R.string.lib_arcade_in_folder_ok, b) else context.getString(R.string.lib_arcade_bios_missing_folder, b))
         }
+        r.outdatedBiosFiles.takeIf { it.isNotEmpty() }?.let { files ->
+            add(context.getString(R.string.lib_arcade_bios_outdated, r.biosZip ?: "", files.joinToString(", ") { it.name }, ArcadeCoreRouter.mameVersion(coreId)))
+        }
         r.parentZip?.takeIf { it != r.biosZip }?.let { p ->
             add(if (r.parentPresent) context.getString(R.string.lib_arcade_in_folder_ok, p) else context.getString(R.string.lib_arcade_parent_missing_folder, p))
+        }
+        for (d in r.deviceZips) {
+            when {
+                r.zipPresent(d) -> add(context.getString(R.string.lib_arcade_device_in_folder_ok, d))
+                r.missing.any { it.owner == d } -> add(context.getString(R.string.lib_arcade_device_missing_folder, d))
+            }
         }
         if (r.disks > 0 && r.status != Status.CHD_UNSUPPORTED) {
             add(context.getString(R.string.lib_arcade_chd_note, r.disks, r.game?.name ?: r.shortName))
         }
     }
 
-    /** Compact multi-line summary for the emulator error dialog (status, explanation, companion notes, first files). */
+    /**
+     * "최신 MAME 코어는 0.289 롬셋 기준입니다. BIOS/장치 zip도 같은 버전이어야 합니다." — for file/zip problems of a game
+     * routed to the current MAME core (its DAT moves with every release, unlike the frozen 0.78/0.139 cores); null otherwise.
+     */
+    fun versionNote(res: Resolution): String? {
+        if (res.coreId != ArcadeCoreRouter.MAME) return null
+        return when (res.status) {
+            Status.MISSING_FILES, Status.WRONG_SET, Status.NEEDS_PARENT, Status.NEEDS_BIOS, Status.NEEDS_DEVICE ->
+                context.getString(R.string.lib_arcade_mame_version_note, ArcadeCoreRouter.mameVersion(ArcadeCoreRouter.MAME))
+            else -> null
+        }
+    }
+
+    /** "BIOS" / "부모 롬" / "장치 롬" for an owner zip of [r]; null for the game's own zip. */
+    fun ownerKindLabel(r: Report, owner: String): String? = when (r.ownerKind(owner)) {
+        ArcadeRomCheck.OwnerKind.GAME -> null
+        ArcadeRomCheck.OwnerKind.BIOS -> context.getString(R.string.lib_arcade_kind_bios)
+        ArcadeRomCheck.OwnerKind.PARENT -> context.getString(R.string.lib_arcade_kind_parent)
+        ArcadeRomCheck.OwnerKind.DEVICE -> context.getString(R.string.lib_arcade_kind_device)
+    }
+
+    /** True when the owner zip of some issues is not in the folder at all (the game's own zip is never "absent" here). */
+    fun ownerAbsent(r: Report, owner: String): Boolean = r.ownerKind(owner) != ArcadeRomCheck.OwnerKind.GAME && !r.zipPresent(owner)
+
+    /** "없음" for a missing file, "CRC 1234abcd ≠ 5678ef01" for a wrong one. */
+    fun issueText(i: ArcadeRomCheck.FileIssue): String =
+        if (i.missing) context.getString(R.string.lib_arcade_file_missing) else "${context.getString(R.string.lib_arcade_file_found, i.foundCrc ?: "?")} ≠ ${i.expectedCrc}"
+
+    /**
+     * The problem files grouped by owner zip, one line each: "stvbios.zip: epr-23603.ic8" (the zip is there but lacks
+     * / has wrong versions of these files) or "segabill.zip: 없음 (장치 롬) · epr-18022.ic2" (the zip itself is absent).
+     * At most [maxFiles] file names in total, then "… +n".
+     */
+    fun ownerLines(r: Report, maxFiles: Int = 6): List<String> {
+        var budget = maxFiles
+        return r.issuesByOwner.mapNotNull { (owner, list) ->
+            if (budget <= 0) return@mapNotNull null
+            val shown = list.take(budget)
+            budget -= shown.size
+            val files = buildString {
+                append(shown.joinToString(", ") { i -> if (i.missing) i.name else "${i.name} (${issueText(i)})" })
+                if (shown.size < list.size) append(' ').append(context.getString(R.string.lib_arcade_owner_more, list.size - shown.size))
+            }
+            if (ownerAbsent(r, owner)) "${context.getString(R.string.lib_arcade_owner_absent, owner, ownerKindLabel(r, owner) ?: "")} · $files"
+            else context.getString(R.string.lib_arcade_owner_files, owner, files)
+        }
+    }
+
+    /** Compact multi-line summary for the emulator error dialog (status, explanation, companion notes, files by owner zip). */
     fun summary(res: Resolution, maxFiles: Int = 6): String = buildString {
         val r = res.report
         append(statusText(res))
@@ -260,13 +325,12 @@ class ArcadeRomChecker private constructor(private val context: Context) {
         preliminaryNote(res)?.let { append('\n').append(it) }
         unstableNote(res)?.let { append('\n').append(it) }
         for (n in companionNotes(res)) append('\n').append(n)
+        versionNote(res)?.let { append('\n').append(it) }
         if (r.issues.isNotEmpty()) {
             append('\n')
-            r.issues.take(maxFiles).forEach { i ->
-                append("\n• ").append(i.name)
-                append(if (i.missing) " (${context.getString(R.string.lib_arcade_file_missing)}, ${i.owner}.zip)" else " (CRC ${i.foundCrc} ≠ ${i.expectedCrc})")
-            }
-            if (r.issues.size > maxFiles) append("\n… +").append(r.issues.size - maxFiles)
+            val lines = ownerLines(r, maxFiles)
+            for (line in lines) append("\n• ").append(line)
+            if (lines.size < r.issuesByOwner.size) append('\n').append(context.getString(R.string.lib_arcade_owner_more, r.issuesByOwner.size - lines.size))
         }
     }
 

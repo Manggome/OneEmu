@@ -192,6 +192,11 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
                     Spacer(Modifier.height(6.dp))
                     for (n in notes) Text("• $n", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                // "최신 MAME 코어는 0.289 롬셋 기준입니다. BIOS/장치 zip도 같은 버전이어야 합니다." — current MAME only.
+                checker.versionNote(resolution)?.let { note ->
+                    Spacer(Modifier.height(6.dp))
+                    Text(note, style = MaterialTheme.typography.bodySmall, color = StatusWarn)
+                }
                 if (report.status == ArcadeRomCheck.Status.RENAME_SUGGESTED && report.suggestedName != null) {
                     Spacer(Modifier.height(6.dp))
                     OutlinedButton(onClick = { confirmRename = true }) { Text(stringResource(R.string.lib_arcade_rename)) }
@@ -203,7 +208,7 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
                             else stringResource(R.string.lib_arcade_files_show, report.issues.size),
                         )
                     }
-                    if (showFiles) IssueList(report)
+                    if (showFiles) IssueList(report, checker)
                 }
                 if (report.game?.needsSamples == true) {
                     Spacer(Modifier.height(10.dp))
@@ -261,25 +266,57 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
     }
 }
 
+/**
+ * Problem files grouped by the zip that should hold them — the way MAME searches: "stvbios.zip · BIOS" then its
+ * missing files, "segabill.zip · 없음 (장치 롬)" when the zip itself is absent from the folder.
+ */
 @Composable
-private fun IssueList(report: ArcadeRomCheck.Report) {
+private fun IssueList(report: ArcadeRomCheck.Report, checker: ArcadeRomChecker) {
     Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        for (i in report.issues.take(MAX_ISSUE_ROWS)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        var rows = 0
+        for ((owner, issues) in report.issuesByOwner) {
+            if (rows >= MAX_ISSUE_ROWS) break
+            val kind = checker.ownerKindLabel(report, owner)
+            val absent = checker.ownerAbsent(report, owner)
+            Row(Modifier.fillMaxWidth().padding(top = if (rows > 0) 4.dp else 0.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    i.name,
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    "$owner.zip",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold),
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    if (i.missing) "${stringResource(R.string.lib_arcade_file_missing)} · ${i.owner}.zip"
-                    else "${stringResource(R.string.lib_arcade_file_found, i.foundCrc ?: "?")} ≠ ${i.expectedCrc}",
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    color = if (i.missing) OneEmuColors.Danger else StatusWarn,
-                )
+                val label = when {
+                    absent -> stringResource(R.string.lib_arcade_file_missing) + (kind?.let { " · $it" } ?: "")
+                    else -> kind ?: ""
+                }
+                if (label.isNotEmpty()) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (absent) OneEmuColors.Danger else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            for (i in issues) {
+                if (rows >= MAX_ISSUE_ROWS) break
+                rows++
+                Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        i.name,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        checker.issueText(i),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = if (i.missing) OneEmuColors.Danger else StatusWarn,
+                    )
+                }
             }
         }
         if (report.issues.size > MAX_ISSUE_ROWS) {

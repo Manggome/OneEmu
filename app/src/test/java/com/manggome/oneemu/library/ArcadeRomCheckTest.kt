@@ -451,6 +451,200 @@ class ArcadeRomCheckTest {
         assertNull(none.coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, none.reason); assertEquals(ArcadeRomCheck.DriverStatus.UNKNOWN, none.driverStatus)
     }
 
+    // ---- default biosset + device ROMs (romdb columns 17/18: defaultbios, devices) -------------------
+
+    private val devRom = "DEVICE-ROM".toByteArray()
+
+    /** Full 18-column line: the 16 known ones plus defaultbios and ';'-separated devices. */
+    private fun row18(name: String, cloneof: String, romof: String, bios: String, runnable: String, roms: String, defaultBios: String, devices: String = "") =
+        listOf(name, "Game $name", cloneof, romof, bios, "", "0", "0", runnable, roms, "good", "x.cpp", "good", "", "", "", defaultBios, devices).joinToString("\t")
+
+    private val dbNew = ArcadeRomCheck.Db.parse(
+        listOf(
+            // BIOS set with two selectable BIOSes; "us" is the default one (default="yes" or first biosset, resolved by gen-romdb).
+            row18("nb", "", "", "", "0", listOf(rom("sp-s2.sp1", biosRom, bios = "euro"), rom("usa_2slt.bin", biosRomUs, bios = "us"), rom("sfix.sfx", sfix)).joinToString(";"), "us"),
+            row18("g", "", "nb", "nb", "1",
+                listOf(rom("p1.bin", p1), rom("sfix.sfx", sfix, "="), rom("sp-s2.sp1", biosRom, "=", "euro"), rom("usa_2slt.bin", biosRomUs, "=", "us")).joinToString(";"), "us"),
+            // A game whose own default differs from the BIOS set's (ROM_DEFAULT_BIOS in the driver): needs "euro".
+            row18("geuro", "", "nb", "nb", "1",
+                listOf(rom("p1.bin", p1), rom("sfix.sfx", sfix, "="), rom("sp-s2.sp1", biosRom, "=", "euro"), rom("usa_2slt.bin", biosRomUs, "=", "us")).joinToString(";"), "euro"),
+            // Device with one ROM (segabill-like) and a game that instantiates it.
+            row18("dev1", "", "", "", "0", rom("d1.bin", devRom), ""),
+            row18("dg", "", "", "", "1", rom("p1.bin", p1), "", "dev1"),
+            // Device with a parent ROM device (qsound_hle romof=qsound): the file may live in the parent's zip.
+            row18("devhle", "", "devpar", "", "0", rom("d1.bin", devRom, "="), ""),
+            row18("hg", "", "", "", "1", rom("c1.bin", c1), "", "devhle"),
+            // Two devices, one of them also a BIOS-using clone chain: clone → parent, BIOS nb, devices dev1 + devhle.
+            row18("multi", "g", "g", "nb", "1", listOf(rom("c1.bin", c1), rom("p1.bin", p1, "="), rom("sfix.sfx", sfix, "="), rom("usa_2slt.bin", biosRomUs, "=", "us")).joinToString(";"), "us", "dev1;devhle"),
+        ).joinToString("\n").byteInputStream(),
+    )
+
+    @Test fun parsesDefaultBiosAndDevicesAndOldFormat() {
+        assertEquals("us", dbNew["nb"]!!.defaultBios); assertEquals("euro", dbNew["geuro"]!!.defaultBios)
+        assertEquals(listOf("dev1"), dbNew["dg"]!!.devices); assertEquals(listOf("dev1", "devhle"), dbNew["multi"]!!.devices)
+        assertTrue(dbNew["dev1"]!!.devices.isEmpty()); assertFalse(dbNew["dev1"]!!.runnable); assertEquals("devpar", dbNew["devhle"]!!.romof)
+        // requiredRoms: files without a biosset + the default biosset's files only.
+        assertEquals(listOf("p1.bin", "sfix.sfx", "usa_2slt.bin"), dbNew["g"]!!.requiredRoms.map { it.name })
+        assertEquals(listOf("p1.bin", "sfix.sfx", "sp-s2.sp1"), dbNew["geuro"]!!.requiredRoms.map { it.name })
+        assertTrue(dbNew["g"]!!.legacyBiosRoms.isEmpty())
+        // 10- and 16-column lines: no default BIOS → legacy "any one BIOS file" rule, no devices.
+        assertEquals("", db["neogeo"]!!.defaultBios); assertTrue(db["clone"]!!.devices.isEmpty())
+        assertEquals(listOf("sp-s2.sp1", "usa_2slt.bin"), db["neogeo"]!!.legacyBiosRoms.map { it.name })
+        assertEquals(listOf("sfix.sfx"), db["neogeo"]!!.requiredRoms.map { it.name })
+        assertEquals("", statusDbMame["stvgood"]!!.defaultBios); assertTrue(statusDbMame["stvgood"]!!.devices.isEmpty())
+    }
+
+    @Test fun defaultBiossetFilesAreRequiredNotJustAnyBiosFile() {
+        val dir = tmp.newFolder()
+        // Old-style BIOS zip: only the euro BIOS — enough under the legacy rule, not for a DAT whose default is "us".
+        zip(dir, "nb", "sp-s2.sp1" to biosRom, "sfix.sfx" to sfix)
+        val g = zip(dir, "g", "p1.bin" to p1)
+        val r = ArcadeRomCheck.check(dbNew, g)
+        assertEquals(r.toString(), Status.MISSING_FILES, r.status) // the BIOS zip is there, it just predates this DAT
+        assertTrue(r.biosPresent); assertTrue(r.zipPresent("nb"))
+        val m = r.missing.single()
+        assertEquals("usa_2slt.bin", m.name); assertEquals("nb", m.owner); assertEquals(crc(biosRomUs), m.expectedCrc)
+        assertEquals(listOf("usa_2slt.bin"), r.outdatedBiosFiles.map { it.name })
+        assertEquals(ArcadeRomCheck.OwnerKind.BIOS, r.ownerKind("nb")); assertEquals(ArcadeRomCheck.OwnerKind.GAME, r.ownerKind("g"))
+        assertEquals(listOf("nb"), r.issuesByOwner.map { it.first })
+        // The non-default euro file is never demanded: a BIOS zip with only the us BIOS is fine …
+        zip(dir, "nb", "usa_2slt.bin" to biosRomUs, "sfix.sfx" to sfix)
+        assertEquals(Status.OK, ArcadeRomCheck.check(dbNew, g).status)
+        // … while the game with ROM_DEFAULT_BIOS "euro" now lacks its BIOS file.
+        val ge = ArcadeRomCheck.check(dbNew, zip(dir, "geuro", "p1.bin" to p1))
+        assertEquals(Status.MISSING_FILES, ge.status); assertEquals("sp-s2.sp1", ge.missing.single().name)
+        // No BIOS zip at all: NEEDS_BIOS listing the default BIOS file (and the shared sfix), not every alternative.
+        File(dir, "nb.zip").delete()
+        val nb = ArcadeRomCheck.check(dbNew, g)
+        assertEquals(Status.NEEDS_BIOS, nb.status); assertEquals("nb", nb.neededZip); assertFalse(nb.zipPresent("nb"))
+        assertEquals(setOf("sfix.sfx", "usa_2slt.bin"), nb.missing.map { it.name }.toSet())
+        // The legacy DB ([db], no defaultbios column) keeps accepting any one BIOS file.
+        val legacyDir = tmp.newFolder()
+        zip(legacyDir, "neogeo", "usa_2slt.bin" to biosRomUs, "sfix.sfx" to sfix)
+        assertEquals(Status.OK, ArcadeRomCheck.check(db, zip(legacyDir, "parent", "p1.bin" to p1)).status)
+    }
+
+    @Test fun deviceRomsAreRequiredFromDeviceZipOrTheGamesSearchPath() {
+        val dir = tmp.newFolder()
+        val dg = zip(dir, "dg", "p1.bin" to p1)
+        // No dev1.zip anywhere: the device zip is what is missing.
+        val r = ArcadeRomCheck.check(dbNew, dg)
+        assertEquals(r.toString(), Status.NEEDS_DEVICE, r.status); assertEquals(ArcadeRomCheck.Severity.ERROR, r.severity)
+        assertEquals("dev1", r.neededZip); assertEquals(listOf("dev1"), r.deviceZips); assertFalse(r.zipPresent("dev1"))
+        val m = r.missing.single()
+        assertEquals("d1.bin", m.name); assertEquals("dev1", m.owner); assertEquals(crc(devRom), m.expectedCrc)
+        assertEquals(ArcadeRomCheck.OwnerKind.DEVICE, r.ownerKind("dev1"))
+        // dev1.zip in the folder → OK.
+        zip(dir, "dev1", "d1.bin" to devRom)
+        val ok = ArcadeRomCheck.check(dbNew, dg)
+        assertEquals(Status.OK, ok.status); assertTrue(ok.zipPresent("dev1"))
+        // dev1.zip present but with the wrong file: a mismatch (WRONG_SET), not a missing zip.
+        zip(dir, "dev1", "d1.bin" to "OLD-DEVICE-ROM".toByteArray())
+        val wrong = ArcadeRomCheck.check(dbNew, dg)
+        assertEquals(Status.WRONG_SET, wrong.status); assertEquals("dev1", wrong.mismatched.single().owner)
+        zip(dir, "dev1", "other.bin" to p1)
+        assertEquals(Status.MISSING_FILES, ArcadeRomCheck.check(dbNew, dg).status)
+        File(dir, "dev1.zip").delete()
+        // MAME also searches the game's own zip: a merged set carrying the device ROM needs no dev1.zip.
+        assertEquals(Status.OK, ArcadeRomCheck.check(dbNew, zip(dir, "dg", "p1.bin" to p1, "d1.bin" to devRom)).status)
+        // Parent ROM device: devhle (romof devpar) is satisfied by devpar.zip.
+        val hg = zip(dir, "hg", "c1.bin" to c1)
+        assertEquals(Status.NEEDS_DEVICE, ArcadeRomCheck.check(dbNew, hg).status)
+        zip(dir, "devpar", "d1.bin" to devRom)
+        val viaParent = ArcadeRomCheck.check(dbNew, hg)
+        assertEquals(viaParent.toString(), Status.OK, viaParent.status); assertTrue(viaParent.zipPresent("devpar"))
+        // Corrupt game zip (reads as empty): every file is missing, device files with their device as owner; the
+        // absent dev1.zip still decides the status.
+        File(dir, "dg.zip").writeText("not a zip")
+        val corrupt = ArcadeRomCheck.check(dbNew, File(dir, "dg.zip"))
+        assertEquals(Status.NEEDS_DEVICE, corrupt.status)
+        assertEquals(mapOf("p1.bin" to "dg", "d1.bin" to "dev1"), corrupt.missing.associate { it.name to it.owner })
+        // Precedence: an absent BIOS zip outranks an absent device zip; with the BIOS present the device zip is reported.
+        val dir2 = tmp.newFolder()
+        val multi = zip(dir2, "multi", "c1.bin" to c1)
+        zip(dir2, "g", "p1.bin" to p1)
+        val noBios = ArcadeRomCheck.check(dbNew, multi)
+        assertEquals(Status.NEEDS_BIOS, noBios.status); assertEquals("nb", noBios.neededZip)
+        zip(dir2, "nb", "usa_2slt.bin" to biosRomUs, "sfix.sfx" to sfix)
+        val noDev = ArcadeRomCheck.check(dbNew, multi)
+        assertEquals(Status.NEEDS_DEVICE, noDev.status); assertEquals("dev1", noDev.neededZip)
+        assertEquals(listOf("dev1", "devhle"), noDev.issuesByOwner.map { it.first })
+        assertEquals(setOf("dev1", "devhle"), noDev.missing.map { it.owner }.toSet())
+        zip(dir2, "dev1", "d1.bin" to devRom); zip(dir2, "devpar", "d1.bin" to devRom)
+        assertEquals(Status.OK, ArcadeRomCheck.check(dbNew, multi).status)
+        // Device entries are never suggested by CRC identification (non-runnable, like BIOS sets).
+        assertNull(dbNew.identify(setOf(crc(devRom))))
+    }
+
+    /**
+     * The user's real failure on the current MAME core (0.289): twcup98 with an older stvbios.zip (no epr-23603.ic8, the
+     * 0.289 default BIOS "jp") and no segabill.zip — MAME logged `epr-23603.ic8 NOT FOUND (tried in twcup98 stvbios)`
+     * and `epr-18022.ic2 NOT FOUND (tried in segabill twcup98 stvbios)`; the doctor used to report nothing wrong.
+     */
+    @Test fun realTwcup98OnCurrentMameNeedsTheDefaultBiosAndSegabill() {
+        val aMame = asset("cores/mame/assets/romdb.tsv.gz")
+        assumeTrue("current MAME romdb asset not found; run cores/mame/gen-romdb.py", aMame != null)
+        val mame = aMame!!.inputStream().use { ArcadeRomCheck.Db.parseGzip(it) }
+        val stvbios = mame["stvbios"]!!
+        assertFalse(stvbios.runnable)
+        assertEquals("jp", stvbios.defaultBios) // no <biosset default="yes"> in 0.289 → first biosset, as MAME does
+        assertEquals("epr-23603.ic8", stvbios.roms.first { it.bios == "jp" }.name)
+        assertEquals(listOf("segabill"), stvbios.devices)
+        val twcup98 = mame["twcup98"]!!
+        assertEquals("stvbios", twcup98.bios); assertEquals("jp", twcup98.defaultBios); assertEquals(listOf("segabill"), twcup98.devices)
+        assertEquals("sega/stv.cpp", twcup98.sourceFile); assertEquals("stv", twcup98.driverName)
+        // Of the 14 merged BIOS rows only the default BIOS file is required (stvbios.nv belongs to the stvbios entry alone).
+        assertEquals(listOf("epr-23603.ic8"), twcup98.requiredRoms.filter { it.merged }.map { it.name })
+        assertEquals(14, twcup98.roms.count { it.merged }); assertEquals(5, twcup98.ownRoms.size)
+        assertEquals(listOf("epr-23603.ic8", "stvbios.nv"), stvbios.requiredRoms.map { it.name })
+        val segabill = mame["segabill"]!!
+        assertFalse(segabill.runnable); assertTrue(segabill.devices.isEmpty()); assertEquals("", segabill.bios)
+        val bill = segabill.roms.single()
+        assertEquals("epr-18022.ic2", bill.name); assertEquals(65536L, bill.size); assertEquals("0ca70f80", bill.crc)
+        // Device with a parent ROM device: CPS2's qsound_hle loads dl-1425.bin from qsound_hle.zip or qsound.zip.
+        assertEquals("qsound", mame["qsound_hle"]!!.romof); assertEquals("", mame["qsound_hle"]!!.bios)
+        assertTrue(mame["ssf2"]!!.devices.contains("qsound_hle"))
+        assertTrue(mame["sf2"]!!.devices.isEmpty()); assertEquals("euro", mame["mslug"]!!.defaultBios)
+
+        val dir = tmp.newFolder()
+        val game = zip(dir, "twcup98", "dummy" to p1)
+        // An older ST-V BIOS set: a non-default BIOS file (and the eeprom), but not the 0.289 default epr-23603.ic8.
+        zip(dir, "stvbios", "epr-17954a.ic8" to biosRom, "stvbios.nv" to sfix)
+        val r = ArcadeRomCheck.check(mame, game, chdSupported = true)
+        assertEquals(r.toString(), Status.NEEDS_DEVICE, r.status); assertEquals("segabill", r.neededZip)
+        assertTrue(r.biosPresent); assertTrue(r.zipPresent("stvbios")); assertFalse(r.zipPresent("segabill"))
+        val byName = r.missing.associateBy { it.name }
+        assertEquals("stvbios", byName.getValue("epr-23603.ic8").owner)
+        assertEquals("segabill", byName.getValue("epr-18022.ic2").owner)
+        assertEquals("twcup98", byName.getValue("epr20819.24").owner)
+        assertNull(byName["stvbios.nv"]) // not part of twcup98's rom list
+        assertNull(byName["epr-17954a.ic8"]); assertNull(byName["epr-20091.ic8"]) // non-default BIOSes are not demanded
+        assertTrue(r.mismatched.isEmpty())
+        assertEquals(listOf("epr-23603.ic8"), r.outdatedBiosFiles.map { it.name })
+        assertEquals(listOf("twcup98", "stvbios", "segabill"), r.issuesByOwner.map { it.first })
+        assertEquals(ArcadeRomCheck.OwnerKind.DEVICE, r.ownerKind("segabill")); assertEquals(ArcadeRomCheck.OwnerKind.BIOS, r.ownerKind("stvbios"))
+        // With a (wrong-version) segabill.zip in place the device zip is no longer "needed"; the BIOS file still is.
+        zip(dir, "segabill", "epr-18022.ic2" to c1)
+        val r2 = ArcadeRomCheck.check(mame, game, chdSupported = true)
+        assertEquals(Status.MISSING_FILES, r2.status); assertTrue(r2.zipPresent("segabill"))
+        assertEquals("segabill", r2.mismatched.single { it.name == "epr-18022.ic2" }.owner)
+        assertTrue(r2.missing.any { it.name == "epr-23603.ic8" && it.owner == "stvbios" })
+        // Through resolve with all three real DATs the game is routed to current MAME (ST-V crashes the older cores).
+        val a2003 = asset("cores/mame2003plus/assets/romdb.tsv.gz"); val a2010 = asset("cores/mame2010/assets/romdb.tsv.gz")
+        assumeTrue(a2003 != null && a2010 != null)
+        val dbs = listOf(
+            "mame2003plus" to a2003!!.inputStream().use { ArcadeRomCheck.Db.parseGzip(it) },
+            "mame2010" to a2010!!.inputStream().use { ArcadeRomCheck.Db.parseGzip(it) },
+            "mame" to mame,
+        )
+        val res = ArcadeRomCheck.resolve(dbs, game, chdSupported = { it != "mame2003plus" })
+        assertEquals("mame", res.coreId); assertEquals(Status.MISSING_FILES, res.status); assertFalse(res.knownUnstable)
+        assertTrue(res.report.missing.any { it.name == "epr-23603.ic8" && it.owner == "stvbios" })
+        // The older DATs carry the column too (explicit default="yes" there).
+        assertEquals("japan", dbs[0].second["stvbios"]!!.defaultBios); assertEquals("jp", dbs[1].second["stvbios"]!!.defaultBios)
+        assertEquals("euro", dbs[0].second["neogeo"]!!.defaultBios); assertTrue(dbs[1].second["twcup98"]!!.devices.isEmpty())
+    }
+
     private fun asset(rel: String): File? = listOf("../$rel", rel).map(::File).firstOrNull { it.isFile }
 
     /** Tecmo World Cup '98 (ST-V) crashes MAME 2003-Plus: both DATs rate it preliminary, so the newer core must take it. */
