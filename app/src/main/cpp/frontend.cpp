@@ -525,6 +525,28 @@ void Frontend::runFrame() {
         fpsFrames_ = 0; fpsWindowStartNs_ = t;
     }
     if (t - lastSramSaveNs_ > 15000000000LL) { saveSramInternal(); lastSramSaveNs_ = t; }
+    // Heartbeat for crash/hang reports: proves the emu loop is advancing and shows memory growth.
+    totalFrames_++;
+    if (t - lastHeartbeatNs_ > 5000000000LL) {
+        lastHeartbeatNs_ = t;
+        long availKb = -1, totalKb = -1;
+        if (FILE* f = fopen("/proc/meminfo", "r")) {
+            char line[128];
+            while (fgets(line, sizeof line, f)) {
+                if (!strncmp(line, "MemTotal:", 9)) totalKb = strtol(line + 9, nullptr, 10);
+                else if (!strncmp(line, "MemAvailable:", 13)) availKb = strtol(line + 13, nullptr, 10);
+            }
+            fclose(f);
+        }
+        long rssKb = -1;
+        if (FILE* f = fopen("/proc/self/statm", "r")) {
+            long pages = 0, resident = 0;
+            if (fscanf(f, "%ld %ld", &pages, &resident) == 2) rssKb = resident * (long)(sysconf(_SC_PAGESIZE) / 1024);
+            fclose(f);
+        }
+        LOGI("heartbeat: frames=%llu fps=%.1f hwFrame=%d rss=%ld MB avail=%ld/%ld MB", (unsigned long long)totalFrames_,
+             measuredFps_, frameIsHw_ ? 1 : 0, rssKb / 1024, availKb / 1024, totalKb / 1024);
+    }
 }
 
 // ---------------------------------------------------------------- core callbacks
