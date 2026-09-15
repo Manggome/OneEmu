@@ -213,6 +213,8 @@ private:
     int64_t fpsWindowStartNs_ = 0;
     unsigned fpsFrames_ = 0;
     int64_t lastSramSaveNs_ = 0;
+    int64_t lastHeartbeatNs_ = 0;
+    uint64_t totalFrames_ = 0;
     std::vector<uint8_t> lastSram_;
 
     // rumble/frame time
