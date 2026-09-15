@@ -1,4 +1,5 @@
 #include "frontend.h"
+#include "crash_handler.h"
 #include "log.h"
 #include <android/native_window_jni.h>
 #include <jni.h>
@@ -91,6 +92,11 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
 }
 
 #define BRIDGE(ret, name) JNIEXPORT ret JNICALL Java_com_manggome_oneemu_emu_NativeBridge_##name
+
+BRIDGE(void, installCrashHandler)(JNIEnv* env, jobject, jstring path) {
+    std::string p = jstr(env, path);
+    installCrashHandler(p.c_str());
+}
 
 BRIDGE(jboolean, loadCoreNative)(JNIEnv* env, jobject, jstring corePath, jstring systemDir, jstring saveDir, jstring options,
                                  jboolean strictGlesVersion) {
