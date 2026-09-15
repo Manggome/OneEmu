@@ -157,7 +157,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
 
             val message by session.messages.collectAsState()
             message?.let { msg ->
-                if (IGNORED_CORE_MESSAGES.containsMatchIn(msg)) {
+                if (msg.isBlank() || IGNORED_CORE_MESSAGES.containsMatchIn(msg)) {
                     LaunchedEffect(msg) { session.consumeMessage() }
                 } else {
                     Banner(msg, Modifier.align(Alignment.TopCenter))
