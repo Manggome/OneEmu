@@ -65,3 +65,17 @@ $BIN/llvm-nm -D app/src/main/jniLibs/arm64-v8a/lib<id>_libretro.so | grep -E " T
 - BIOS, ROM, 펌웨어 파일을 저장소나 APK에 포함하지 않는다.
 - `git add/commit/push`, `./gradlew` 실행은 코어 빌드 스크립트나 에이전트가 하지 않는다 (통합 담당이 수행).
 - `cores/<id>/`와 결과물 `.so` 외의 파일은 수정하지 않는다.
+
+## 내려받기형 코어 (distribution: download)
+
+크기가 큰 코어는 APK에 넣지 않고 GitHub 릴리스에서 내려받습니다.
+
+- `core.json`에 `"distribution": "download"`를 넣는다(기본값은 `"bundled"`). 다른 필드는 동일. core.json 자체는 항상 APK 에셋에 포함되어 라우팅/DB가 코어를 인식한다.
+- CI(`.github/workflows/cores.yml`)는 내려받기형 코어를 빌드해 `<id>-<sourceCommit 앞 12자리>-arm64.zip`(내용: `lib<id>_libretro.so`, `core.json`)으로 고정 태그 릴리스 **`cores`** 에 올리고, 같은 릴리스의 `manifest.json`을 갱신한다:
+  ```json
+  { "schema": 1, "cores": [ { "id": "mame", "version": "<commit12>", "file": "mame-<commit12>-arm64.zip",
+      "url": "https://github.com/Manggome/OneEmu/releases/download/cores/mame-<commit12>-arm64.zip",
+      "size": 123456789, "sha256": "…", "libFile": "libmame_libretro.so", "minAppVersion": "0.1.16" } ] }
+  ```
+- 앱은 `<filesDir>/cores/<id>/<libFile>`에 설치하고 옆에 `version.txt`(commit12)를 둔다. `CoreRegistry.libraryPath()`는 distribution에 따라 APK 네이티브 폴더 또는 이 경로를 돌려주며, `isAvailable()`은 파일 존재 여부다.
+- `build.yml`(앱 빌드)은 내려받기형 코어의 `.so`를 jniLibs에 넣지 않는다.
