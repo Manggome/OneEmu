@@ -1,0 +1,30 @@
+diff --git a/src/osd/libretro/retromain.cpp b/src/osd/libretro/retromain.cpp
+index 042ac900..a4e5ecd6 100644
+--- a/src/osd/libretro/retromain.cpp
++++ b/src/osd/libretro/retromain.cpp
+@@ -75,7 +75,24 @@ public:
+ 				break;	
+ 		}
+ 
+-		log_cb(lvl, buffer.str().c_str());
++		/* OneEmu: the message is data, not a format string (ROM names and
++		 * MAME texts may contain '%'), and one log call per line so frontends
++		 * keeping a per-line ring buffer do not truncate multi-line ROM
++		 * audit reports ("xxx NOT FOUND", "required files are missing"). */
++		{
++			const std::string text = buffer.str();
++			std::string::size_type pos = 0;
++			while (pos < text.size())
++			{
++				std::string::size_type nl = text.find('\n', pos);
++				std::string line = text.substr(pos, (nl == std::string::npos) ? std::string::npos : nl - pos);
++				if (!line.empty())
++					log_cb(lvl, "[MAME] %s\n", line.c_str());
++				if (nl == std::string::npos)
++					break;
++				pos = nl + 1;
++			}
++		}
+ 
+ 		/* Log errors and -listdevices also to console */
+ 		if (lvl == RETRO_LOG_ERROR || !get_MgamePath())
