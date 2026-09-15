@@ -253,7 +253,132 @@ class ArcadeRomCheckTest {
         assertEquals(Status.OK, r.status); assertEquals(1, r.disks); assertEquals("chdgame", r.shortName)
     }
 
+    // ---- driver status / status-aware routing ---------------------------------------------------
+
+    /** A romdb line with the optional trailing columns: status  sourcefile  emulation  color  sound  graphic. */
+    private fun row(name: String, roms: String, status: String, src: String = "", emulation: String = status) =
+        listOf(name, "Game $name", "", "", "", "", "0", "0", "1", roms, status, src, emulation, "good", "good", "good").joinToString("\t")
+
+    @Test fun parsesDriverStatusColumnsAndOldFormat() {
+        val text = listOf(
+            row("g", rom("a.bin", p1), "good", "cps1.c"),
+            row("i", rom("a.bin", p1), "imperfect", "neogeo.c"),
+            row("p", rom("a.bin", p1), "preliminary", "stv.c", emulation = "protection"),
+            row("u", rom("a.bin", p1), "", ""),
+        ).joinToString("\n") + "\n"
+        val d = ArcadeRomCheck.Db.parse(text.byteInputStream())
+        assertEquals(ArcadeRomCheck.DriverStatus.GOOD, d["g"]!!.driverStatus); assertEquals("cps1.c", d["g"]!!.sourceFile); assertEquals("cps1", d["g"]!!.driverName)
+        assertEquals(ArcadeRomCheck.DriverStatus.IMPERFECT, d["i"]!!.driverStatus)
+        assertEquals(ArcadeRomCheck.DriverStatus.PRELIMINARY, d["p"]!!.driverStatus); assertEquals("protection", d["p"]!!.emulation); assertEquals("stv", d["p"]!!.driverName)
+        assertEquals(ArcadeRomCheck.DriverStatus.UNKNOWN, d["u"]!!.driverStatus); assertEquals("", d["u"]!!.sourceFile)
+        // The old 10-column format (this file's [db]) still parses, with UNKNOWN status.
+        assertEquals(ArcadeRomCheck.DriverStatus.UNKNOWN, db["parent"]!!.driverStatus)
+        assertEquals("", db["parent"]!!.status)
+        assertEquals(ArcadeRomCheck.DriverStatus.PRELIMINARY, ArcadeRomCheck.DriverStatus.parse("protection"))
+        assertTrue(ArcadeRomCheck.DriverStatus.UNKNOWN.rank == ArcadeRomCheck.DriverStatus.GOOD.rank)
+    }
+
+    /** "2003-Plus" side: statuses of the same names as [statusDb2010] below. */
+    private val statusDb2003 = ArcadeRomCheck.Db.parse(
+        listOf(
+            row("prelim", rom("p.bin", p1), "preliminary", "zn.c"),           // preliminary here, imperfect in 2010 → 2010
+            row("bothbad", rom("b.bin", c1), "preliminary", "segac2.c"),      // preliminary in both → 2010 (newer driver, no worse)
+            row("goodgame", rom("g.bin", sfix), "good", "cps1.c"),            // good here → stays (2010 says imperfect)
+            row("onlyhere", rom("o.bin", biosRom), "preliminary", "nss.c"),   // preliminary but no alternative → stays
+            row("stvgood", rom("s.bin", biosRomUs), "good", "stv.c"),         // "good" but ST-V crashes on arm64 → 2010
+            row("stvalone", rom("t.bin", chdX), "good", "stv.c"),             // unstable driver, nobody else lists it → stays
+            row("old", rom("w.bin", weirdRom), "", ""),                       // no rating → behaves like good
+        ).joinToString("\n").byteInputStream(),
+    )
+    private val statusDb2010 = ArcadeRomCheck.Db.parse(
+        listOf(
+            row("prelim", rom("p.bin", p1), "imperfect", "zn.c"),
+            row("bothbad", rom("b.bin", c1), "preliminary", "segac2.c"),
+            row("goodgame", rom("g.bin", sfix), "imperfect", "cps1.c"),
+            row("stvgood", rom("s.bin", biosRomUs), "imperfect", "stv.c"),
+            row("old", rom("w.bin", weirdRom), "good", "x.c"),
+            row("stv2010", rom("z.bin", p1), "imperfect", "stv.c"),            // ST-V is only unstable in 2003-Plus
+        ).joinToString("\n").byteInputStream(),
+    )
+    private val statusDbs = listOf("mame2003plus" to statusDb2003, "mame2010" to statusDb2010)
+
+    @Test fun routeByNamePrefersFirstCoreUnlessPreliminaryOrUnstable() {
+        fun rt(n: String) = ArcadeRomCheck.routeByName(statusDbs, n)!!
+        val prelim = rt("prelim")
+        assertEquals("mame2010", prelim.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_PRELIMINARY, prelim.reason); assertEquals("mame2003plus", prelim.skippedCoreId)
+        val both = rt("bothbad")
+        assertEquals("mame2010", both.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_PRELIMINARY, both.reason)
+        val good = rt("goodgame")
+        assertEquals("mame2003plus", good.coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, good.reason); assertNull(good.skippedCoreId)
+        val only = rt("onlyhere")
+        assertEquals("mame2003plus", only.coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, only.reason)
+        val stv = rt("stvgood")
+        assertEquals("mame2010", stv.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_UNSTABLE, stv.reason); assertEquals("mame2003plus", stv.skippedCoreId)
+        assertEquals("mame2003plus", rt("stvalone").coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, rt("stvalone").reason)
+        assertEquals("mame2003plus", rt("old").coreId)
+        assertEquals("mame2010", rt("stv2010").coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, rt("stv2010").reason)
+        assertNull(ArcadeRomCheck.routeByName(statusDbs, "nothing"))
+        assertTrue(ArcadeRomCheck.isUnreliable("mame2003plus", statusDb2003["stvgood"]!!))
+        assertFalse(ArcadeRomCheck.isUnreliable("mame2010", statusDb2010["stvgood"]!!))
+        assertTrue(ArcadeRomCheck.isUnreliable("mame2010", statusDb2010["bothbad"]!!))
+    }
+
+    @Test fun resolveCarriesRoutingReasonAndStatus() {
+        val dir = tmp.newFolder()
+        val r = ArcadeRomCheck.resolve(statusDbs, zip(dir, "prelim", "p.bin" to p1))
+        assertEquals("mame2010", r.coreId); assertEquals(Status.OK, r.status)
+        assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_PRELIMINARY, r.reason); assertEquals("mame2003plus", r.skippedCoreId)
+        assertEquals(ArcadeRomCheck.DriverStatus.IMPERFECT, r.driverStatus)
+        val g = ArcadeRomCheck.resolve(statusDbs, zip(dir, "goodgame", "g.bin" to sfix))
+        assertEquals("mame2003plus", g.coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, g.reason); assertEquals(ArcadeRomCheck.DriverStatus.GOOD, g.driverStatus)
+        // CRC identification finds the set in the first DB, but the identified name is routed like a named zip.
+        val renamed = ArcadeRomCheck.resolve(statusDbs, zip(dir, "prelim_v2", "whatever.rom" to p1))
+        assertEquals(Status.RENAME_SUGGESTED, renamed.status); assertEquals("prelim", renamed.report.suggestedName)
+        assertEquals("mame2010", renamed.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_PRELIMINARY, renamed.reason)
+        // Unknown everywhere: no reason, UNKNOWN status.
+        val none = ArcadeRomCheck.resolve(statusDbs, zip(dir, "zzz", "junk" to "unrelated bytes".toByteArray()))
+        assertNull(none.coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, none.reason); assertEquals(ArcadeRomCheck.DriverStatus.UNKNOWN, none.driverStatus)
+    }
+
     private fun asset(rel: String): File? = listOf("../$rel", rel).map(::File).firstOrNull { it.isFile }
+
+    /** Tecmo World Cup '98 (ST-V) crashes MAME 2003-Plus: both DATs rate it preliminary, so the newer core must take it. */
+    @Test fun realTwcup98RoutesToMame2010() {
+        val a2003 = asset("cores/mame2003plus/assets/romdb.tsv.gz")
+        val a2010 = asset("cores/mame2010/assets/romdb.tsv.gz")
+        assumeTrue("romdb assets not found; run cores/*/gen-romdb.py", a2003 != null && a2010 != null)
+        val real2003 = a2003!!.inputStream().use { ArcadeRomCheck.Db.parseGzip(it) }
+        val real2010 = a2010!!.inputStream().use { ArcadeRomCheck.Db.parseGzip(it) }
+        val t2003 = real2003["twcup98"]!!
+        val t2010 = real2010["twcup98"]!!
+        assertEquals("preliminary", t2003.status); assertEquals("stv.c", t2003.sourceFile); assertEquals("preliminary", t2003.sound)
+        assertEquals("preliminary", t2010.status); assertEquals("stv.c", t2010.sourceFile); assertEquals("preliminary", t2010.emulation)
+        assertEquals(ArcadeRomCheck.DriverStatus.PRELIMINARY, t2003.driverStatus)
+        // 0.78 "protection" and sub-flag normalisation by gen-romdb.py
+        assertEquals("protection", real2003["alibaba"]!!.emulation); assertEquals(ArcadeRomCheck.DriverStatus.PRELIMINARY, real2003["alibaba"]!!.driverStatus)
+        assertEquals(ArcadeRomCheck.DriverStatus.GOOD, real2003["sf2"]!!.driverStatus); assertEquals("cps1.c", real2003["sf2"]!!.sourceFile)
+        assertEquals(ArcadeRomCheck.DriverStatus.UNKNOWN, real2003["neogeo"]!!.driverStatus) // BIOS sets have no <driver>
+        assertEquals(ArcadeRomCheck.DriverStatus.GOOD, real2010["mslug"]!!.driverStatus)
+
+        val real = listOf("mame2003plus" to real2003, "mame2010" to real2010)
+        val rt = ArcadeRomCheck.routeByName(real, "twcup98")!!
+        assertEquals("mame2010", rt.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_PRELIMINARY, rt.reason); assertEquals("mame2003plus", rt.skippedCoreId)
+        // Every ST-V game leaves 2003-Plus when 2010 lists it; the DAT-rated "good" ones for the unstable-driver reason.
+        val baku = ArcadeRomCheck.routeByName(real, "bakubaku")!!
+        assertEquals("mame2010", baku.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_UNSTABLE, baku.reason)
+        // Games only 2003-Plus knows stay there even when preliminary; good games stay by preference.
+        assertEquals("mame2003plus", ArcadeRomCheck.routeByName(real, "sassisu")!!.coreId)
+        assertEquals("mame2003plus", ArcadeRomCheck.routeByName(real, "mslug")!!.coreId)
+        assertEquals(ArcadeRomCheck.RouteReason.NONE, ArcadeRomCheck.routeByName(real, "mslug")!!.reason)
+        assertEquals("mame2003plus", ArcadeRomCheck.routeByName(real, "sf2")!!.coreId)
+        assertEquals("mame2010", ArcadeRomCheck.routeByName(real, "bldyror2")!!.coreId)
+
+        val dir = tmp.newFolder()
+        val res = ArcadeRomCheck.resolve(real, zip(dir, "twcup98", "dummy" to p1), chdSupported = { it == "mame2010" })
+        assertEquals("mame2010", res.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_PRELIMINARY, res.reason)
+        assertEquals(ArcadeRomCheck.DriverStatus.PRELIMINARY, res.driverStatus)
+        assertEquals("twcup98", res.report.game!!.name)
+    }
 
     /** The MAME 2010 asset (cores/mame2010/assets/romdb.tsv.gz, from metadata/mame2010.xml) parses; bldyror2 routes there. */
     @Test fun realMame2010DatabaseRoutesBloodyRoar2() {

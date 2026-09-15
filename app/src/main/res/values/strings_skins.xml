@@ -31,7 +31,7 @@
 
     <!-- 스킨 배치 편집기 -->
     <string name="se_title">스킨 배치 편집</string>
-    <string name="se_hint">버튼 묶음을 끌어서 이동 · 탭 선택 · 길게 눌러 여러 개 선택 · 두 손가락은 축 고정</string>
+    <string name="se_hint">버튼 묶음을 끌어서 이동 · 탭 선택 · 길게 눌러 여러 개 선택 · 점선 화면 상자는 끌어서 옮기고 모서리로 크기 조절</string>
     <string name="se_group_dpad">방향 패드</string>
     <string name="se_group_abxy">ABXY 버튼</string>
     <string name="se_group_stick">스틱</string>

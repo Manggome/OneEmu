@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -11,8 +12,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -42,11 +45,17 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.Haptics
+import com.manggome.oneemu.emu.ScreenConfig
+import com.manggome.oneemu.emu.ViewportRect
+import com.manggome.oneemu.emu.ViewportStore
 import com.manggome.oneemu.emu.skin.DescAction
 import com.manggome.oneemu.emu.skin.LoadedSkin
 import com.manggome.oneemu.emu.skin.Overlay
@@ -67,11 +76,19 @@ import com.manggome.oneemu.ui.layout.EditorChrome
 import com.manggome.oneemu.ui.layout.EditorDragHost
 import com.manggome.oneemu.ui.layout.EditorDragState
 import com.manggome.oneemu.ui.layout.NudgeButtons
+import com.manggome.oneemu.ui.layout.ScreenConfigSelector
 import com.manggome.oneemu.ui.layout.UndoHistory
+import com.manggome.oneemu.ui.layout.ViewportHandles
+import com.manggome.oneemu.ui.layout.ViewportItem
+import com.manggome.oneemu.ui.layout.ViewportPrefs
+import com.manggome.oneemu.ui.layout.ViewportQuick
+import com.manggome.oneemu.ui.layout.ViewportToolbar
+import com.manggome.oneemu.ui.layout.clampInside
 import com.manggome.oneemu.ui.layout.drawGuides
+import com.manggome.oneemu.ui.layout.drawViewport
 import com.manggome.oneemu.ui.layout.editorGestures
-import com.manggome.oneemu.ui.layout.mockGameRect
 import com.manggome.oneemu.ui.layout.rememberEditorChromeState
+import com.manggome.oneemu.ui.layout.resizeViewport
 import com.manggome.oneemu.ui.theme.OneEmuColors
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -79,32 +96,42 @@ import kotlin.math.roundToInt
 /** A draggable cluster: indices into the placed desc list. */
 private typealias Group = List<Int>
 
+/** One undo step of the skin editor: desc edits + viewport together. */
+private data class SkinEditState(val layout: SkinLayout, val viewport: ViewportRect)
+
 /**
  * Drag-to-arrange editor for an image skin. Descs are moved as clusters (d-pad arms + diagonals, ABXY
- * diamond, stick + background) and the result is saved per (skin, system, orientation) through
- * [SkinStore.saveLayout]. Shares smart guides, axis lock, nudge, alignment, undo and the tool panel with
- * the vector `LayoutEditor` so the two feel the same.
+ * diamond, stick + background) and the result is saved per (skin, system, screen configuration) through
+ * [SkinStore.saveLayout]; the game viewport ("화면") is edited alongside and saved through [ViewportStore].
+ * Shares smart guides, axis lock, nudge, alignment, undo, viewport handles and the tool panel with the
+ * vector `LayoutEditor` so the two feel the same.
  */
 @Composable
 fun SkinEditor(
     system: SystemId,
-    landscape: Boolean,
+    config: ScreenConfig,
     skinInfo: SkinInfo,
     showMockGame: Boolean,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
-    orientationToggle: (@Composable () -> Unit)? = null,
+    configSelector: (@Composable () -> Unit)? = null,
+    onViewportPreview: ((ViewportRect) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val settings = remember { OneEmuApp.get().settings }
     val scope = rememberCoroutineScope()
-    val config = LocalConfiguration.current
+    val configuration = LocalConfiguration.current
     val density = LocalDensity.current.density
-    val screenAspect = config.screenWidthDp.toFloat() / config.screenHeightDp.coerceAtLeast(1)
+    val textMeasurer = rememberTextMeasurer()
+    val screenAspect = configuration.screenWidthDp.toFloat() / configuration.screenHeightDp.coerceAtLeast(1)
+    val landscape = config.landscape
     val haptics = remember { Haptics(context) }
 
     val loaded by produceState<Result<LoadedSkin>?>(null, skinInfo.id) { value = runCatching { SkinLoader.load(context, skinInfo) } }
     var layout by remember { mutableStateOf<SkinLayout?>(null) }
+    var viewport by remember { mutableStateOf<ViewportRect?>(null) }
+    var viewportSelected by remember { mutableStateOf(false) }
+    var keepAspect by remember { mutableStateOf(true) }
     var dirty by remember { mutableStateOf(false) }
     var selection by remember { mutableStateOf<List<Group>>(emptyList()) }
     var opacity by remember { mutableStateOf(Settings.DEFAULT_PAD_OPACITY) }
@@ -112,28 +139,39 @@ fun SkinEditor(
     var vibrate by remember { mutableStateOf(true) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
-    val history = remember { UndoHistory<SkinLayout>(50) }
+    val history = remember { UndoHistory<SkinEditState>(50) }
     val chrome = rememberEditorChromeState()
     val drag = remember { EditorDragState() }
 
-    LaunchedEffect(skinInfo.id, system, landscape) {
-        layout = SkinStore.loadLayout(skinInfo.id, system.id, landscape)
+    LaunchedEffect(skinInfo.id, system, config) {
+        layout = SkinStore.loadLayout(skinInfo.id, system.id, config)
+        viewport = ViewportStore.loadSaved(system, config)
         opacity = settings.get(Settings.Keys.padOpacity, Settings.DEFAULT_PAD_OPACITY)
         globalScale = settings.get(Settings.Keys.padScale, Settings.DEFAULT_PAD_SCALE)
+        keepAspect = settings.get(ViewportPrefs.keepAspect, true)
         vibrate = settings.get(Settings.Keys.padVibration, true)
         selection = emptyList()
+        viewportSelected = false
         history.clear()
         dirty = false
     }
+
+    val defaultViewport = remember(system, config, canvasSize) { ViewportStore.default(system, config, canvasSize) }
+    val currentViewport = viewport ?: defaultViewport
+    val gameAspect = remember(system) { ViewportStore.nominalAspect(system) }
+    LaunchedEffect(currentViewport, canvasSize) { if (canvasSize != Size.Zero) onViewportPreview?.invoke(currentViewport) }
 
     fun requestClose() { if (dirty) confirmDiscard = true else onClose() }
     BackHandler { requestClose() }
 
     fun save() {
         val l = layout ?: return
+        val vp = currentViewport
         scope.launch {
-            SkinStore.saveLayout(skinInfo.id, system.id, landscape, l)
+            SkinStore.saveLayout(skinInfo.id, system.id, config, l)
+            ViewportStore.save(system, config, vp)
             settings.set(Settings.Keys.padOpacity, opacity)
+            settings.set(ViewportPrefs.keepAspect, keepAspect)
             Toast.makeText(context, R.string.se_saved, Toast.LENGTH_SHORT).show()
             dirty = false
             onClose()
@@ -155,17 +193,28 @@ fun SkinEditor(
         overlay?.let { groupPlaced(placeOverlay(it, canvasSize, landscape, SkinLayout.EMPTY, 1f).second) }.orEmpty()
     }
 
+    fun snapshot() = SkinEditState(currentLayout, currentViewport)
+    fun restore(s: SkinEditState) { layout = s.layout; viewport = s.viewport; dirty = true }
+
     /** Applies [transform] as one undo step ([key] coalesces slider/nudge bursts). */
     fun edit(key: String? = null, transform: (SkinLayout) -> SkinLayout) {
-        val l = layout ?: SkinLayout.EMPTY
-        history.record(l, key)
-        layout = transform(l)
+        val before = snapshot()
+        history.record(before, key)
+        layout = transform(before.layout)
         dirty = true
     }
-    fun undo() { history.undo(currentLayout)?.let { layout = it; dirty = true } }
-    fun redo() { history.redo(currentLayout)?.let { layout = it; dirty = true } }
+    fun editViewport(key: String? = null, transform: (ViewportRect) -> ViewportRect) {
+        val before = snapshot()
+        history.record(before, key)
+        viewport = transform(before.viewport).normalized()
+        dirty = true
+    }
+    fun undo() { history.undo(snapshot())?.let(::restore) }
+    fun redo() { history.redo(snapshot())?.let(::restore) }
 
     val layoutState = rememberUpdatedState(layout)
+    val viewportState = rememberUpdatedState(currentViewport)
+    val viewportSelectedState = rememberUpdatedState(viewportSelected)
     val placedState = rememberUpdatedState(placement?.second.orEmpty())
     val frameState = rememberUpdatedState(placement?.first?.box)
     val groupsState = rememberUpdatedState(groups)
@@ -173,7 +222,8 @@ fun SkinEditor(
     val selectionState = rememberUpdatedState(selection)
     val canvasState = rememberUpdatedState(canvasSize)
     val vibrateState = rememberUpdatedState(vibrate)
-    val landscapeState = rememberUpdatedState(landscape)
+
+    fun viewportRect(size: Size = canvasState.value) = viewportState.value.toRect(size)
 
     /** Moves every desc of [group] by a normalized offset, starting from [base]. */
     fun SkinLayout.moveGroup(ov: Overlay, placed: List<PlacedDesc>, group: Group, dxN: Float, dyN: Float): SkinLayout {
@@ -186,49 +236,81 @@ fun SkinEditor(
     }
 
     val host = remember {
-        object : EditorDragHost<Group> {
+        object : EditorDragHost<Any> {
             private var startLayout: SkinLayout = SkinLayout.EMPTY
+            private var startViewport: Rect = Rect.Zero
 
-            override fun hitTest(pos: Offset): Group? {
+            @Suppress("UNCHECKED_CAST")
+            private fun Any.asGroup(): Group = this as Group
+
+            override fun hitTest(pos: Offset): Any? {
                 val placed = placedState.value
-                return groupsState.value.asReversed().firstOrNull { g -> inflate(groupBounds(placed, g), 0.15f).contains(pos) }
+                val g = groupsState.value.asReversed().firstOrNull { g -> inflate(groupBounds(placed, g), 0.15f).contains(pos) }
+                if (g != null) return g
+                return if (viewportRect().contains(pos)) ViewportItem else null
             }
-            override fun rectOf(id: Group): Rect? = groupBounds(placedState.value, id).takeIf { it != Rect.Zero }
-            override fun selection(): List<Group> = selectionState.value
-            override fun otherRects(exclude: Set<Group>): List<Rect> {
+            override fun rectOf(id: Any): Rect? =
+                if (id === ViewportItem) viewportRect() else groupBounds(placedState.value, id.asGroup()).takeIf { it != Rect.Zero }
+            override fun selection(): List<Any> = selectionState.value
+            override fun otherRects(exclude: Set<Any>): List<Rect> {
+                if (ViewportItem in exclude) return emptyList()
                 val placed = placedState.value
                 return groupsState.value.filter { g -> g !in exclude && g.any { placed.getOrNull(it)?.visible == true } }
                     .map { groupBounds(placed, it) }.filter { it != Rect.Zero }
             }
             override fun fixedRects(): List<Rect> = buildList {
-                if (showMockGame) add(mockGameRect(canvasState.value, landscapeState.value))
+                add(viewportRect())
                 frameState.value?.takeIf { it != Rect.Zero }?.let(::add)
             }
+            override fun fixedRects(moving: Set<Any>): List<Rect> =
+                if (ViewportItem in moving) listOf(Rect(Offset.Zero, canvasState.value)) else fixedRects()
             override fun axisLockOn(): Boolean = chrome.axisLock
-            override fun onTap(id: Group?) { selection = if (id == null) emptyList() else listOf(id) }
-            override fun onLongPress(id: Group) { selection = if (id in selection) selection.filter { it != id } else selection + listOf(id) }
-            override fun onDragStart(ids: Set<Group>) {
-                startLayout = layoutState.value ?: SkinLayout.EMPTY
-                history.record(startLayout)
+            override fun onTap(id: Any?) {
+                if (id === ViewportItem) {
+                    viewportSelected = !viewportSelectedState.value
+                    selection = emptyList()
+                } else {
+                    viewportSelected = false
+                    selection = if (id == null) emptyList() else listOf(id.asGroup())
+                }
             }
-            override fun onDragMove(ids: Set<Group>, delta: Offset) {
-                val ov = overlayState.value ?: return
+            override fun onLongPress(id: Any) {
+                if (id === ViewportItem) { viewportSelected = true; return }
+                val g = id.asGroup()
+                selection = if (g in selection) selection.filter { it != g } else selection + listOf(g)
+            }
+            override fun onDragStart(ids: Set<Any>) {
+                startLayout = layoutState.value ?: SkinLayout.EMPTY
+                startViewport = viewportRect()
+                history.record(SkinEditState(startLayout, viewportState.value))
+            }
+            override fun onDragMove(ids: Set<Any>, delta: Offset) {
                 val s = canvasState.value
                 if (s == Size.Zero) return
+                if (ViewportItem in ids) {
+                    viewport = ViewportRect.fromRect(clampInside(startViewport.translate(delta), s), s)
+                    return
+                }
+                val ov = overlayState.value ?: return
                 val placed = placedState.value
                 var l = startLayout
-                for (g in ids) l = l.moveGroup(ov, placed, g, delta.x / s.width, delta.y / s.height)
+                for (g in ids) l = l.moveGroup(ov, placed, g.asGroup(), delta.x / s.width, delta.y / s.height)
                 layout = l
             }
-            override fun onDragEnd(ids: Set<Group>) { dirty = true }
+            override fun onDragEnd(ids: Set<Any>) { dirty = true }
             override fun haptic() { if (vibrateState.value) haptics.tick(0) }
         }
     }
 
     fun nudge(dxDp: Int, dyDp: Int) {
-        val ov = overlay ?: return
         val s = canvasSize
-        if (s == Size.Zero || selection.isEmpty()) return
+        if (s == Size.Zero) return
+        if (viewportSelected) {
+            editViewport("nudge") { v -> ViewportRect.fromRect(clampInside(v.toRect(s).translate(Offset(dxDp * density, dyDp * density)), s), s) }
+            return
+        }
+        val ov = overlay ?: return
+        if (selection.isEmpty()) return
         val placed = placement?.second ?: return
         edit("nudge") { l -> selection.fold(l) { acc, g -> acc.moveGroup(ov, placed, g, dxDp * density / s.width, dyDp * density / s.height) } }
     }
@@ -251,15 +333,20 @@ fun SkinEditor(
         }
     }
 
-    Box(modifier.fillMaxSize().background(if (showMockGame) OneEmuColors.Background else Color(0x66000000))) {
-        if (showMockGame) MockGame(landscape)
+    val viewportLabel = stringResource(R.string.vp_label)
 
+    Box(modifier.fillMaxSize().background(if (showMockGame) OneEmuColors.Background else Color(0x66000000))) {
         Box(
             Modifier
                 .fillMaxSize()
                 .onSizeChanged { canvasSize = Size(it.width.toFloat(), it.height.toFloat()) }
                 .pointerInput(Unit) { editorGestures(host, drag, density) },
         ) {
+            Canvas(Modifier.fillMaxSize()) {
+                if (canvasSize == Size.Zero) return@Canvas
+                val label = textMeasurer.measure(viewportLabel, TextStyle(color = OneEmuColors.Accent, fontSize = 11.sp))
+                drawViewport(currentViewport.toRect(canvasSize), gameAspect, viewportSelected, filled = showMockGame, density = density, label = label)
+            }
             Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = opacity.coerceIn(0.15f, 1f) }) {
                 val s = skin ?: return@Canvas
                 val ov = overlay ?: return@Canvas
@@ -277,6 +364,21 @@ fun SkinEditor(
                 }
                 drawGuides(drag.guides, OneEmuColors.Accent, density)
             }
+        }
+
+        if (viewportSelected && canvasSize != Size.Zero) {
+            var resizeStart by remember { mutableStateOf(Rect.Zero) }
+            ViewportHandles(
+                rect = currentViewport.toRect(canvasSize),
+                onDragStart = { resizeStart = currentViewport.toRect(canvasSize); history.record(snapshot()) },
+                onDrag = { corner, total ->
+                    val s = canvasSize
+                    val minPx = Size(ViewportRect.MIN_SIZE * s.width, ViewportRect.MIN_SIZE * s.height)
+                    viewport = ViewportRect.fromRect(resizeViewport(resizeStart, corner, total, keepAspect, s, minPx), s)
+                    dirty = true
+                },
+                onDragEnd = { dirty = true },
+            )
         }
 
         when {
@@ -298,7 +400,7 @@ fun SkinEditor(
             state = chrome,
             title = stringResource(R.string.se_title),
             subtitle = skinInfo.name + (overlay?.let { " · " + stringResource(R.string.se_variant, it.name) } ?: ""),
-            orientationToggle = orientationToggle,
+            orientationToggle = configSelector ?: { ScreenConfigSelector(config, onSelect = null) },
             onCancel = { requestClose() },
             onSave = { save() },
             saveEnabled = skin != null,
@@ -313,7 +415,23 @@ fun SkinEditor(
             val placed = placement?.second
             val ov = overlay
             val single = selection.singleOrNull()
-            if (selection.size >= 2) {
+            if (viewportSelected) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
+                    Text(
+                        stringResource(R.string.vp_size_readout, (currentViewport.w * 100).roundToInt(), (currentViewport.h * 100).roundToInt()),
+                        style = MaterialTheme.typography.bodySmall, color = OneEmuColors.OnSurfaceMuted, modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+                ViewportToolbar(
+                    keepAspect = keepAspect,
+                    onKeepAspect = { keepAspect = it; dirty = true },
+                    onTop = { editViewport { ViewportQuick.top(it) } },
+                    onCenter = { editViewport { ViewportQuick.center(it) } },
+                    onFull = { editViewport { ViewportQuick.full() } },
+                    onDefault = { editViewport { defaultViewport } },
+                )
+            } else if (selection.size >= 2) {
                 AlignToolbar(
                     count = selection.size,
                     onAlignRow = { align(AlignOps::alignRow) },
@@ -357,8 +475,23 @@ fun SkinEditor(
                 Slider(value = opacity, onValueChange = { opacity = it; dirty = true }, valueRange = 0.15f..1f, modifier = Modifier.weight(1f))
                 Text("${(opacity * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { edit { SkinLayout.EMPTY }; selection = emptyList() }) { Text(stringResource(R.string.se_reset)) }
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    selected = viewportSelected,
+                    onClick = { viewportSelected = !viewportSelected; if (viewportSelected) selection = emptyList() },
+                    label = { Text(stringResource(R.string.vp_select)) },
+                )
+                TextButton(onClick = {
+                    history.record(snapshot())
+                    layout = SkinLayout.EMPTY
+                    viewport = defaultViewport
+                    dirty = true
+                    selection = emptyList()
+                }) { Text(stringResource(R.string.se_reset)) }
             }
         }
     }
@@ -406,14 +539,4 @@ private fun inflate(r: Rect, fraction: Float): Rect {
     val dx = (r.width * fraction / 2f).coerceAtLeast(8f)
     val dy = (r.height * fraction / 2f).coerceAtLeast(8f)
     return Rect(r.left - dx, r.top - dy, r.right + dx, r.bottom + dy)
-}
-
-/** Same faint game rectangle the vector editor shows so users can place controls around it. */
-@Composable
-private fun MockGame(landscape: Boolean) {
-    Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = 0.6f }) {
-        val rect = mockGameRect(size, landscape)
-        drawRect(Color(0xFF2B2B2B), rect.topLeft, rect.size)
-        drawRect(OneEmuColors.Divider, rect.topLeft, rect.size, style = Stroke(2f))
-    }
 }

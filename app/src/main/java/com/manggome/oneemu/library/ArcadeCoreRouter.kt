@@ -9,7 +9,10 @@ import java.io.File
 
 /**
  * Decides which bundled MAME core runs an arcade zip: the first core (in [CORE_IDS] order) whose DAT lists
- * the zip's short name. Used by the library's launch check and by EmulatorActivity so both agree.
+ * the zip's short name — unless that DAT rates the game's driver "preliminary" (or the driver is known to
+ * crash on arm64, [ArcadeRomCheck.UNSTABLE_DRIVERS]) and a later core rates it no worse, in which case the
+ * later core takes it (Tecmo World Cup '98 on ST-V: MAME 2003-Plus crashes, MAME 2010 runs). The rule itself
+ * is [ArcadeRomCheck.routeByName]; used by the library's launch check and by EmulatorActivity so both agree.
  *
  * Only name lookups happen here (no zip IO); the per-file diagnosis lives in [ArcadeRomChecker].
  */
@@ -46,10 +49,19 @@ object ArcadeCoreRouter {
 
     /**
      * @param core the core to launch with, or null when nothing usable exists.
-     * @param resolvedCoreId the core whose DAT lists the game (null = not in any DAT / not arcade / user override).
-     * @param neededCoreId set when the DAT says [resolvedCoreId] but that core's library is not in this build.
+     * @param resolvedCoreId the core the DATs route the game to (null = not in any DAT / not arcade / user override).
+     * @param neededCoreId set when the DATs say [resolvedCoreId] but that core's library is not in this build.
+     * @param reason why the game was taken away from an earlier core ([skippedCoreId]); NONE for the plain first match.
+     * @param driverStatus the game's `<driver status>` in [resolvedCoreId]'s DAT.
      */
-    data class Route(val core: CoreInfo?, val resolvedCoreId: String?, val neededCoreId: String?)
+    data class Route(
+        val core: CoreInfo?,
+        val resolvedCoreId: String?,
+        val neededCoreId: String?,
+        val reason: ArcadeRomCheck.RouteReason = ArcadeRomCheck.RouteReason.NONE,
+        val skippedCoreId: String? = null,
+        val driverStatus: ArcadeRomCheck.DriverStatus = ArcadeRomCheck.DriverStatus.UNKNOWN,
+    )
 
     /**
      * Routing for [game]. An explicit, available `coreId` override wins; otherwise arcade zips go to the core whose
@@ -65,9 +77,11 @@ object ArcadeCoreRouter {
 
         val checker = ArcadeRomChecker.get(app)
         val shortName = File(game.path).nameWithoutExtension
-        val resolvedId = checker.coreIdFor(shortName) ?: return Route(default, null, null)
-        val core = cores.core(resolvedId)
-        return if (core != null && cores.isAvailable(core)) Route(core, resolvedId, null) else Route(null, resolvedId, resolvedId)
+        val rt = checker.routeByName(shortName) ?: return Route(default, null, null)
+        val core = cores.core(rt.coreId)
+        val status = rt.game.driverStatus
+        return if (core != null && cores.isAvailable(core)) Route(core, rt.coreId, null, rt.reason, rt.skippedCoreId, status)
+        else Route(null, rt.coreId, rt.coreId, rt.reason, rt.skippedCoreId, status)
     }
 
     /** Core to launch [game] with, or null when the required core is not bundled (see [route] for the reason). */

@@ -188,6 +188,13 @@
     <string name="lib_arcade_link_mamedev">MAME 공식 무료 롬 (mamedev.org)</string>
     <string name="lib_arcade_core_label">%1$s (MAME %2$s 롬셋)</string>
     <string name="lib_arcade_run_core">실행 코어: %1$s</string>
+    <string name="lib_arcade_route_preliminary">%1$s에서는 미완성 드라이버라 %2$s으로 실행</string>
+    <string name="lib_arcade_route_unstable">%1$s에서는 이 기판 드라이버가 실행 중 튕겨 %2$s으로 실행</string>
+    <string name="lib_arcade_driver_status">에뮬레이션 상태: %1$s</string>
+    <string name="lib_arcade_driver_good">양호</string>
+    <string name="lib_arcade_driver_imperfect">불완전(그래픽·사운드 문제 가능)</string>
+    <string name="lib_arcade_driver_preliminary">미완성(실행 불안정)</string>
+    <string name="lib_arcade_preliminary_launch">이 게임은 선택한 코어에서 미완성 상태입니다. 다른 코어를 선택해 보세요</string>
     <string name="lib_arcade_status_rename">파일 이름 변경 필요: %1$s</string>
     <string name="lib_arcade_desc_rename">이 파일은 %1$s에서 \'%2$s.zip\' 이름으로 실행됩니다 (%3$s). 현재 이름 \'%4$s.zip\'은(는) 최신 MAME이 쓰는 이름이어서 코어가 찾지 못합니다. 아래 \'이름 바꾸기\'로 파일 이름만 바꾸면 됩니다.</string>
     <string name="lib_arcade_core_mismatch">이 게임은 %1$s 목록에 없고 %2$s 코어용입니다. 메뉴 → 코어 선택에서 \'기종 기본값\'을 고르면 자동으로 맞는 코어로 실행됩니다.</string>

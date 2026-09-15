@@ -202,7 +202,12 @@ void Frontend::threadMain() {
             std::unique_lock<std::mutex> lock(queueMutex_);
             bool active = gameLoaded_ && !paused_ && !shutdownRequested_;
             if (!active) {
-                queueCv_.wait(lock, [&] { return !queue_.empty() || !threadRunning_ || windowDirty_ || (gameLoaded_ && !paused_); });
+                queueCv_.wait(lock, [&] {
+                    // Pending video config only wakes us when the paused branch below can actually re-present.
+                    bool canRepresent = gameLoaded_ && video_.ready();
+                    return !queue_.empty() || !threadRunning_ || windowDirty_ || (gameLoaded_ && !paused_) ||
+                           (canRepresent && (videoCfgDirty_ || viewportDirty_));
+                });
             }
             cmds.swap(queue_);
         }
@@ -222,8 +227,9 @@ void Frontend::threadMain() {
         if (gameLoaded_ && !paused_ && !shutdownRequested_) {
             runFrame();
         } else if (gameLoaded_ && paused_ && video_.ready()) {
-            // keep the last frame on screen after a surface change
+            // keep the last frame on screen after a surface change / viewport edit
             video_.makeCurrent();
+            applyPendingVideoConfig();
             video_.present(videoCfg_, avInfo_.geometry.aspect_ratio, frameIsHw_);
             video_.swap();
         }
@@ -463,10 +469,7 @@ void Frontend::runFrame() {
     }
     video_.makeCurrent();
 
-    if (videoCfgDirty_.exchange(false)) {
-        videoCfg_.linearFilter = linearFilterPending_;
-        videoCfg_.aspect = (AspectMode)aspectModePending_;
-    }
+    applyPendingVideoConfig();
 
     const double fps = avInfo_.timing.fps > 1.0 ? avInfo_.timing.fps : 60.0;
     const int64_t periodNs = (int64_t)(1e9 / fps);
@@ -599,6 +602,24 @@ void Frontend::setFastForward(int speed) { fastForward_ = speed; nextFrameNs_ = 
 
 void Frontend::setVideoConfig(bool linear, int aspectMode) {
     linearFilterPending_ = linear; aspectModePending_ = aspectMode; videoCfgDirty_ = true;
+    queueCv_.notify_all();
+}
+
+void Frontend::setViewport(float x, float y, float w, float h) {
+    viewportPending_[0] = x; viewportPending_[1] = y; viewportPending_[2] = w; viewportPending_[3] = h;
+    viewportDirty_ = true;
+    queueCv_.notify_all(); // a paused session re-presents so the editor preview is live
+}
+
+void Frontend::applyPendingVideoConfig() {
+    if (videoCfgDirty_.exchange(false)) {
+        videoCfg_.linearFilter = linearFilterPending_;
+        videoCfg_.aspect = (AspectMode)aspectModePending_;
+    }
+    if (viewportDirty_.exchange(false)) {
+        videoCfg_.vpX = viewportPending_[0]; videoCfg_.vpY = viewportPending_[1];
+        videoCfg_.vpW = viewportPending_[2]; videoCfg_.vpH = viewportPending_[3];
+    }
 }
 
 void Frontend::setAudioMuted(bool muted) { audio_.setMuted(muted || paused_); }
@@ -957,6 +978,7 @@ bool Frontend::screenshot(std::vector<uint32_t>& rgba, int& w, int& h) {
     run([&] {
         if (!video_.ready()) return;
         video_.makeCurrent();
+        applyPendingVideoConfig();
         video_.present(videoCfg_, avInfo_.geometry.aspect_ratio, frameIsHw_);
         ok = video_.readback(rgba, w, h);
     });

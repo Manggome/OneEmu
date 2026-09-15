@@ -80,8 +80,10 @@ internal fun LayoutsSettingsScreen(onBack: () -> Unit, onEdit: (systemId: String
                 confirmReset = false
                 scope.launch {
                     for (system in SystemId.entries) {
-                        settings.remove(Settings.Keys.layout(system.id, landscape = true))
-                        settings.remove(Settings.Keys.layout(system.id, landscape = false))
+                        for (config in com.manggome.oneemu.emu.ScreenConfig.entries) {
+                            settings.remove(Settings.Keys.layout(system.id, config))
+                            settings.remove(androidx.datastore.preferences.core.stringPreferencesKey("viewport.${system.id}.${config.key}"))
+                        }
                     }
                     Toast.makeText(context, R.string.layouts_reset_done, Toast.LENGTH_SHORT).show()
                 }

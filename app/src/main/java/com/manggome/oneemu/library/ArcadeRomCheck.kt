@@ -15,13 +15,52 @@ import java.util.zip.ZipFile
  * chain (parent zip, BIOS zip). A file is satisfied when an entry with the same CRC (and size) exists
  * anywhere in that chain; an entry with the right name but another CRC counts as a mismatch.
  *
- * [resolve] looks the zip up in several DBs (one per core, in preference order). When no DB knows the
- * file name it falls back to CRC identification: newer MAME versions renamed many sets (rbisland vs
- * rainbow, spidman vs spidey …), so the zip's entry CRCs are matched against every game's ROM list and
- * the best fit is reported as [Status.RENAME_SUGGESTED].
+ * [resolve] looks the zip up in several DBs (one per core, in preference order) with [routeByName]: the
+ * first DB wins unless it rates the game's driver "preliminary" (or the driver is known to crash, see
+ * [UNSTABLE_DRIVERS]) and a later DB rates it no worse. When no DB knows the file name it falls back to
+ * CRC identification: newer MAME versions renamed many sets (rbisland vs rainbow, spidman vs spidey …),
+ * so the zip's entry CRCs are matched against every game's ROM list and the best fit is reported as
+ * [Status.RENAME_SUGGESTED].
  */
 object ArcadeRomCheck {
     enum class Status { OK, MISSING_FILES, WRONG_SET, NEEDS_PARENT, NEEDS_BIOS, NEEDS_SAMPLES, CHD_UNSUPPORTED, NOT_IN_DAT, RENAME_SUGGESTED }
+
+    /** `<driver status>` of a game in one core's DAT, normalised by gen-romdb.py (0.78's "protection" = PRELIMINARY). */
+    enum class DriverStatus(val rank: Int) {
+        /** No `<driver>` element (BIOS sets) or an old romdb without the column: treated like GOOD for routing. */
+        UNKNOWN(2), GOOD(2), IMPERFECT(1), PRELIMINARY(0);
+
+        companion object {
+            fun parse(s: String): DriverStatus = when (s) {
+                "good" -> GOOD
+                "imperfect" -> IMPERFECT
+                "preliminary", "protection" -> PRELIMINARY
+                else -> UNKNOWN
+            }
+        }
+    }
+
+    /**
+     * Driver source files (without ".c") that crash natively on arm64 in a core even where its DAT rates the
+     * game good — the MAME 0.78 ST-V/SH-2 emulation in MAME 2003-Plus (Tecmo World Cup '98 & co.). For
+     * routing these count as PRELIMINARY in that core, so MAME 2010 takes the game when it lists it.
+     */
+    val UNSTABLE_DRIVERS: Map<String, Set<String>> = mapOf(
+        ArcadeCoreRouter.MAME2003PLUS to setOf("stv", "stvinit", "stvhacks"),
+    )
+
+    /** Why [routeByName] passed over an earlier (preferred) core. */
+    enum class RouteReason {
+        /** The first core that lists the game (or the only one) — nothing to explain. */
+        NONE,
+        /** The preferred core's DAT marks the game preliminary; the chosen core rates it no worse. */
+        PREFERRED_PRELIMINARY,
+        /** The preferred core's driver is in [UNSTABLE_DRIVERS]; the chosen core rates the game no worse. */
+        PREFERRED_UNSTABLE,
+    }
+
+    /** Result of [routeByName]: the core to run the game with, and the core it was taken away from (if any). */
+    data class Routing(val coreId: String, val game: Game, val reason: RouteReason = RouteReason.NONE, val skippedCoreId: String? = null)
 
     /** Badge colour class for the library list. */
     enum class Severity { OK, WARN, ERROR }
@@ -52,9 +91,21 @@ object ArcadeRomCheck {
         val disks: Int,
         val runnable: Boolean,
         val roms: List<Rom>,
+        /** Normalised `<driver status>`: "good" | "imperfect" | "preliminary" | "" (unknown / old romdb). */
+        val status: String = "",
+        /** `<game sourcefile>`, e.g. "stv.c"; "" when unknown. */
+        val sourceFile: String = "",
+        /** Raw `<driver>` flags for display/diagnosis (0.78: emulation = raw status incl. "protection"). */
+        val emulation: String = "",
+        val color: String = "",
+        val sound: String = "",
+        val graphic: String = "",
     ) {
         /** Files this set ships itself (not merged from a parent/BIOS, not BIOS alternatives). */
         val ownRoms: List<Rom> get() = roms.filter { !it.merged && it.bios == null }
+        val driverStatus: DriverStatus get() = DriverStatus.parse(status)
+        /** "stv" for "stv.c" / "drivers/stv.c". */
+        val driverName: String get() = sourceFile.substringAfterLast('/').substringBeforeLast('.').lowercase()
     }
 
     class Db(private val games: Map<String, Game>) {
@@ -118,7 +169,10 @@ object ArcadeRomCheck {
                 return Db(map)
             }
 
-            /** name  description  cloneof  romof  bios  sampleof  needsSamples  disks  runnable  roms */
+            /**
+             * name  description  cloneof  romof  bios  sampleof  needsSamples  disks  runnable  roms
+             * [status  sourcefile  emulation  color  sound  graphic] — the trailing six are optional (older romdb files).
+             */
             fun parseLine(line: String): Game? {
                 val p = line.split('\t')
                 if (p.size < 10) return null
@@ -136,6 +190,8 @@ object ArcadeRomCheck {
                 return Game(
                     name = p[0], description = p[1], cloneof = p[2], romof = p[3], bios = p[4], sampleof = p[5],
                     needsSamples = p[6] == "1", disks = p[7].toIntOrNull() ?: 0, runnable = p[8] != "0", roms = roms,
+                    status = p.getOrElse(10) { "" }, sourceFile = p.getOrElse(11) { "" }, emulation = p.getOrElse(12) { "" },
+                    color = p.getOrElse(13) { "" }, sound = p.getOrElse(14) { "" }, graphic = p.getOrElse(15) { "" },
                 )
             }
 
@@ -186,11 +242,48 @@ object ArcadeRomCheck {
     }
 
     /**
-     * Result of [resolve]: which core's DAT the zip belongs to ([coreId] null = none) and that core's [report].
+     * Result of [resolve]: which core runs the zip ([coreId] null = no DAT lists it) and that core's [report].
      * For RENAME_SUGGESTED the report was produced as if the zip already had `report.suggestedName`.
+     * [reason]/[skippedCoreId] say when the game was taken away from an earlier core (see [routeByName]).
      */
-    data class Resolution(val coreId: String?, val report: Report) {
+    data class Resolution(
+        val coreId: String?,
+        val report: Report,
+        val reason: RouteReason = RouteReason.NONE,
+        val skippedCoreId: String? = null,
+    ) {
         val status: Status get() = report.status
+        /** Driver status of the game in the chosen core's DAT (UNKNOWN when no DAT lists it). */
+        val driverStatus: DriverStatus get() = report.game?.driverStatus ?: DriverStatus.UNKNOWN
+    }
+
+    /** True when [game] is rated preliminary in [coreId], or its driver is listed in [UNSTABLE_DRIVERS] for that core. */
+    fun isUnreliable(coreId: String, game: Game): Boolean =
+        game.driverStatus == DriverStatus.PRELIMINARY || isUnstableDriver(coreId, game)
+
+    fun isUnstableDriver(coreId: String, game: Game): Boolean = UNSTABLE_DRIVERS[coreId]?.contains(game.driverName) == true
+
+    /**
+     * Picks the core for [shortName] among [dbs] (preference order, e.g. MAME 2003-Plus → MAME 2010):
+     *  1. the first DB that lists the name wins when it rates the driver good/imperfect (or has no rating);
+     *  2. when it rates the game preliminary — or the driver is in [UNSTABLE_DRIVERS] for that core — the first
+     *     later DB that lists the game with a status **no worse** than that (an equal "preliminary" still wins:
+     *     the newer MAME's driver is the better bet over a known crash) takes it, with the reason recorded;
+     *  3. otherwise the first DB keeps the game (nothing better exists).
+     * Returns null when no DB lists the name.
+     */
+    fun routeByName(dbs: List<Pair<String, Db>>, shortName: String): Routing? {
+        val listed = dbs.mapNotNull { (id, db) -> db[shortName]?.let { id to it } }
+        val (firstId, first) = listed.firstOrNull() ?: return null
+        val reason = when {
+            first.driverStatus == DriverStatus.PRELIMINARY -> RouteReason.PREFERRED_PRELIMINARY
+            isUnstableDriver(firstId, first) -> RouteReason.PREFERRED_UNSTABLE
+            else -> return Routing(firstId, first)
+        }
+        // The preferred core's effective rating is PRELIMINARY (the lowest rank) here, so any later core that lists
+        // the game with a stable driver rates it no worse — the first such core takes it.
+        val alt = listed.drop(1).firstOrNull { (id, game) -> !isUnstableDriver(id, game) }
+        return if (alt != null) Routing(alt.first, alt.second, reason, firstId) else Routing(firstId, first)
     }
 
     private class Entry(val crc: String, val size: Long)
@@ -286,10 +379,11 @@ object ArcadeRomCheck {
     }
 
     /**
-     * Routes [zip] to the first DB (in [dbs] order, e.g. MAME 2003-Plus → MAME 2010) that lists its short name
-     * and checks it there. When none does, identifies the set by entry CRCs in the same order and returns
-     * RENAME_SUGGESTED (the report is the check under the suggested name, so missing files are still listed).
-     * Otherwise NOT_IN_DAT with `coreId == null`.
+     * Routes [zip] with [routeByName] (first DB in [dbs] order that lists its short name, unless that core rates
+     * the driver preliminary/unstable and a later one does no worse) and checks it there. When none lists the
+     * name, identifies the set by entry CRCs in the same order, routes the identified name the same way and
+     * returns RENAME_SUGGESTED (the report is the check under the suggested name, so missing files are still
+     * listed). Otherwise NOT_IN_DAT with `coreId == null`.
      *
      * @param samplesDir per-core samples folder (null = don't judge samples)
      * @param chdSupported per-core CHD capability (see [check])
@@ -302,16 +396,19 @@ object ArcadeRomCheck {
         sibling: (String) -> File = { File(zip.parentFile ?: File("."), it) },
     ): Resolution {
         val shortName = zip.nameWithoutExtension.lowercase()
-        for ((id, db) in dbs) {
-            if (db[shortName] == null) continue
-            return Resolution(id, check(db, zip, samplesDir(id), sibling, chdSupported(id)))
+        val byId = dbs.toMap()
+        routeByName(dbs, shortName)?.let { rt ->
+            val db = byId.getValue(rt.coreId)
+            return Resolution(rt.coreId, check(db, zip, samplesDir(rt.coreId), sibling, chdSupported(rt.coreId)), rt.reason, rt.skippedCoreId)
         }
         val crcs = readEntries(zip).values.mapTo(HashSet()) { it.crc }
         if (crcs.isNotEmpty()) {
-            for ((id, db) in dbs) {
-                val game = db.identify(crcs) ?: continue
-                val r = check(db, zip, samplesDir(id), sibling, chdSupported(id), asName = game.name)
-                return Resolution(id, r.copy(shortName = shortName, status = Status.RENAME_SUGGESTED, suggestedName = game.name))
+            for ((_, db) in dbs) {
+                val name = db.identify(crcs)?.name ?: continue
+                // The identified name may be rated better in another core: route it like a correctly named zip.
+                val rt = routeByName(dbs, name) ?: continue
+                val r = check(byId.getValue(rt.coreId), zip, samplesDir(rt.coreId), sibling, chdSupported(rt.coreId), asName = name)
+                return Resolution(rt.coreId, r.copy(shortName = shortName, status = Status.RENAME_SUGGESTED, suggestedName = name), rt.reason, rt.skippedCoreId)
             }
         }
         return Resolution(null, Report(shortName, Status.NOT_IN_DAT, null))

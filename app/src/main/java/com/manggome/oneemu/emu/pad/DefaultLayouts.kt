@@ -1,14 +1,26 @@
 package com.manggome.oneemu.emu.pad
 
+import com.manggome.oneemu.emu.ScreenConfig
 import com.manggome.oneemu.emu.pad.PadElementId.*
 import com.manggome.oneemu.model.SystemId
 
 /**
  * Factory layouts. Portrait puts the game image on top and the pad in the lower ~45% of the
  * screen; landscape puts the d-pad left and the buttons right. Positions are normalized so they
- * work on any resolution; users rearrange them in the layout editor.
+ * work on any resolution; users rearrange them in the layout editor. The wide configurations
+ * (unfolded foldable / tablet) reuse the phone layout of the same orientation with smaller buttons,
+ * since dp-sized controls otherwise look giant on a near-square 7–8" panel.
  */
 object DefaultLayouts {
+    /** Element scale applied on top of the phone default for the *_WIDE configurations. */
+    const val WIDE_SCALE = 0.85f
+
+    fun forSystem(system: SystemId, config: ScreenConfig): PadLayout {
+        val base = forSystem(system, config.landscape)
+        return if (config.wide) PadLayout(base.elements.map { it.copy(scale = it.scale * WIDE_SCALE) }) else base
+    }
+
+    /** Phone / folded default for one orientation. */
     fun forSystem(system: SystemId, landscape: Boolean): PadLayout = when (system) {
         SystemId.NES, SystemId.GB, SystemId.GBC -> twoButton(landscape, shoulders = false)
         SystemId.GBA -> twoButton(landscape, shoulders = true)

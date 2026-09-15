@@ -3,7 +3,9 @@ package com.manggome.oneemu.library
 import android.content.Context
 import android.util.Log
 import com.manggome.oneemu.R
+import com.manggome.oneemu.library.ArcadeRomCheck.DriverStatus
 import com.manggome.oneemu.library.ArcadeRomCheck.Report
+import com.manggome.oneemu.library.ArcadeRomCheck.RouteReason
 import com.manggome.oneemu.library.ArcadeRomCheck.Resolution
 import com.manggome.oneemu.library.ArcadeRomCheck.Status
 import com.manggome.oneemu.util.AppDirs
@@ -47,8 +49,11 @@ class ArcadeRomChecker private constructor(private val context: Context) {
     /** DBs in routing preference order. */
     private fun orderedDbs(): List<Pair<String, ArcadeRomCheck.Db>> = ArcadeCoreRouter.CORE_IDS.map { it to db(it) }
 
-    /** First core (preference order) whose DAT lists [shortName]; name lookup only, no zip IO. */
-    fun coreIdFor(shortName: String): String? = ArcadeCoreRouter.CORE_IDS.firstOrNull { db(it)[shortName] != null }
+    /** Core for [shortName] per [ArcadeRomCheck.routeByName] (status-aware, preference order); name lookup only, no zip IO. */
+    fun routeByName(shortName: String): ArcadeRomCheck.Routing? = ArcadeRomCheck.routeByName(orderedDbs(), shortName)
+
+    /** Core id [routeByName] picks for [shortName], or null when no DAT lists it. */
+    fun coreIdFor(shortName: String): String? = routeByName(shortName)?.coreId
 
     /** `<system>/<core subdir>/samples` — where the core looks for sample zips. */
     fun samplesDir(coreId: String): File = File(dirs.system, "${ArcadeCoreRouter.systemSubdir(coreId)}/samples")
@@ -156,6 +161,45 @@ class ArcadeRomChecker private constructor(private val context: Context) {
     /** "실행 코어: MAME 2010 (MAME 0.139 롬셋)" or null when no core lists the game. */
     fun runCoreText(res: Resolution): String? = res.coreId?.let { context.getString(R.string.lib_arcade_run_core, coreLabel(it)) }
 
+    /** "MAME 2003-Plus에서는 미완성 드라이버라 MAME 2010으로 실행" — why the game left the preferred core; null for a plain first match. */
+    fun routeReasonText(res: Resolution): String? = routeReasonText(res.reason, res.skippedCoreId, res.coreId)
+
+    fun routeReasonText(route: ArcadeCoreRouter.Route): String? = routeReasonText(route.reason, route.skippedCoreId, route.resolvedCoreId)
+
+    private fun routeReasonText(reason: RouteReason, skippedCoreId: String?, chosenCoreId: String?): String? {
+        if (skippedCoreId == null || chosenCoreId == null) return null
+        return when (reason) {
+            RouteReason.NONE -> null
+            RouteReason.PREFERRED_PRELIMINARY -> context.getString(R.string.lib_arcade_route_preliminary, coreName(skippedCoreId), coreName(chosenCoreId))
+            RouteReason.PREFERRED_UNSTABLE -> context.getString(R.string.lib_arcade_route_unstable, coreName(skippedCoreId), coreName(chosenCoreId))
+        }
+    }
+
+    /** "에뮬레이션 상태: 양호 / 불완전(그래픽·사운드 문제 가능) / 미완성(실행 불안정)"; null when the DAT has no rating. */
+    fun driverStatusText(status: DriverStatus): String? = when (status) {
+        DriverStatus.GOOD -> context.getString(R.string.lib_arcade_driver_good)
+        DriverStatus.IMPERFECT -> context.getString(R.string.lib_arcade_driver_imperfect)
+        DriverStatus.PRELIMINARY -> context.getString(R.string.lib_arcade_driver_preliminary)
+        DriverStatus.UNKNOWN -> null
+    }?.let { context.getString(R.string.lib_arcade_driver_status, it) }
+
+    fun driverStatusText(res: Resolution): String? = driverStatusText(res.driverStatus)
+
+    /** Status of [res]'s game in [coreId]'s own DAT (the running core may differ from the routed one). */
+    fun driverStatusIn(res: Resolution, coreId: String): DriverStatus {
+        val name = res.report.game?.name ?: return DriverStatus.UNKNOWN
+        return db(coreId)[name]?.driverStatus ?: DriverStatus.UNKNOWN
+    }
+
+    /**
+     * "이 게임은 선택한 코어에서 미완성 상태입니다. 다른 코어를 선택해 보세요" when the game is rated preliminary in
+     * [runningCoreId] (default: the routed core) — for the launch error dialog; null otherwise.
+     */
+    fun preliminaryNote(res: Resolution, runningCoreId: String? = res.coreId): String? {
+        val status = if (runningCoreId == null || runningCoreId == res.coreId) res.driverStatus else driverStatusIn(res, runningCoreId)
+        return if (status == DriverStatus.PRELIMINARY) context.getString(R.string.lib_arcade_preliminary_launch) else null
+    }
+
     /**
      * When the game was launched with a core other than the one its DAT belongs to (user override), explains
      * that mismatch; null otherwise.
@@ -185,6 +229,7 @@ class ArcadeRomChecker private constructor(private val context: Context) {
         val r = res.report
         append(statusText(res))
         append(" — ").append(explanation(res))
+        preliminaryNote(res)?.let { append('\n').append(it) }
         for (n in companionNotes(res)) append('\n').append(n)
         if (r.issues.isNotEmpty()) {
             append('\n')

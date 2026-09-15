@@ -128,6 +128,7 @@ BRIDGE(void, setPointer)(JNIEnv*, jobject, jint x, jint y, jboolean pressed) {
 }
 BRIDGE(void, setFastForward)(JNIEnv*, jobject, jint speed) { Frontend::get().setFastForward(speed); }
 BRIDGE(void, setVideoConfig)(JNIEnv*, jobject, jboolean linear, jint aspect) { Frontend::get().setVideoConfig(linear, aspect); }
+BRIDGE(void, setViewport)(JNIEnv*, jobject, jfloat x, jfloat y, jfloat w, jfloat h) { Frontend::get().setViewport(x, y, w, h); }
 BRIDGE(void, setAudioMuted)(JNIEnv*, jobject, jboolean muted) { Frontend::get().setAudioMuted(muted); }
 
 BRIDGE(jboolean, saveState)(JNIEnv* env, jobject, jstring path) { return Frontend::get().saveState(jstr(env, path)); }

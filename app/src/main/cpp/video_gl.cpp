@@ -2,6 +2,7 @@
 #include "libretro.h"
 #include "log.h"
 #include <cctype>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -286,12 +287,17 @@ void VideoGL::present(const VideoConfig& cfg, float coreAspect, bool hwFrame) {
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // Output rectangle.
+    // Output rectangle: aspect-fit inside the configured viewport rect (top-left origin, normalized).
+    // Mirrored in Kotlin by PadGeometry.computeGameRect(); keep the arithmetic identical.
     float aspect = coreAspect > 0 ? coreAspect : (float)fw / (float)fh;
     if (cfg.aspect == AspectMode::Square) aspect = (float)fw / (float)fh;
     bool rotated = (cfg.rotation % 2) == 1;
     if (rotated) aspect = 1.0f / aspect;
-    float outW = (float)surfaceW_, outH = (float)surfaceH_;
+    float vpX = std::min(std::max(cfg.vpX, 0.f), 1.f), vpY = std::min(std::max(cfg.vpY, 0.f), 1.f);
+    float vpW = std::min(std::max(cfg.vpW, 0.05f), 1.f - vpX), vpH = std::min(std::max(cfg.vpH, 0.05f), 1.f - vpY);
+    float rx = vpX * (float)surfaceW_, ry = vpY * (float)surfaceH_;
+    float rw = vpW * (float)surfaceW_, rh = vpH * (float)surfaceH_;
+    float outW = rw, outH = rh;
     if (cfg.aspect != AspectMode::Stretch) {
         if (outW / outH > aspect) outW = outH * aspect; else outH = outW / aspect;
         if (cfg.aspect == AspectMode::Integer) {
@@ -300,17 +306,22 @@ void VideoGL::present(const VideoConfig& cfg, float coreAspect, bool hwFrame) {
             if (scale >= 1) { outH = baseH * scale; outW = outH * aspect; }
         }
     }
-    float sx = outW / (float)surfaceW_, sy = outH / (float)surfaceH_;
-    lastViewport_[0] = (int)((surfaceW_ - outW) / 2); lastViewport_[1] = (int)((surfaceH_ - outH) / 2);
-    lastViewport_[2] = (int)outW; lastViewport_[3] = (int)outH;
+    int vx = (int)(rx + (rw - outW) / 2), topPx = (int)(ry + (rh - outH) / 2);
+    int vw = (int)outW, vh = (int)outH;
+    if (vw < 1) vw = 1;
+    if (vh < 1) vh = 1;
+    int vy = surfaceH_ - topPx - vh; // GL viewport origin is bottom-left
+    lastViewport_[0] = vx; lastViewport_[1] = vy;
+    lastViewport_[2] = vw; lastViewport_[3] = vh;
+    glViewport(vx, vy, vw, vh);
 
     float c = std::cos(-(float)cfg.rotation * (float)M_PI_2), s = std::sin(-(float)cfg.rotation * (float)M_PI_2);
-    // column-major: scale then rotate
+    // column-major: rotate (the letterbox is applied through glViewport)
     float mvp[16] = {
-        c * sx,  s * sy, 0, 0,
-       -s * sx,  c * sy, 0, 0,
-        0,       0,      1, 0,
-        0,       0,      0, 1,
+        c,  s, 0, 0,
+       -s,  c, 0, 0,
+        0,  0, 1, 0,
+        0,  0, 0, 1,
     };
 
     glUseProgram(program_);
