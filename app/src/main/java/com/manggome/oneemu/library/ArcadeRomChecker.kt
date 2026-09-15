@@ -200,6 +200,30 @@ class ArcadeRomChecker private constructor(private val context: Context) {
         return if (status == DriverStatus.PRELIMINARY) context.getString(R.string.lib_arcade_preliminary_launch) else null
     }
 
+    /** Korean board name for a driver source file ("stv" → "세가 ST-V"); null when the board has no name here. */
+    private fun boardName(game: ArcadeRomCheck.Game): String? = when (game.driverName) {
+        "stv", "stvinit", "stvhacks" -> context.getString(R.string.lib_arcade_board_stv)
+        else -> null
+    }
+
+    /**
+     * "이 게임의 기판(세가 ST-V)은 현재 포함된 MAME 코어에서 강제 종료됩니다. 실행은 가능하지만 앱이 꺼질 수 있습니다." —
+     * the process-crash warning for a game whose driver is in [ArcadeRomCheck.UNSTABLE_DRIVERS] for the core it
+     * will run with ([coreId], default: the routed core). Null when that core is not known to crash on it.
+     */
+    fun unstableNote(game: ArcadeRomCheck.Game?, coreId: String?): String? {
+        if (game == null || coreId == null || !ArcadeRomCheck.isUnstableDriver(coreId, game)) return null
+        val board = boardName(game)
+        return if (board != null) context.getString(R.string.lib_arcade_unstable_note_board, board)
+        else context.getString(R.string.lib_arcade_unstable_note_generic)
+    }
+
+    /** [unstableNote] for a resolution (its routed core), i.e. non-null exactly when [Resolution.knownUnstable]. */
+    fun unstableNote(res: Resolution): String? = unstableNote(res.report.game, res.coreId)
+
+    /** [unstableNote] for the core [shortName] is about to run with (routing result or a user override). */
+    fun unstableNote(shortName: String, runningCoreId: String): String? = unstableNote(db(runningCoreId)[shortName], runningCoreId)
+
     /**
      * When the game was launched with a core other than the one its DAT belongs to (user override), explains
      * that mismatch; null otherwise.
@@ -230,6 +254,7 @@ class ArcadeRomChecker private constructor(private val context: Context) {
         append(statusText(res))
         append(" — ").append(explanation(res))
         preliminaryNote(res)?.let { append('\n').append(it) }
+        unstableNote(res)?.let { append('\n').append(it) }
         for (n in companionNotes(res)) append('\n').append(n)
         if (r.issues.isNotEmpty()) {
             append('\n')

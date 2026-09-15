@@ -207,6 +207,12 @@
     <string name="lib_arcade_rename_failed">이름을 바꾸지 못했습니다. 저장소 권한을 확인해 주세요 (%1$s)</string>
     <string name="lib_arcade_rename_missing">원본 파일을 찾을 수 없습니다</string>
     <string name="lib_arcade_link_docs_2010">libretro 문서: MAME 2010</string>
+    <string name="lib_arcade_board_stv">세가 ST-V</string>
+    <string name="lib_arcade_unstable_note_board">이 게임의 기판(%1$s)은 현재 포함된 MAME 코어에서 강제 종료됩니다. 실행은 가능하지만 앱이 꺼질 수 있습니다.</string>
+    <string name="lib_arcade_unstable_note_generic">이 기판은 현재 포함된 MAME 코어에서 강제 종료됩니다. 실행은 가능하지만 앱이 꺼질 수 있습니다.</string>
+    <string name="lib_arcade_badge_unstable">롬 검사: 강제 종료 위험</string>
+    <string name="lib_launch_unstable_title">강제 종료 위험</string>
+    <string name="lib_launch_unstable_question">그래도 실행할까요?</string>
     <string name="lib_launch_rename_title">파일 이름 바꾸기 후 실행</string>
     <string name="lib_launch_rename_desc">\'%1$s\'은(는) %2$s에서 \'%3$s\' 이름으로 실행됩니다. 파일 이름을 바꾸고 실행할까요?</string>
     <string name="lib_launch_rename_action">이름 바꾸고 실행</string>
