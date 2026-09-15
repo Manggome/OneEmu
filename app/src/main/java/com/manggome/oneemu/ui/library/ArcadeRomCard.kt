@@ -82,25 +82,28 @@ fun rememberArcadeResolution(game: GameEntity, refresh: Int = 0): ArcadeRomCheck
     return state.value
 }
 
-/** The resolved core's report only (list/grid status dot). */
+/**
+ * Small coloured dot (green OK / amber needs something / red cannot run) for list and grid items. A game whose
+ * core is known to crash the process ([ArcadeRomCheck.Resolution.knownUnstable]) is red too, whatever its report
+ * says — the report status itself is left alone.
+ */
 @Composable
-fun rememberArcadeReport(game: GameEntity, refresh: Int = 0): ArcadeRomCheck.Report? = rememberArcadeResolution(game, refresh)?.report
-
-/** Small coloured dot (green OK / amber needs something / red cannot run) for list and grid items. */
-@Composable
-fun ArcadeStatusDot(report: ArcadeRomCheck.Report?, modifier: Modifier = Modifier, size: Dp = 10.dp) {
-    if (report == null) return
+fun ArcadeStatusDot(resolution: ArcadeRomCheck.Resolution?, modifier: Modifier = Modifier, size: Dp = 10.dp) {
+    if (resolution == null) return
+    val report = resolution.report
     val label = stringResource(
-        when (report.severity) {
-            ArcadeRomCheck.Severity.OK -> R.string.lib_arcade_badge_ok
-            ArcadeRomCheck.Severity.WARN -> R.string.lib_arcade_badge_warn
-            ArcadeRomCheck.Severity.ERROR -> R.string.lib_arcade_badge_error
+        when {
+            resolution.knownUnstable -> R.string.lib_arcade_badge_unstable
+            report.severity == ArcadeRomCheck.Severity.OK -> R.string.lib_arcade_badge_ok
+            report.severity == ArcadeRomCheck.Severity.WARN -> R.string.lib_arcade_badge_warn
+            else -> R.string.lib_arcade_badge_error
         },
     )
+    val color = if (resolution.knownUnstable) OneEmuColors.Danger else severityColor(report.severity)
     Box(
         modifier
             .size(size)
-            .background(severityColor(report.severity), CircleShape)
+            .background(color, CircleShape)
             .border(1.dp, Color(0x99000000), CircleShape)
             .semantics { contentDescription = label },
     )
@@ -133,7 +136,7 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
                 }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    ArcadeStatusDot(report, size = 12.dp)
+                    ArcadeStatusDot(resolution, size = 12.dp)
                     Spacer(Modifier.width(8.dp))
                     Text(checker.statusText(resolution), style = MaterialTheme.typography.titleSmall, color = severityColor(report.severity))
                 }
@@ -144,6 +147,11 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
                     Text(line, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     checker.routeReasonText(resolution)?.let { why ->
                         Text(why, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    // "이 게임의 기판(세가 ST-V)은 현재 포함된 MAME 코어에서 강제 종료됩니다 …" — the chosen core crashes too.
+                    checker.unstableNote(resolution)?.let { warn ->
+                        Spacer(Modifier.height(2.dp))
+                        Text(warn, style = MaterialTheme.typography.labelSmall, color = OneEmuColors.Danger)
                     }
                 }
                 // "에뮬레이션 상태: 양호 / 불완전(…) / 미완성(실행 불안정)" from the chosen core's DAT.

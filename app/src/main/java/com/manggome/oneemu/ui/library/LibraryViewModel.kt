@@ -74,6 +74,11 @@ sealed class LaunchCheck {
     data class MissingFile(val path: String) : LaunchCheck()
     /** Arcade zip whose name no DAT knows but whose contents match [resolution.report.suggestedName]; rename then launch. */
     data class ArcadeRename(val game: GameEntity, val resolution: ArcadeRomCheck.Resolution, val coreName: String) : LaunchCheck()
+    /**
+     * Everything is in place, but the core is known to crash the whole process on this game's driver
+     * ([ArcadeRomCheck.UNSTABLE_DRIVERS], e.g. Sega ST-V). [note] is the Korean explanation; launch only after the user confirms.
+     */
+    data class UnstableWarning(val game: GameEntity, val note: String) : LaunchCheck()
 }
 
 class LibraryViewModel : ViewModel() {
@@ -226,7 +231,15 @@ class LibraryViewModel : ViewModel() {
         val missing = core.bios.filter { b ->
             b.required && (b.system.isEmpty() || system == null || b.system == system.id) && !File(systemDir, b.file).exists()
         }
-        return if (missing.isEmpty()) LaunchCheck.Ok else LaunchCheck.MissingBios(core, missing, systemDir)
+        if (missing.isNotEmpty()) return LaunchCheck.MissingBios(core, missing, systemDir)
+        if (system == SystemId.ARCADE) {
+            // Known process crash (ST-V on both bundled MAMEs): everything is launchable, so ask instead of just going.
+            // Checked against the core that will actually run (auto route or user override) — a name lookup, no zip IO.
+            ArcadeRomChecker.get(app).unstableNote(File(game.path).nameWithoutExtension, core.id)?.let { note ->
+                return LaunchCheck.UnstableWarning(game, note)
+            }
+        }
+        return LaunchCheck.Ok
     }
 
     // ---- per-game actions ----------------------------------------------------------------------

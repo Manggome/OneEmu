@@ -53,6 +53,8 @@ object ArcadeCoreRouter {
      * @param neededCoreId set when the DATs say [resolvedCoreId] but that core's library is not in this build.
      * @param reason why the game was taken away from an earlier core ([skippedCoreId]); NONE for the plain first match.
      * @param driverStatus the game's `<driver status>` in [resolvedCoreId]'s DAT.
+     * @param knownUnstable [resolvedCoreId] is itself known to crash on this game's driver ([ArcadeRomCheck.UNSTABLE_DRIVERS])
+     *   and no bundled core does better — the library asks before launching.
      */
     data class Route(
         val core: CoreInfo?,
@@ -61,6 +63,7 @@ object ArcadeCoreRouter {
         val reason: ArcadeRomCheck.RouteReason = ArcadeRomCheck.RouteReason.NONE,
         val skippedCoreId: String? = null,
         val driverStatus: ArcadeRomCheck.DriverStatus = ArcadeRomCheck.DriverStatus.UNKNOWN,
+        val knownUnstable: Boolean = false,
     )
 
     /**
@@ -80,8 +83,8 @@ object ArcadeCoreRouter {
         val rt = checker.routeByName(shortName) ?: return Route(default, null, null)
         val core = cores.core(rt.coreId)
         val status = rt.game.driverStatus
-        return if (core != null && cores.isAvailable(core)) Route(core, rt.coreId, null, rt.reason, rt.skippedCoreId, status)
-        else Route(null, rt.coreId, rt.coreId, rt.reason, rt.skippedCoreId, status)
+        return if (core != null && cores.isAvailable(core)) Route(core, rt.coreId, null, rt.reason, rt.skippedCoreId, status, rt.knownUnstable)
+        else Route(null, rt.coreId, rt.coreId, rt.reason, rt.skippedCoreId, status, rt.knownUnstable)
     }
 
     /** Core to launch [game] with, or null when the required core is not bundled (see [route] for the reason). */

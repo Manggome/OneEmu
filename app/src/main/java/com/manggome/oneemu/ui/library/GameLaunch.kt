@@ -34,11 +34,15 @@ fun launchGame(context: Context, game: GameEntity) {
     )
 }
 
-/** Explains why a game could not be launched (no core, missing BIOS, missing file). No-op for [LaunchCheck.Ok]. */
+/**
+ * Explains why a game could not be launched (no core, missing BIOS, missing file), or asks before a launch that
+ * is known to crash ([LaunchCheck.UnstableWarning]). No-op for [LaunchCheck.Ok].
+ */
 @Composable
 fun LaunchCheckDialog(check: LaunchCheck, onDismiss: () -> Unit) {
     when (check) {
         LaunchCheck.Ok -> Unit
+        is LaunchCheck.UnstableWarning -> UnstableLaunchDialog(check, onDismiss)
         is LaunchCheck.NoCore -> InfoDialog(title = stringResource(R.string.lib_launch_no_core_title), onDismiss = onDismiss) {
             Text(
                 when {
@@ -102,6 +106,20 @@ private fun ArcadeRenameLaunchDialog(check: LaunchCheck.ArcadeRename, onDismiss:
             }
         },
         onDismiss = { if (error == null) onDismiss() },
+    )
+}
+
+/** "강제 종료 위험: … 그래도 실행할까요?" — 실행 starts the emulator anyway, 취소 does nothing. */
+@Composable
+private fun UnstableLaunchDialog(check: LaunchCheck.UnstableWarning, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    ConfirmDialog(
+        title = stringResource(R.string.lib_launch_unstable_title),
+        text = check.note + "\n\n" + stringResource(R.string.lib_launch_unstable_question),
+        confirmText = stringResource(R.string.lib_action_play),
+        destructive = true,
+        onConfirm = { launchGame(context, check.game); onDismiss() },
+        onDismiss = onDismiss,
     )
 }
 

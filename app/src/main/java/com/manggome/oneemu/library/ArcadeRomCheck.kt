@@ -42,11 +42,14 @@ object ArcadeRomCheck {
 
     /**
      * Driver source files (without ".c") that crash natively on arm64 in a core even where its DAT rates the
-     * game good — the MAME 0.78 ST-V/SH-2 emulation in MAME 2003-Plus (Tecmo World Cup '98 & co.). For
-     * routing these count as PRELIMINARY in that core, so MAME 2010 takes the game when it lists it.
+     * game good — the ST-V/SH-2 emulation (Tecmo World Cup '98 & co.), which kills the whole process in
+     * MAME 2003-Plus (0.78) *and* MAME 2010 (0.139). For routing these count as worse than PRELIMINARY in that
+     * core; when every core that lists the game crashes, the newest one is still chosen (least-bad bet) and the
+     * result carries [Routing.knownUnstable] so the UI can warn before launching.
      */
     val UNSTABLE_DRIVERS: Map<String, Set<String>> = mapOf(
         ArcadeCoreRouter.MAME2003PLUS to setOf("stv", "stvinit", "stvhacks"),
+        ArcadeCoreRouter.MAME2010 to setOf("stv"),
     )
 
     /** Why [routeByName] passed over an earlier (preferred) core. */
@@ -60,7 +63,10 @@ object ArcadeRomCheck {
     }
 
     /** Result of [routeByName]: the core to run the game with, and the core it was taken away from (if any). */
-    data class Routing(val coreId: String, val game: Game, val reason: RouteReason = RouteReason.NONE, val skippedCoreId: String? = null)
+    data class Routing(val coreId: String, val game: Game, val reason: RouteReason = RouteReason.NONE, val skippedCoreId: String? = null) {
+        /** The chosen core is itself known to crash on this driver ([UNSTABLE_DRIVERS]) — nothing better exists. */
+        val knownUnstable: Boolean get() = isUnstableDriver(coreId, game)
+    }
 
     /** Badge colour class for the library list. */
     enum class Severity { OK, WARN, ERROR }
@@ -255,6 +261,11 @@ object ArcadeRomCheck {
         val status: Status get() = report.status
         /** Driver status of the game in the chosen core's DAT (UNKNOWN when no DAT lists it). */
         val driverStatus: DriverStatus get() = report.game?.driverStatus ?: DriverStatus.UNKNOWN
+        /**
+         * Independent of [status]: the chosen core is known to crash the process on this game's driver
+         * ([UNSTABLE_DRIVERS]) and no bundled core does better. The UI warns before launching.
+         */
+        val knownUnstable: Boolean get() = coreId != null && report.game?.let { isUnstableDriver(coreId, it) } == true
     }
 
     /** True when [game] is rated preliminary in [coreId], or its driver is listed in [UNSTABLE_DRIVERS] for that core. */
@@ -263,13 +274,19 @@ object ArcadeRomCheck {
 
     fun isUnstableDriver(coreId: String, game: Game): Boolean = UNSTABLE_DRIVERS[coreId]?.contains(game.driverName) == true
 
+    /** Effective rating of [game] in [coreId] for routing: a known crash ranks below PRELIMINARY. */
+    private fun effectiveRank(coreId: String, game: Game): Int = if (isUnstableDriver(coreId, game)) -1 else game.driverStatus.rank
+
     /**
      * Picks the core for [shortName] among [dbs] (preference order, e.g. MAME 2003-Plus → MAME 2010):
      *  1. the first DB that lists the name wins when it rates the driver good/imperfect (or has no rating);
      *  2. when it rates the game preliminary — or the driver is in [UNSTABLE_DRIVERS] for that core — the first
-     *     later DB that lists the game with a status **no worse** than that (an equal "preliminary" still wins:
-     *     the newer MAME's driver is the better bet over a known crash) takes it, with the reason recorded;
+     *     later DB that rates the game strictly better takes it; failing that, the **last** later DB that rates it
+     *     equally badly (an equal "preliminary" — or an equal known crash — still moves the game: the newer MAME's
+     *     driver is the better bet), with the reason recorded;
      *  3. otherwise the first DB keeps the game (nothing better exists).
+     * When the chosen core's driver is itself in [UNSTABLE_DRIVERS], [Routing.knownUnstable] is true: the game is
+     * expected to crash the process wherever it runs, so callers should warn before launching.
      * Returns null when no DB lists the name.
      */
     fun routeByName(dbs: List<Pair<String, Db>>, shortName: String): Routing? {
@@ -280,9 +297,10 @@ object ArcadeRomCheck {
             isUnstableDriver(firstId, first) -> RouteReason.PREFERRED_UNSTABLE
             else -> return Routing(firstId, first)
         }
-        // The preferred core's effective rating is PRELIMINARY (the lowest rank) here, so any later core that lists
-        // the game with a stable driver rates it no worse — the first such core takes it.
-        val alt = listed.drop(1).firstOrNull { (id, game) -> !isUnstableDriver(id, game) }
+        val firstRank = effectiveRank(firstId, first)
+        val later = listed.drop(1)
+        val alt = later.firstOrNull { (id, game) -> effectiveRank(id, game) > firstRank }
+            ?: later.lastOrNull { (id, game) -> effectiveRank(id, game) == firstRank }
         return if (alt != null) Routing(alt.first, alt.second, reason, firstId) else Routing(firstId, first)
     }
 

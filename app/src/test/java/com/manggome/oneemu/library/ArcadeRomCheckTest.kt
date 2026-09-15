@@ -285,8 +285,9 @@ class ArcadeRomCheckTest {
             row("bothbad", rom("b.bin", c1), "preliminary", "segac2.c"),      // preliminary in both → 2010 (newer driver, no worse)
             row("goodgame", rom("g.bin", sfix), "good", "cps1.c"),            // good here → stays (2010 says imperfect)
             row("onlyhere", rom("o.bin", biosRom), "preliminary", "nss.c"),   // preliminary but no alternative → stays
-            row("stvgood", rom("s.bin", biosRomUs), "good", "stv.c"),         // "good" but ST-V crashes on arm64 → 2010
-            row("stvalone", rom("t.bin", chdX), "good", "stv.c"),             // unstable driver, nobody else lists it → stays
+            row("stvgood", rom("s.bin", biosRomUs), "good", "stv.c"),         // "good" but ST-V crashes on arm64 → 2010 (crashes there too, newest wins)
+            row("stvalone", rom("t.bin", chdX), "good", "stv.c"),             // unstable driver, nobody else lists it → stays, knownUnstable
+            row("prelimvsstv", rom("v.bin", sfix), "preliminary", "zn.c"),    // preliminary here, but 2010 lists it on a crashing driver → stays
             row("old", rom("w.bin", weirdRom), "", ""),                       // no rating → behaves like good
         ).joinToString("\n").byteInputStream(),
     )
@@ -297,7 +298,8 @@ class ArcadeRomCheckTest {
             row("goodgame", rom("g.bin", sfix), "imperfect", "cps1.c"),
             row("stvgood", rom("s.bin", biosRomUs), "imperfect", "stv.c"),
             row("old", rom("w.bin", weirdRom), "good", "x.c"),
-            row("stv2010", rom("z.bin", p1), "imperfect", "stv.c"),            // ST-V is only unstable in 2003-Plus
+            row("stv2010", rom("z.bin", p1), "imperfect", "stv.c"),            // only 2010 lists it; ST-V crashes there too → knownUnstable
+            row("prelimvsstv", rom("v.bin", sfix), "good", "stv.c"),
         ).joinToString("\n").byteInputStream(),
     )
     private val statusDbs = listOf("mame2003plus" to statusDb2003, "mame2010" to statusDb2010)
@@ -317,10 +319,53 @@ class ArcadeRomCheckTest {
         assertEquals("mame2003plus", rt("stvalone").coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, rt("stvalone").reason)
         assertEquals("mame2003plus", rt("old").coreId)
         assertEquals("mame2010", rt("stv2010").coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, rt("stv2010").reason)
+        // A plain preliminary driver beats a known crash: the game stays where it merely runs badly.
+        val pv = rt("prelimvsstv")
+        assertEquals("mame2003plus", pv.coreId); assertEquals(ArcadeRomCheck.RouteReason.NONE, pv.reason); assertFalse(pv.knownUnstable)
         assertNull(ArcadeRomCheck.routeByName(statusDbs, "nothing"))
         assertTrue(ArcadeRomCheck.isUnreliable("mame2003plus", statusDb2003["stvgood"]!!))
-        assertFalse(ArcadeRomCheck.isUnreliable("mame2010", statusDb2010["stvgood"]!!))
+        assertTrue(ArcadeRomCheck.isUnreliable("mame2010", statusDb2010["stvgood"]!!)) // ST-V crashes in MAME 2010 as well
         assertTrue(ArcadeRomCheck.isUnreliable("mame2010", statusDb2010["bothbad"]!!))
+        assertFalse(ArcadeRomCheck.isUnstableDriver("mame2010", statusDb2010["bothbad"]!!))
+        // knownUnstable: only when the *chosen* core's driver is in UNSTABLE_DRIVERS — preliminary alone is not it.
+        assertFalse(prelim.knownUnstable); assertFalse(both.knownUnstable); assertFalse(good.knownUnstable); assertFalse(only.knownUnstable)
+        assertTrue(stv.knownUnstable); assertTrue(rt("stvalone").knownUnstable); assertTrue(rt("stv2010").knownUnstable)
+    }
+
+    /** Both bundled cores crash on the driver: the newest core still takes the game, and the result says it will crash. */
+    @Test fun knownUnstableWhenEveryCoreCrashesOnTheDriver() {
+        val both2003 = ArcadeRomCheck.Db.parse(listOf(
+            row("stvboth", rom("s.bin", biosRomUs), "good", "stv.c"),
+            row("stvprelim", rom("q.bin", c1), "preliminary", "stv.c"),
+        ).joinToString("\n").byteInputStream())
+        val both2010 = ArcadeRomCheck.Db.parse(listOf(
+            row("stvboth", rom("s.bin", biosRomUs), "imperfect", "stv.c"),
+            row("stvprelim", rom("q.bin", c1), "preliminary", "stv.c"),
+        ).joinToString("\n").byteInputStream())
+        val dbs = listOf("mame2003plus" to both2003, "mame2010" to both2010)
+        assertTrue(ArcadeRomCheck.UNSTABLE_DRIVERS.getValue("mame2003plus").contains("stv"))
+        assertEquals(setOf("stv"), ArcadeRomCheck.UNSTABLE_DRIVERS["mame2010"])
+
+        val rt = ArcadeRomCheck.routeByName(dbs, "stvboth")!!
+        assertEquals("mame2010", rt.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_UNSTABLE, rt.reason); assertEquals("mame2003plus", rt.skippedCoreId)
+        assertTrue(rt.knownUnstable)
+        val pr = ArcadeRomCheck.routeByName(dbs, "stvprelim")!!
+        assertEquals("mame2010", pr.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_PRELIMINARY, pr.reason); assertTrue(pr.knownUnstable)
+
+        // Resolution carries the flag independently of the report status (OK here, MISSING_FILES below, RENAME_SUGGESTED via CRC).
+        val dir = tmp.newFolder()
+        val ok = ArcadeRomCheck.resolve(dbs, zip(dir, "stvboth", "s.bin" to biosRomUs))
+        assertEquals("mame2010", ok.coreId); assertEquals(Status.OK, ok.status); assertTrue(ok.knownUnstable)
+        val broken = ArcadeRomCheck.resolve(dbs, zip(dir, "stvboth", "other.bin" to p1))
+        assertEquals(Status.MISSING_FILES, broken.status); assertTrue(broken.knownUnstable)
+        val renamed = ArcadeRomCheck.resolve(dbs, zip(dir, "stvboth_v2", "whatever.rom" to biosRomUs))
+        assertEquals(Status.RENAME_SUGGESTED, renamed.status); assertEquals("stvboth", renamed.report.suggestedName); assertTrue(renamed.knownUnstable)
+        // Unknown everywhere → no core, not unstable.
+        val none = ArcadeRomCheck.resolve(dbs, zip(dir, "zzz", "junk" to "unrelated bytes".toByteArray()))
+        assertNull(none.coreId); assertFalse(none.knownUnstable)
+        // The earlier fixtures: a plain first match and a preliminary-but-not-crashing route are not flagged.
+        assertFalse(ArcadeRomCheck.resolve(statusDbs, zip(dir, "goodgame", "g.bin" to sfix)).knownUnstable)
+        assertFalse(ArcadeRomCheck.resolve(statusDbs, zip(dir, "prelim", "p.bin" to p1)).knownUnstable)
     }
 
     @Test fun resolveCarriesRoutingReasonAndStatus() {
@@ -363,21 +408,27 @@ class ArcadeRomCheckTest {
         val real = listOf("mame2003plus" to real2003, "mame2010" to real2010)
         val rt = ArcadeRomCheck.routeByName(real, "twcup98")!!
         assertEquals("mame2010", rt.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_PRELIMINARY, rt.reason); assertEquals("mame2003plus", rt.skippedCoreId)
+        // … but MAME 2010's SH-2 emulation crashes the process on ST-V as well: the launch must be confirmed.
+        assertTrue(rt.knownUnstable)
         // Every ST-V game leaves 2003-Plus when 2010 lists it; the DAT-rated "good" ones for the unstable-driver reason.
         val baku = ArcadeRomCheck.routeByName(real, "bakubaku")!!
-        assertEquals("mame2010", baku.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_UNSTABLE, baku.reason)
+        assertEquals("mame2010", baku.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_UNSTABLE, baku.reason); assertTrue(baku.knownUnstable)
         // Games only 2003-Plus knows stay there even when preliminary; good games stay by preference.
         assertEquals("mame2003plus", ArcadeRomCheck.routeByName(real, "sassisu")!!.coreId)
         assertEquals("mame2003plus", ArcadeRomCheck.routeByName(real, "mslug")!!.coreId)
         assertEquals(ArcadeRomCheck.RouteReason.NONE, ArcadeRomCheck.routeByName(real, "mslug")!!.reason)
+        assertFalse(ArcadeRomCheck.routeByName(real, "mslug")!!.knownUnstable)
         assertEquals("mame2003plus", ArcadeRomCheck.routeByName(real, "sf2")!!.coreId)
         assertEquals("mame2010", ArcadeRomCheck.routeByName(real, "bldyror2")!!.coreId)
+        assertFalse(ArcadeRomCheck.routeByName(real, "bldyror2")!!.knownUnstable)
 
         val dir = tmp.newFolder()
         val res = ArcadeRomCheck.resolve(real, zip(dir, "twcup98", "dummy" to p1), chdSupported = { it == "mame2010" })
         assertEquals("mame2010", res.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_PRELIMINARY, res.reason)
         assertEquals(ArcadeRomCheck.DriverStatus.PRELIMINARY, res.driverStatus)
         assertEquals("twcup98", res.report.game!!.name)
+        assertTrue(res.knownUnstable)
+        assertFalse(ArcadeRomCheck.resolve(real, zip(dir, "mslug", "dummy" to p1)).knownUnstable)
     }
 
     /** The MAME 2010 asset (cores/mame2010/assets/romdb.tsv.gz, from metadata/mame2010.xml) parses; bldyror2 routes there. */
