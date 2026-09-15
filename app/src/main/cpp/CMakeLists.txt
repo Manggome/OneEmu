@@ -12,6 +12,7 @@ add_library(oneemu SHARED
     video_gl.cpp
     frontend.cpp
     jni.cpp
+    crash_handler.cpp
 )
 target_include_directories(oneemu PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(oneemu PRIVATE -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden)

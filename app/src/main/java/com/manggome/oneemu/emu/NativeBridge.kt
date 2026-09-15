@@ -30,6 +30,9 @@ object NativeBridge {
     @JvmStatic fun onCoreShutdown() = listener?.onCoreShutdown() ?: Unit
     @JvmStatic fun onFatal(what: String, errorCode: Int) = listener?.onFatal(what, errorCode) ?: Unit
 
+    /** Installs a SIGSEGV/SIGBUS/... recorder that writes to [path] (see CrashMarker). */
+    external fun installCrashHandler(path: String)
+
     // ---- lifecycle ----
     /**
      * [options] is "key=value\n" lines applied as core option overrides before retro_init.

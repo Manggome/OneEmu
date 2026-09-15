@@ -42,6 +42,13 @@ object CrashMarker {
         Marker(lines[0], lines[1], lines[2], lines[3].toLongOrNull() ?: 0L)
     }.getOrNull()
 
+    /** The native crash record written by liboneemu's signal handler, if the last crash was native. */
+    fun readNativeCrash(context: Context): String? = runCatching {
+        File(context.cacheDir, "native_crash.txt").takeIf { it.exists() }?.readText()?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+
+    fun clearNativeCrash(context: Context) { runCatching { File(context.cacheDir, "native_crash.txt").delete() } }
+
     /** Recent log lines of our own UID (the crashed process shares it), most relevant tags only. */
     suspend fun collectLog(): String = withContext(Dispatchers.IO) {
         runCatching {
@@ -81,11 +88,13 @@ fun CrashReportPrompt() {
             TextButton(onClick = {
                 scope.launch {
                     val log = CrashMarker.collectLog()
-                    val text = "OneEmu 비정상 종료 보고\n게임: ${m.title}\n파일: ${m.path}\n코어: ${m.coreId}\n\n$log"
+                    val native = CrashMarker.readNativeCrash(context)?.let { "네이티브 크래시:\n$it\n\n" } ?: ""
+                    val text = "OneEmu 비정상 종료 보고\n게임: ${m.title}\n파일: ${m.path}\n코어: ${m.coreId}\n\n$native$log"
                     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     cm.setPrimaryClip(ClipData.newPlainText("OneEmu crash log", text))
                     Toast.makeText(context, "로그를 클립보드에 복사했습니다", Toast.LENGTH_SHORT).show()
                     CrashMarker.clear(context)
+                    CrashMarker.clearNativeCrash(context)
                     marker = null
                 }
             }) { Text("로그 복사") }

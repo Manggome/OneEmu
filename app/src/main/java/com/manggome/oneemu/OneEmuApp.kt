@@ -26,6 +26,7 @@ class OneEmuApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        runCatching { com.manggome.oneemu.emu.NativeBridge.installCrashHandler(java.io.File(cacheDir, "native_crash.txt").absolutePath) }
         // Mirror the per-system default-core preference into CoreRegistry so synchronous callers see it.
         appScope.launch {
             settings.flow.map { prefs ->
