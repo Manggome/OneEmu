@@ -183,7 +183,7 @@
     <string name="lib_arcade_dat_installed">설치됨: %1$s</string>
     <string name="lib_arcade_dat_none">설치된 DB 파일 없음</string>
     <string name="lib_arcade_help_title">도움말</string>
-    <string name="lib_arcade_help_body">이 앱은 MAME 코어 세 개를 함께 씁니다. 게임은 목록에 있는 코어로 자동 배정됩니다(2003-Plus → 2010 → 최신 MAME 순).\n• MAME 2003-Plus: MAME 0.78 시절의 \'MAME 2003-Plus\' 참조 롬셋. 샘플은 system/mame2003-plus/samples/, cheat.dat 등 DB 파일은 system/mame2003-plus/ 에 둡니다.\n• MAME 2010: MAME 0.139 롬셋(2003-Plus에 없는 3D·후기 게임). 샘플은 system/mame2010/samples/, CHD는 게임 zip과 같은 폴더의 \'게임이름/\' 하위 폴더에 둡니다. 크기가 커서 처음 필요할 때 내려받습니다.\n• MAME (최신): 최신 MAME 롬셋. 옛 코어에서 미완성이거나 강제 종료되는 게임(세가 ST-V 등)용. 역시 필요할 때 내려받습니다.\n• zip 파일 이름은 MAME 짧은 이름(예: sf2.zip)이어야 합니다. 최신 MAME이 이름을 바꾼 게임(rbisland→rainbow 등)은 내용(CRC)으로 찾아 \'이름 바꾸기\'를 제안합니다.\n• BIOS zip(neogeo.zip, pgm.zip 등)은 system 폴더가 아니라 게임 zip과 같은 폴더에 둡니다.\n• 분할(split) 롬셋의 클론은 부모 zip이 같은 폴더에 있어야 합니다.\n• 최신 MAME(0.2xx)용 롬셋은 파일 구성이 달라 실행되지 않을 수 있습니다.\n• 상용 게임 롬은 직접 소유한 기판/카트리지에서 추출한 것만 사용하세요.</string>
+    <string name="lib_arcade_help_body">이 앱은 MAME 코어 세 개를 함께 씁니다. 게임은 목록에 있는 코어로 자동 배정됩니다(2003-Plus → 2010 → 최신 MAME 순).\n• MAME 2003-Plus: MAME 0.78 시절의 \'MAME 2003-Plus\' 참조 롬셋. 샘플은 system/mame2003-plus/samples/, cheat.dat 등 DB 파일은 system/mame2003-plus/ 에 둡니다.\n• MAME 2010: MAME 0.139 롬셋(2003-Plus에 없는 3D·후기 게임). 샘플은 system/mame2010/samples/, CHD는 게임 zip과 같은 폴더의 \'게임이름/\' 하위 폴더에 둡니다. 크기가 커서 처음 필요할 때 내려받습니다.\n• MAME (최신): 최신 MAME 롬셋. 옛 코어에서 미완성이거나 강제 종료되는 게임(세가 ST-V 등)용. 역시 필요할 때 내려받습니다.\n• zip 파일 이름은 MAME 짧은 이름(예: sf2.zip)이어야 합니다. 최신 MAME이 이름을 바꾼 게임(rbisland→rainbow 등)은 내용(CRC)으로 찾아 \'이름 바꾸기\'를 제안합니다.\n• BIOS zip(neogeo.zip, pgm.zip 등)은 system 폴더가 아니라 게임 zip과 같은 폴더에 둡니다.\n• 최신 MAME은 일부 게임에 장치 롬 zip(세가 ST-V의 segabill.zip, CPS2의 qsound_hle.zip 등)도 요구합니다. 역시 게임 zip과 같은 폴더에 둡니다.\n• 분할(split) 롬셋의 클론은 부모 zip이 같은 폴더에 있어야 합니다.\n• 최신 MAME(0.2xx)용 롬셋은 파일 구성이 달라 실행되지 않을 수 있습니다.\n• 상용 게임 롬은 직접 소유한 기판/카트리지에서 추출한 것만 사용하세요.</string>
     <string name="lib_arcade_link_docs">libretro 문서: MAME 2003-Plus</string>
     <string name="lib_arcade_link_mamedev">MAME 공식 무료 롬 (mamedev.org)</string>
     <string name="lib_arcade_core_label">%1$s (MAME %2$s 롬셋)</string>
@@ -224,4 +224,16 @@
     <string name="lib_arcade_desc_unverified">%1$s 게임 목록에 이 이름이 있습니다. 이 목록에는 파일 단위 정보가 없어 zip 내용은 검사하지 않았습니다. 실행이 안 되면 최신 MAME용 롬셋인지 확인하세요.</string>
     <string name="lib_arcade_core_not_installed">미설치</string>
     <string name="lib_arcade_core_download">내려받기</string>
+    <string name="lib_arcade_status_needs_device">장치 롬 필요: %1$s</string>
+    <string name="lib_arcade_desc_needs_device">이 게임의 기판에 붙는 장치(%1$s)의 롬이 필요합니다. %1$s.zip을 게임 zip과 같은 폴더에 두세요. MAME은 이 파일을 %1$s.zip에서 먼저 찾고, 없으면 게임·부모·BIOS zip 안에서도 찾습니다.</string>
+    <string name="lib_arcade_device_missing_folder">%1$s.zip 장치 롬이 같은 폴더에 없습니다</string>
+    <string name="lib_arcade_device_in_folder_ok">같은 폴더에 %1$s.zip 있음 (장치 롬)</string>
+    <string name="lib_arcade_bios_outdated">%1$s.zip에 %2$s 없음 — 이 코어(MAME %3$s) 기준 BIOS 세트가 필요합니다</string>
+    <string name="lib_arcade_mame_version_note">최신 MAME 코어는 %1$s 롬셋 기준입니다. BIOS/장치 zip도 같은 버전이어야 합니다.</string>
+    <string name="lib_arcade_kind_bios">BIOS</string>
+    <string name="lib_arcade_kind_parent">부모 롬</string>
+    <string name="lib_arcade_kind_device">장치 롬</string>
+    <string name="lib_arcade_owner_absent">%1$s.zip: 없음 (%2$s)</string>
+    <string name="lib_arcade_owner_files">%1$s.zip: %2$s</string>
+    <string name="lib_arcade_owner_more">… +%1$d</string>
 </resources>

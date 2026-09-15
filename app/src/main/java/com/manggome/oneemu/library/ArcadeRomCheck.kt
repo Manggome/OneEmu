@@ -13,7 +13,14 @@ import java.util.zip.ZipFile
  *
  * Matching follows MAME file loading: every file is looked up in the game zip, then up the `romof`
  * chain (parent zip, BIOS zip). A file is satisfied when an entry with the same CRC (and size) exists
- * anywhere in that chain; an entry with the right name but another CRC counts as a mismatch.
+ * anywhere in that chain; an entry with the right name but another CRC counts as a mismatch. Two rules
+ * mirror what MAME's `Required files are missing` actually checks:
+ *  - BIOS: of a set's `<biosset>`s only the *default* one is loaded ([Game.defaultBios]; `default="yes"`, or the
+ *    first biosset when none is marked — stvbios in 0.289), so exactly its files plus every file without a biosset
+ *    are required. A romdb without the column falls back to "any one BIOS file present".
+ *  - Devices: ROM-carrying devices ([Game.devices], e.g. `segabill` for ST-V) load their files from `<device>.zip`
+ *    first and then the game's own search path (game, parent, BIOS zips) — MAME logs
+ *    `epr-18022.ic2 NOT FOUND (tried in segabill twcup98 stvbios)`. A missing device zip is [Status.NEEDS_DEVICE].
  *
  * [resolve] looks the zip up in several DBs (one per core, in preference order) with [routeByName]: the
  * first DB wins unless it rates the game's driver "preliminary" (or the driver is known to crash, see
@@ -24,7 +31,10 @@ import java.util.zip.ZipFile
  */
 object ArcadeRomCheck {
     enum class Status {
-        OK, MISSING_FILES, WRONG_SET, NEEDS_PARENT, NEEDS_BIOS, NEEDS_SAMPLES, CHD_UNSUPPORTED, NOT_IN_DAT, RENAME_SUGGESTED,
+        OK, MISSING_FILES, WRONG_SET, NEEDS_PARENT, NEEDS_BIOS,
+        /** A device ROM zip (e.g. segabill.zip) that owns missing files is absent from the folder. */
+        NEEDS_DEVICE,
+        NEEDS_SAMPLES, CHD_UNSUPPORTED, NOT_IN_DAT, RENAME_SUGGESTED,
         /** The DAT lists the name but carries no per-file data (zip-level only DB, e.g. current MAME): nothing to compare. */
         UNVERIFIED,
     }
@@ -83,7 +93,7 @@ object ArcadeRomCheck {
         val crc: String,
         /** null = the game's own file; "=" = same name in the romof set; else the file name in the romof set */
         val merge: String?,
-        /** <biosset> name when this file belongs to one selectable BIOS; only one BIOS file is needed */
+        /** <biosset> name when this file belongs to one selectable BIOS; required only for the set's default biosset */
         val bios: String?,
     ) {
         val merged: Boolean get() = merge != null
@@ -111,9 +121,23 @@ object ArcadeRomCheck {
         val color: String = "",
         val sound: String = "",
         val graphic: String = "",
+        /**
+         * The `<biosset>` MAME loads when the user picks none (`default="yes"`, else the first biosset — gen-romdb.py
+         * resolves that); "" when the set has no biossets or the romdb predates the column.
+         */
+        val defaultBios: String = "",
+        /** Short names of the ROM-carrying devices this machine instantiates (MAME `device_ref`), e.g. ["segabill"]. */
+        val devices: List<String> = emptyList(),
     ) {
         /** Files this set ships itself (not merged from a parent/BIOS, not BIOS alternatives). */
         val ownRoms: List<Rom> get() = roms.filter { !it.merged && it.bios == null }
+        /**
+         * Files MAME loads for this set: everything without a biosset plus the default biosset's files. When the romdb
+         * carries no [defaultBios] the biosset files are left out here and [check] falls back to "any one BIOS file".
+         */
+        val requiredRoms: List<Rom> get() = roms.filter { it.bios == null || (defaultBios.isNotEmpty() && it.bios == defaultBios) }
+        /** BIOS-alternative files that are not judged individually (old romdb without a defaultbios column). */
+        val legacyBiosRoms: List<Rom> get() = if (defaultBios.isEmpty()) roms.filter { it.bios != null } else emptyList()
         val driverStatus: DriverStatus get() = DriverStatus.parse(status)
         /** "stv" for "stv.c" / "drivers/stv.c". */
         val driverName: String get() = sourceFile.substringAfterLast('/').substringBeforeLast('.').lowercase()
@@ -182,7 +206,9 @@ object ArcadeRomCheck {
 
             /**
              * name  description  cloneof  romof  bios  sampleof  needsSamples  disks  runnable  roms
-             * [status  sourcefile  emulation  color  sound  graphic] — the trailing six are optional (older romdb files).
+             * [status  sourcefile  emulation  color  sound  graphic  [defaultbios  devices]] — the trailing columns are
+             * optional (older romdb files): six driver-status columns, then the default biosset name and the
+             * ';'-separated ROM-carrying device names.
              */
             fun parseLine(line: String): Game? {
                 val p = line.split('\t')
@@ -203,6 +229,8 @@ object ArcadeRomCheck {
                     needsSamples = p[6] == "1", disks = p[7].toIntOrNull() ?: 0, runnable = p[8] != "0", roms = roms,
                     status = p.getOrElse(10) { "" }, sourceFile = p.getOrElse(11) { "" }, emulation = p.getOrElse(12) { "" },
                     color = p.getOrElse(13) { "" }, sound = p.getOrElse(14) { "" }, graphic = p.getOrElse(15) { "" },
+                    defaultBios = p.getOrElse(16) { "" },
+                    devices = p.getOrElse(17) { "" }.takeIf { it.isNotEmpty() }?.split(';')?.filter { it.isNotEmpty() } ?: emptyList(),
                 )
             }
 
@@ -217,11 +245,14 @@ object ArcadeRomCheck {
         val expectedCrc: String,
         val size: Long,
         val foundCrc: String?,
-        /** Short name of the zip that should contain the file (the game itself, its parent or the BIOS set). */
+        /** Short name of the zip that should contain the file (the game itself, its parent, the BIOS set or a device). */
         val owner: String,
     ) {
         val missing: Boolean get() = foundCrc == null
     }
+
+    /** What an owner zip is to the game — for labels such as "segabill.zip: 없음 (장치 롬)". */
+    enum class OwnerKind { GAME, PARENT, BIOS, DEVICE }
 
     data class Report(
         /** The zip's file name (lowercase, no extension) — for RENAME_SUGGESTED this is the wrong/new name. */
@@ -237,10 +268,14 @@ object ArcadeRomCheck {
         val sampleZip: String? = null,
         val samplesPresent: Boolean = false,
         val disks: Int = 0,
-        /** Set that is absent and owns missing files (NEEDS_PARENT / NEEDS_BIOS). */
+        /** Set that is absent and owns missing files (NEEDS_PARENT / NEEDS_BIOS / NEEDS_DEVICE). */
         val neededZip: String? = null,
         /** RENAME_SUGGESTED: the DAT short name this zip should have (== game.name). */
         val suggestedName: String? = null,
+        /** Device zips the game loads ROMs from ([Game.devices]), e.g. ["segabill"]. */
+        val deviceZips: List<String> = emptyList(),
+        /** Zips of the search path (game, parent, BIOS, devices) that exist in the folder — see [zipPresent]. */
+        val presentZips: Set<String> = emptySet(),
     ) {
         val missing: List<FileIssue> get() = issues.filter { it.missing }
         val mismatched: List<FileIssue> get() = issues.filter { !it.missing }
@@ -248,8 +283,26 @@ object ArcadeRomCheck {
             get() = when (status) {
                 Status.OK, Status.UNVERIFIED -> Severity.OK
                 Status.WRONG_SET, Status.NEEDS_SAMPLES, Status.RENAME_SUGGESTED -> Severity.WARN
-                Status.MISSING_FILES, Status.NEEDS_PARENT, Status.NEEDS_BIOS, Status.CHD_UNSUPPORTED, Status.NOT_IN_DAT -> Severity.ERROR
+                Status.MISSING_FILES, Status.NEEDS_PARENT, Status.NEEDS_BIOS, Status.NEEDS_DEVICE, Status.CHD_UNSUPPORTED, Status.NOT_IN_DAT -> Severity.ERROR
             }
+
+        /** True when `<owner>.zip` exists in the game's folder (the game zip itself counts as present when it exists). */
+        fun zipPresent(owner: String): Boolean = owner in presentZips
+
+        fun ownerKind(owner: String): OwnerKind = when {
+            owner == (game?.name ?: shortName) -> OwnerKind.GAME
+            owner == biosZip -> OwnerKind.BIOS
+            owner in deviceZips -> OwnerKind.DEVICE
+            else -> OwnerKind.PARENT
+        }
+
+        /** Issues grouped by owner zip: the game's own zip first, then parent, BIOS and device zips (stable within a kind). */
+        val issuesByOwner: List<Pair<String, List<FileIssue>>>
+            get() = issues.groupBy { it.owner }.toList().sortedBy { ownerKind(it.first).ordinal }
+
+        /** Missing files of the BIOS zip while that zip *is* in the folder: the user's BIOS set predates this core's DAT. */
+        val outdatedBiosFiles: List<FileIssue>
+            get() = biosZip?.takeIf { biosPresent }?.let { b -> missing.filter { it.owner == b } } ?: emptyList()
     }
 
     /**
@@ -341,10 +394,19 @@ object ArcadeRomCheck {
         }
         val parentZip = game.cloneof.ifEmpty { game.romof.takeIf { it.isNotEmpty() && it != game.bios } }
         val biosZip = game.bios.ifEmpty { null }
-        val zipFiles = HashMap<String, File>()
+        // Devices whose ROMs MAME loads for this machine (the DB lists them as non-runnable entries with rom rows).
+        val devices: List<Game> = game.devices.mapNotNull { db[it] }.filter { it.roms.isNotEmpty() && it.name != game.name }
+        val zipFiles = LinkedHashMap<String, File>()
         for (g in chain) zipFiles[g.name] = if (g === game) zip else sibling("${g.name}.zip")
         if (biosZip != null && biosZip !in zipFiles) zipFiles[biosZip] = sibling("$biosZip.zip")
+        for (d in devices) {
+            zipFiles.getOrPut(d.name) { sibling("${d.name}.zip") }
+            // A device with a parent ROM device (qsound_hle → qsound) also loads from the parent's zip.
+            d.romof.takeIf { it.isNotEmpty() }?.let { zipFiles.getOrPut(it) { sibling("$it.zip") } }
+        }
         val present = zipFiles.mapValues { it.value.isFile }
+        val presentZips = present.filterValues { it }.keys
+        val deviceZips = devices.map { it.name }
         val sampleZip = game.sampleof.ifEmpty { null }
         val samplesPresent = sampleZip != null && samplesDir != null && File(samplesDir, "$sampleZip.zip").isFile
 
@@ -353,45 +415,54 @@ object ArcadeRomCheck {
             parentZip = parentZip, parentPresent = parentZip != null && present[parentZip] == true,
             biosZip = biosZip, biosPresent = biosZip != null && present[biosZip] == true,
             sampleZip = sampleZip, samplesPresent = samplesPresent, disks = game.disks, neededZip = needed,
+            deviceZips = deviceZips, presentZips = presentZips,
         )
         if (game.disks > 0 && !chdSupported) return base(Status.CHD_UNSUPPORTED)
         // Zip-level only DB (no <rom> rows): the name is known, the contents cannot be judged.
         if (game.roms.isEmpty()) return base(Status.UNVERIFIED)
 
-        // Entries of every present zip in the chain, in search order.
-        val contents: List<Pair<String, Map<String, Entry>>> = chain.mapNotNull { g ->
-            val f = zipFiles[g.name] ?: return@mapNotNull null
-            if (!f.isFile) return@mapNotNull null
-            g.name to readEntries(f)
+        // Entries of every present zip, keyed by short name (read once, shared by the game and device search paths).
+        val entriesOf = HashMap<String, Map<String, Entry>>()
+        fun entries(name: String): Map<String, Entry>? {
+            val f = zipFiles[name] ?: return null
+            if (!f.isFile) return null
+            return entriesOf.getOrPut(name) { readEntries(f) }
         }
-        if (contents.isEmpty() || contents.first().first != game.name) {
-            // Unreadable / corrupt game zip: everything is missing.
-            return base(Status.MISSING_FILES, game.roms.filter { it.bios == null }.map { FileIssue(it.name, it.crc, it.size, null, ownerOf(game, chain, it)) })
+        // The game's search path: game zip, then up the romof chain (parent, BIOS).
+        val chainContents: List<Pair<String, Map<String, Entry>>> = chain.mapNotNull { g -> entries(g.name)?.let { g.name to it } }
+        // A device's search path: <device>.zip, its parent ROM device's zip, then the game's search path.
+        fun deviceContents(d: Game): List<Pair<String, Map<String, Entry>>> = buildList {
+            entries(d.name)?.let { add(d.name to it) }
+            d.romof.takeIf { it.isNotEmpty() }?.let { p -> entries(p)?.let { add(p to it) } }
+            addAll(chainContents)
+        }
+        // Device files MAME requires: the device's default-BIOS rule applies to it as to any set.
+        fun deviceIssues(missingOnly: Boolean): List<FileIssue> = devices.flatMap { d ->
+            val contents = if (missingOnly) emptyList() else deviceContents(d)
+            d.requiredRoms.mapNotNull { rom ->
+                if (lookup(contents, rom) != null) null
+                else FileIssue(rom.name, rom.crc, rom.size, byName(contents, rom)?.crc, d.name)
+            }
         }
 
-        fun lookup(rom: Rom): Entry? { // exact match by CRC anywhere in the chain
-            for ((_, entries) in contents) {
-                entries.values.firstOrNull { it.crc == rom.crc && (rom.size == 0L || it.size == rom.size) }?.let { return it }
-            }
-            return null
-        }
-        fun byName(rom: Rom): Entry? {
-            val names = if (rom.merged && rom.mergeName != rom.name) listOf(rom.name, rom.mergeName) else listOf(rom.name)
-            for ((_, entries) in contents) for (n in names) entries[n.lowercase()]?.let { return it }
-            return null
+        if (chainContents.isEmpty() || chainContents.first().first != game.name) {
+            // Unreadable / corrupt game zip: everything is missing.
+            val all = game.requiredRoms.map { FileIssue(it.name, it.crc, it.size, null, ownerOf(game, chain, it)) } + deviceIssues(missingOnly = true)
+            return base(Status.MISSING_FILES, all)
         }
 
         val issues = ArrayList<FileIssue>()
-        for (rom in game.roms) {
-            if (rom.bios != null) continue
-            if (lookup(rom) != null) continue
-            issues.add(FileIssue(rom.name, rom.crc, rom.size, byName(rom)?.crc, ownerOf(game, chain, rom)))
+        for (rom in game.requiredRoms) {
+            if (lookup(chainContents, rom) != null) continue
+            issues.add(FileIssue(rom.name, rom.crc, rom.size, byName(chainContents, rom)?.crc, ownerOf(game, chain, rom)))
         }
-        val biosRoms = game.roms.filter { it.bios != null }
-        if (biosRoms.isNotEmpty() && biosRoms.none { lookup(it) != null }) {
-            val first = biosRoms.first()
-            issues.add(FileIssue(first.name, first.crc, first.size, byName(first)?.crc, ownerOf(game, chain, first)))
+        // Old romdb without a defaultbios column: any one BIOS-alternative file satisfies the set.
+        val legacyBios = game.legacyBiosRoms
+        if (legacyBios.isNotEmpty() && legacyBios.none { lookup(chainContents, it) != null }) {
+            val first = legacyBios.first()
+            issues.add(FileIssue(first.name, first.crc, first.size, byName(chainContents, first)?.crc, ownerOf(game, chain, first)))
         }
+        issues.addAll(deviceIssues(missingOnly = false))
 
         if (issues.isEmpty()) {
             return base(if (game.needsSamples && !samplesPresent) Status.NEEDS_SAMPLES else Status.OK)
@@ -401,9 +472,25 @@ object ArcadeRomCheck {
         val absentOwners = missing.map { it.owner }.distinct().filter { it != game.name && present[it] != true }
         return when {
             biosZip != null && biosZip in absentOwners -> base(Status.NEEDS_BIOS, issues, biosZip)
+            absentOwners.any { it in deviceZips } -> base(Status.NEEDS_DEVICE, issues, absentOwners.first { it in deviceZips })
             absentOwners.isNotEmpty() -> base(Status.NEEDS_PARENT, issues, absentOwners.first())
             else -> base(Status.MISSING_FILES, issues)
         }
+    }
+
+    /** Exact match by CRC (and size) anywhere in [contents], in search order. */
+    private fun lookup(contents: List<Pair<String, Map<String, Entry>>>, rom: Rom): Entry? {
+        for ((_, entries) in contents) {
+            entries.values.firstOrNull { it.crc == rom.crc && (rom.size == 0L || it.size == rom.size) }?.let { return it }
+        }
+        return null
+    }
+
+    /** Entry with the ROM's name (or its merge name) anywhere in [contents] — what a "right name, wrong CRC" mismatch found. */
+    private fun byName(contents: List<Pair<String, Map<String, Entry>>>, rom: Rom): Entry? {
+        val names = if (rom.merged && rom.mergeName != rom.name) listOf(rom.name, rom.mergeName) else listOf(rom.name)
+        for ((_, entries) in contents) for (n in names) entries[n.lowercase()]?.let { return it }
+        return null
     }
 
     /**
