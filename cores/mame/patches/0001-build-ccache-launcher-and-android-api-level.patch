@@ -1,0 +1,46 @@
+diff --git a/makefile b/makefile
+index 8c62521d..940580c4 100644
+--- a/makefile
++++ b/makefile
+@@ -833,6 +833,11 @@ ifdef LDOPTS
+ PARAMS += --LDOPTS='$(LDOPTS)'
+ endif
+ 
++# OneEmu: Android API level (toolchain.lua --with-android, default 24)
++ifdef ANDROID_API
++PARAMS += --with-android=$(ANDROID_API)
++endif
++
+ ifdef LTO
+ PARAMS += --LTO='$(LTO)'
+ endif
+diff --git a/scripts/toolchain.lua b/scripts/toolchain.lua
+index 61b45a14..7b453280 100644
+--- a/scripts/toolchain.lua
++++ b/scripts/toolchain.lua
+@@ -72,7 +72,8 @@ function toolchain(_buildDir, _subDir)
+ 
+ 	local androidApiLevel = 24
+ 	if _OPTIONS["with-android"] then
+-		androidApiLevel = _OPTIONS["with-android"]
++		-- OneEmu: the option value is a string; the "< 21" check below needs a number
++		androidApiLevel = tonumber(_OPTIONS["with-android"]) or androidApiLevel
+ 	end
+ 
+ 	if _ACTION == "gmake" or _ACTION == "ninja" then
+@@ -96,6 +97,15 @@ function toolchain(_buildDir, _subDir)
+ 			premake.gcc.cxx  = androidToolchainRoot() .. "/bin/clang++"
+ 			premake.gcc.ar   = androidToolchainRoot() .. "/bin/llvm-ar"
+ 
++			-- OneEmu: optional compiler launcher (ccache) in front of the NDK
++			-- compilers; GENie writes the paths straight into the generated
++			-- makefile, so there is no other hook for it.
++			local launcher = os.getenv("ANDROID_CC_LAUNCHER")
++			if launcher and launcher ~= "" then
++				premake.gcc.cc  = launcher .. " " .. premake.gcc.cc
++				premake.gcc.cxx = launcher .. " " .. premake.gcc.cxx
++			end
++
+ 			premake.gcc.llvm = true
+ 
+ 			location (_buildDir .. "projects/" .. _subDir .. "/".. _ACTION .. "-android-" .. _OPTIONS["PLATFORM"])
