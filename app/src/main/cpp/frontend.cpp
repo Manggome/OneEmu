@@ -648,6 +648,10 @@ bool Frontend::environment(unsigned cmd, void* data) {
                 lastCoreMessage_ = m->msg;
                 noteLog('M', m->msg);
                 if (m->target == RETRO_MESSAGE_TARGET_LOG) { LOGI("[core] %s", m->msg); return true; }
+                // Persistent status/progress lines (melonDS's layout indicator, MAME progress) are not toasts;
+                // an empty one would otherwise render as a blank pill.
+                bool blank = std::string(m->msg).find_first_not_of(" \t\r\n") == std::string::npos;
+                if (m->type == RETRO_MESSAGE_TYPE_STATUS || m->type == RETRO_MESSAGE_TYPE_PROGRESS || blank) return true;
                 if (listener_) listener_->onMessage(m->msg, m->duration, (int)m->priority);
             }
             return true;
