@@ -449,7 +449,9 @@ void Frontend::setSurface(ANativeWindow* window) {
 void Frontend::setSurfaceSize(int, int) { windowDirty_ = true; queueCv_.notify_all(); }
 
 void Frontend::setPaused(bool paused) {
-    if (paused && gameLoaded_ && threadRunning_) run([&] { saveSramInternal(); });
+    // Never block the caller (usually the UI thread): a slow core may take seconds per retro_run,
+    // which used to freeze the menu. The SRAM flush happens on the emu thread after the current frame.
+    if (paused && gameLoaded_ && threadRunning_) post([this] { saveSramInternal(); });
     paused_ = paused;
     audio_.setMuted(paused);
     nextFrameNs_ = 0;

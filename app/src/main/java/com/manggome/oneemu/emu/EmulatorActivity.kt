@@ -52,6 +52,7 @@ class EmulatorUiState {
 class EmulatorActivity : ComponentActivity() {
     companion object {
         const val EXTRA_GAME_ID = "game_id"
+        const val EXTRA_CORE_ID = "core_id"
 
         fun intent(context: Context, gameId: Long): Intent =
             Intent(context, EmulatorActivity::class.java).putExtra(EXTRA_GAME_ID, gameId)
@@ -104,7 +105,9 @@ class EmulatorActivity : ComponentActivity() {
             ui.error = getString(R.string.lib_launch_core_needed, ArcadeCoreRouter.displayName(app.cores, route.neededCoreId), ArcadeCoreRouter.mameVersion(route.neededCoreId))
             return
         }
-        val core = route?.core ?: game.coreId?.let { app.cores.core(it) } ?: system?.let { app.cores.defaultCoreFor(it) }
+        // Optional explicit core (used by "이 코어로 실행" and for diagnostics); falls back to routing/defaults.
+        val forcedCore = intent.getStringExtra(EXTRA_CORE_ID)?.let { app.cores.core(it) }?.takeIf { app.cores.isAvailable(it) }
+        val core = forcedCore ?: route?.core ?: game.coreId?.let { app.cores.core(it) } ?: system?.let { app.cores.defaultCoreFor(it) }
         if (core == null) { ui.error = getString(R.string.emu_no_core); return }
         val session = EmulatorSession(game, core)
         val missing = session.missingRequiredBios()
