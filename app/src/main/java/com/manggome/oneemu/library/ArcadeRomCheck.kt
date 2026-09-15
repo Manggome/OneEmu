@@ -23,7 +23,11 @@ import java.util.zip.ZipFile
  * [Status.RENAME_SUGGESTED].
  */
 object ArcadeRomCheck {
-    enum class Status { OK, MISSING_FILES, WRONG_SET, NEEDS_PARENT, NEEDS_BIOS, NEEDS_SAMPLES, CHD_UNSUPPORTED, NOT_IN_DAT, RENAME_SUGGESTED }
+    enum class Status {
+        OK, MISSING_FILES, WRONG_SET, NEEDS_PARENT, NEEDS_BIOS, NEEDS_SAMPLES, CHD_UNSUPPORTED, NOT_IN_DAT, RENAME_SUGGESTED,
+        /** The DAT lists the name but carries no per-file data (zip-level only DB, e.g. current MAME): nothing to compare. */
+        UNVERIFIED,
+    }
 
     /** `<driver status>` of a game in one core's DAT, normalised by gen-romdb.py (0.78's "protection" = PRELIMINARY). */
     enum class DriverStatus(val rank: Int) {
@@ -50,6 +54,7 @@ object ArcadeRomCheck {
     val UNSTABLE_DRIVERS: Map<String, Set<String>> = mapOf(
         ArcadeCoreRouter.MAME2003PLUS to setOf("stv", "stvinit", "stvhacks"),
         ArcadeCoreRouter.MAME2010 to setOf("stv"),
+        // Current MAME (ArcadeCoreRouter.MAME) has no entry: its ST-V driver runs, so every ST-V game it lists goes there.
     )
 
     /** Why [routeByName] passed over an earlier (preferred) core. */
@@ -241,7 +246,7 @@ object ArcadeRomCheck {
         val mismatched: List<FileIssue> get() = issues.filter { !it.missing }
         val severity: Severity
             get() = when (status) {
-                Status.OK -> Severity.OK
+                Status.OK, Status.UNVERIFIED -> Severity.OK
                 Status.WRONG_SET, Status.NEEDS_SAMPLES, Status.RENAME_SUGGESTED -> Severity.WARN
                 Status.MISSING_FILES, Status.NEEDS_PARENT, Status.NEEDS_BIOS, Status.CHD_UNSUPPORTED, Status.NOT_IN_DAT -> Severity.ERROR
             }
@@ -287,6 +292,9 @@ object ArcadeRomCheck {
      *  3. otherwise the first DB keeps the game (nothing better exists).
      * When the chosen core's driver is itself in [UNSTABLE_DRIVERS], [Routing.knownUnstable] is true: the game is
      * expected to crash the process wherever it runs, so callers should warn before launching.
+     * With the third DB (current MAME, whose status column may be missing = UNKNOWN = rated like GOOD) this means:
+     * a game the first two rate preliminary / crash on (ST-V) goes to `mame` whenever that DB lists it — regardless
+     * of whether the (downloadable) core is installed; the caller's download prompt handles that.
      * Returns null when no DB lists the name.
      */
     fun routeByName(dbs: List<Pair<String, Db>>, shortName: String): Routing? {
@@ -347,6 +355,8 @@ object ArcadeRomCheck {
             sampleZip = sampleZip, samplesPresent = samplesPresent, disks = game.disks, neededZip = needed,
         )
         if (game.disks > 0 && !chdSupported) return base(Status.CHD_UNSUPPORTED)
+        // Zip-level only DB (no <rom> rows): the name is known, the contents cannot be judged.
+        if (game.roms.isEmpty()) return base(Status.UNVERIFIED)
 
         // Entries of every present zip in the chain, in search order.
         val contents: List<Pair<String, Map<String, Entry>>> = chain.mapNotNull { g ->

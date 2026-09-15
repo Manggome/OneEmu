@@ -19,14 +19,21 @@ import java.io.File
 object ArcadeCoreRouter {
     const val MAME2003PLUS = "mame2003plus"
     const val MAME2010 = "mame2010"
+    /** Current libretro MAME (pinned commit = upstream 0.289); a `distribution: download` core, installed on demand. */
+    const val MAME = "mame"
 
-    /** Arcade cores in preference order — a game present in an earlier DAT runs there. */
-    val CORE_IDS: List<String> = listOf(MAME2003PLUS, MAME2010)
+    /**
+     * Arcade cores in preference order — a game present in an earlier DAT runs there. MAME 2010 and current
+     * MAME are downloadable cores: routing ignores whether they are installed ([Route.neededCoreId] then asks
+     * the user to download).
+     */
+    val CORE_IDS: List<String> = listOf(MAME2003PLUS, MAME2010, MAME)
 
     /** MAME version whose romset the core expects (shown next to the core name). */
     fun mameVersion(coreId: String): String = when (coreId) {
         MAME2003PLUS -> "0.78"
         MAME2010 -> "0.139"
+        MAME -> "0.289"
         else -> ""
     }
 
@@ -34,23 +41,30 @@ object ArcadeCoreRouter {
     fun systemSubdir(coreId: String): String = when (coreId) {
         MAME2003PLUS -> "mame2003-plus"
         MAME2010 -> "mame2010"
+        MAME -> "mame"
         else -> coreId
     }
 
-    /** MAME 2003-Plus is built without CHD support; MAME 0.139 reads CHDs from <romdir>/<game>/. */
-    fun chdSupported(coreId: String): Boolean = coreId == MAME2010
+    /** MAME 2003-Plus is built without CHD support; MAME 0.139 and current MAME read CHDs from <romdir>/<game>/. */
+    fun chdSupported(coreId: String): Boolean = coreId == MAME2010 || coreId == MAME
 
-    /** Display name from core.json when bundled, else a sensible default (the DB can name a core the APK lacks). */
+    /** Display name from core.json when known, else a sensible default (the DB can name a core the APK lacks). */
     fun displayName(cores: CoreRegistry, coreId: String): String = cores.core(coreId)?.displayName ?: when (coreId) {
         MAME2003PLUS -> "MAME 2003-Plus"
         MAME2010 -> "MAME 2010"
+        MAME -> "MAME"
         else -> coreId
     }
+
+    /** The routed core exists in core.json but is a downloadable core that is not installed yet. */
+    fun needsDownload(cores: CoreRegistry, coreId: String?): CoreInfo? =
+        coreId?.let { cores.core(it) }?.takeIf { it.isDownloadable && !cores.isAvailable(it) }
 
     /**
      * @param core the core to launch with, or null when nothing usable exists.
      * @param resolvedCoreId the core the DATs route the game to (null = not in any DAT / not arcade / user override).
-     * @param neededCoreId set when the DATs say [resolvedCoreId] but that core's library is not in this build.
+     * @param neededCoreId set when the DATs say [resolvedCoreId] but that core's library is not present (not in this
+     *   build, or a downloadable core that is not installed yet — see [needsDownload]).
      * @param reason why the game was taken away from an earlier core ([skippedCoreId]); NONE for the plain first match.
      * @param driverStatus the game's `<driver status>` in [resolvedCoreId]'s DAT.
      * @param knownUnstable [resolvedCoreId] is itself known to crash on this game's driver ([ArcadeRomCheck.UNSTABLE_DRIVERS])

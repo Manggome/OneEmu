@@ -86,7 +86,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
         }
         val libPath = app.cores.libraryPath(core)
         if (!libPath.exists()) {
-            _state.value = makeError(ErrorKind.CORE_MISSING, "core library not in APK: ${libPath.absolutePath}")
+            _state.value = makeError(ErrorKind.CORE_MISSING, (if (core.isDownloadable) "downloadable core not installed: " else "core library not in APK: ") + libPath.absolutePath)
             return@withContext false
         }
         app.cores.installAssets(core, dirs.system)
@@ -122,7 +122,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     private fun makeError(kind: ErrorKind, reason: String): State.Error {
         val name = core.displayName
         var message = when (kind) {
-            ErrorKind.CORE_MISSING -> app.getString(R.string.emu_err_core_missing, name)
+            ErrorKind.CORE_MISSING -> if (core.isDownloadable) app.getString(R.string.emu_err_core_not_downloaded, name) else app.getString(R.string.emu_err_core_missing, name)
             ErrorKind.DLOPEN_FAILED -> app.getString(R.string.emu_err_dlopen, name)
             ErrorKind.CORE_INIT_FAILED -> app.getString(R.string.emu_err_core_init, name)
             ErrorKind.ROM_READ_FAILED -> app.getString(R.string.emu_err_rom_read)

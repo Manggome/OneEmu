@@ -1,6 +1,7 @@
 package com.manggome.oneemu
 
 import android.app.Application
+import com.manggome.oneemu.core.CoreDownloadManager
 import com.manggome.oneemu.core.CoreRegistry
 import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.data.db.AppDatabase
@@ -20,6 +21,8 @@ class OneEmuApp : Application() {
     val settings: Settings by lazy { Settings(this) }
     val db: AppDatabase by lazy { AppDatabase.get(this) }
     val cores: CoreRegistry by lazy { CoreRegistry(this) }
+    /** Installs `distribution: download` cores (MAME 2010, current MAME) from the `cores` GitHub release. */
+    val coreDownloads: CoreDownloadManager by lazy { CoreDownloadManager(this, cores, appScope) }
     val dirs: AppDirs by lazy { AppDirs(this) }
     val scanner: RomScanner by lazy { RomScanner(this, db, cores, dirs) }
 

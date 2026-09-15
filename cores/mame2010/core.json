@@ -2,6 +2,7 @@
   "id": "mame2010",
   "displayName": "MAME 2010",
   "libFile": "libmame2010_libretro.so",
+  "distribution": "download",
   "systems": [
     "arcade"
   ],

@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Folder
@@ -34,8 +35,10 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -46,12 +49,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.core.BiosEntry
 import com.manggome.oneemu.core.CoreInfo
+import com.manggome.oneemu.core.DownloadState
+import com.manggome.oneemu.core.ManifestState
 import com.manggome.oneemu.data.Settings
+import com.manggome.oneemu.library.ArcadeCoreRouter
 import com.manggome.oneemu.model.SystemId
+import com.manggome.oneemu.ui.common.ConfirmDialog
+import com.manggome.oneemu.ui.common.DownloadProgress
+import com.manggome.oneemu.ui.common.formatFileSize
 import com.manggome.oneemu.ui.theme.OneEmuColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -95,7 +105,11 @@ internal fun CoresSettingsScreen(onBack: () -> Unit, onCoreOptions: (coreId: Str
         )
 
         SystemId.ordered.forEach { system ->
-            val cores = remember(system) { app.cores.coresFor(system) }
+            // Arcade cores in routing preference order (2003-Plus → 2010 → current MAME) rather than by id.
+            val cores = remember(system) {
+                val list = app.cores.coresFor(system)
+                if (system == SystemId.ARCADE) list.sortedBy { ArcadeCoreRouter.CORE_IDS.indexOf(it.id).let { i -> if (i < 0) Int.MAX_VALUE else i } } else list
+            }
             SystemSection(system = system, cores = cores, systemDir = systemDir, refreshKey = refresh, onCoreOptions = onCoreOptions)
         }
         Spacer(Modifier.height(24.dp))
@@ -170,15 +184,17 @@ private fun SystemSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 16.dp),
     )
+    // Downloadable cores appear/disappear on disk while this screen is open: re-check availability on every state change.
+    val dlStates by app.coreDownloads.state.collectAsStateWithLifecycle()
     cores.forEach { core ->
-        val available = remember(core.id) { app.cores.isAvailable(core) }
+        val available = remember(core.id, dlStates) { app.cores.isAvailable(core) }
         Row(
             Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RadioButton(selected = core.id == effective, onClick = { chosen.set(core.id) }, enabled = available)
             Column(Modifier.weight(1f)) {
-                Text(core.displayName + if (available) "" else " " + stringResource(R.string.cores_core_unavailable))
+                Text(core.displayName + if (available) "" else " " + stringResource(if (core.isDownloadable) R.string.cores_core_not_installed else R.string.cores_core_unavailable))
                 if (core.notes.isNotBlank()) {
                     Text(
                         core.notes.substringBefore('.').take(60),
@@ -189,6 +205,7 @@ private fun SystemSection(
             }
             TextButton(onClick = { onCoreOptions(core.id) }, enabled = available) { Text(stringResource(R.string.cores_core_options)) }
         }
+        if (core.isDownloadable) DownloadableCoreCard(core, dlStates[core.id] ?: DownloadState.Idle)
     }
 
     // BIOS entries for this system (a core may serve several systems, so filter by entry.system when set).
@@ -209,6 +226,100 @@ private fun SystemSection(
         bios.forEach { entry -> BiosRow(entry, systemDir, refreshKey) }
     }
     SettingsDivider()
+}
+
+/**
+ * Card for a `distribution: download` core: size from the `cores` release manifest ("약 68 MB"), installed
+ * version or "설치되지 않음", 내려받기 / 업데이트 / 삭제 and the download progress. When the manifest cannot be
+ * read (no network, or no `cores` release published yet) the reason is shown instead of the size.
+ */
+@Composable
+private fun DownloadableCoreCard(core: CoreInfo, dl: DownloadState) {
+    val app = OneEmuApp.get()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val manager = app.coreDownloads
+    val manifest by manager.manifest.collectAsStateWithLifecycle()
+    LaunchedEffect(core.id) { manager.refreshManifest() }
+    val installedVersion = remember(dl) { app.cores.installedVersion(core) }
+    val installed = remember(dl) { app.cores.isAvailable(core) }
+    val entry = (manifest as? ManifestState.Loaded)?.manifest?.entry(core.id)
+    val updateAvailable = installed && entry != null && installedVersion != null && entry.version.isNotEmpty() && entry.version != installedVersion
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.CloudDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("${core.displayName} · ${stringResource(R.string.core_dl_title)}", style = MaterialTheme.typography.titleSmall)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(stringResource(R.string.core_dl_explain, core.id), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                when {
+                    installedVersion != null -> stringResource(R.string.core_dl_installed, installedVersion)
+                    installed -> stringResource(R.string.core_dl_installed, "?")
+                    else -> stringResource(R.string.core_dl_not_installed)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                fontFamily = FontFamily.Monospace,
+                color = if (installed) Color(0xFF5CC489) else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            when (val m = manifest) {
+                is ManifestState.Loaded -> Text(
+                    if (entry != null) stringResource(R.string.core_dl_latest, entry.version, stringResource(R.string.core_dl_size, formatFileSize(entry.size)))
+                    else stringResource(R.string.core_dl_err_not_in_manifest, core.displayName),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                is ManifestState.Unavailable -> Text(m.message, style = MaterialTheme.typography.bodySmall, color = OneEmuColors.Danger)
+                else -> Text(stringResource(R.string.core_dl_loading), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (updateAvailable) Text(stringResource(R.string.core_dl_update_available), style = MaterialTheme.typography.bodySmall, color = OneEmuColors.Accent)
+            if (dl.isBusy) {
+                Spacer(Modifier.height(8.dp))
+                DownloadProgress(dl)
+            } else if (dl is DownloadState.Failed) {
+                Spacer(Modifier.height(4.dp))
+                Text(dl.message, style = MaterialTheme.typography.bodySmall, color = OneEmuColors.Danger)
+            }
+            if (!dl.isBusy) {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (!installed && entry != null) {
+                        OutlinedButton(onClick = { manager.download(core.id) }) {
+                            Text(stringResource(if (dl is DownloadState.Failed) R.string.core_dl_action_retry else R.string.core_dl_action_download))
+                        }
+                    }
+                    if (updateAvailable) OutlinedButton(onClick = { manager.download(core.id) }) { Text(stringResource(R.string.core_dl_action_update)) }
+                    if (installed) TextButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.core_dl_action_delete), color = OneEmuColors.Danger) }
+                    if (manifest is ManifestState.Unavailable) {
+                        TextButton(onClick = { scope.launch { manager.refreshManifest(force = true) } }) { Text(stringResource(R.string.core_dl_action_refresh)) }
+                    }
+                }
+            }
+        }
+    }
+
+    if (confirmDelete) {
+        ConfirmDialog(
+            title = stringResource(R.string.core_dl_action_delete),
+            text = stringResource(R.string.core_dl_delete_confirm, core.displayName),
+            confirmText = stringResource(R.string.core_dl_action_delete),
+            destructive = true,
+            onConfirm = {
+                confirmDelete = false
+                manager.delete(core.id)
+                Toast.makeText(context, context.getString(R.string.core_dl_deleted, core.displayName), Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { confirmDelete = false },
+        )
+    }
 }
 
 @Composable

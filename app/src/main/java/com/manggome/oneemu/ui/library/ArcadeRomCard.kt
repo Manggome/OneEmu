@@ -54,6 +54,7 @@ import com.manggome.oneemu.library.ArcadeRename
 import com.manggome.oneemu.library.ArcadeRomCheck
 import com.manggome.oneemu.library.ArcadeRomChecker
 import com.manggome.oneemu.ui.common.ConfirmDialog
+import com.manggome.oneemu.ui.common.CoreDownloadDialog
 import com.manggome.oneemu.ui.theme.OneEmuColors
 import kotlinx.coroutines.launch
 
@@ -121,6 +122,10 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
     var showHelp by rememberSaveable { mutableStateOf(false) }
     var confirmRename by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    // Downloadable core (MAME 2010 / current MAME) the zip is routed to but which is not installed: offer the download here.
+    val dlStates by OneEmuApp.get().coreDownloads.state.collectAsStateWithLifecycle()
+    val downloadCore = remember(resolution?.coreId, dlStates) { ArcadeCoreRouter.needsDownload(OneEmuApp.get().cores, resolution?.coreId) }
+    var showDownload by remember { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
@@ -144,7 +149,20 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
                 // the preferred core ("MAME 2003-Plus에서는 미완성 드라이버라 MAME 2010으로 실행") when it did.
                 checker.runCoreText(resolution)?.let { line ->
                     Spacer(Modifier.height(4.dp))
-                    Text(line, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    if (downloadCore != null) {
+                        // "실행 코어: MAME (최신 MAME 롬셋) — 미설치   [내려받기]"
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "$line — ${stringResource(R.string.lib_arcade_core_not_installed)}",
+                                style = MaterialTheme.typography.labelMedium, color = StatusWarn, modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { showDownload = true }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)) {
+                                Text(stringResource(R.string.lib_arcade_core_download))
+                            }
+                        }
+                    } else {
+                        Text(line, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    }
                     checker.routeReasonText(resolution)?.let { why ->
                         Text(why, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -210,6 +228,14 @@ fun ArcadeRomCard(game: GameEntity, onMessage: (String) -> Unit) {
             }
             if (showHelp) HelpSection()
         }
+    }
+
+    if (showDownload && downloadCore != null) {
+        CoreDownloadDialog(
+            downloadCore,
+            onDismiss = { showDownload = false },
+            onInstalled = { showDownload = false; onMessage(context.getString(R.string.core_dl_done, downloadCore.displayName)) },
+        )
     }
 
     if (confirmRename && resolution != null && report?.suggestedName != null) {

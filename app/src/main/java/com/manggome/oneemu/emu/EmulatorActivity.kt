@@ -19,6 +19,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
+import com.manggome.oneemu.core.CoreInfo
 import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.input.GamepadInput
 import com.manggome.oneemu.emu.pad.PadInput
@@ -37,6 +38,8 @@ class EmulatorUiState {
     var title by mutableStateOf("")
     /** Error raised before/outside the session (missing core, BIOS, game row). */
     var error by mutableStateOf<String?>(null)
+    /** A `distribution: download` core the game needs but which is not installed: the screen offers the download, then [EmulatorActivity.retryStart]. */
+    var downloadCore by mutableStateOf<CoreInfo?>(null)
     var menuOpen by mutableStateOf(false)
     var gamepadConnected by mutableStateOf(false)
     var fastForward by mutableStateOf(false)
@@ -73,6 +76,7 @@ class EmulatorActivity : ComponentActivity() {
     private var closed = false
     private var padInput = PadInput()
     private var gamepadInput = PadInput()
+    private var gameId = -1L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,7 +93,7 @@ class EmulatorActivity : ComponentActivity() {
         applyImmersive()
         onBackPressedDispatcher.addCallback(this) { toggleMenu() }
 
-        val gameId = intent.getLongExtra(EXTRA_GAME_ID, -1L)
+        gameId = intent.getLongExtra(EXTRA_GAME_ID, -1L)
         lifecycleScope.launch { startSession(gameId) }
 
         setContent { OneEmuTheme { EmulatorScreen(this) } }
@@ -102,13 +106,18 @@ class EmulatorActivity : ComponentActivity() {
         // Arcade zips are routed to the MAME core whose DAT lists them (same rule as the library's launch check).
         val route = if (system == SystemId.ARCADE) ArcadeCoreRouter.route(game, app) else null
         if (route?.neededCoreId != null) {
+            // Downloadable core (MAME 2010 / current MAME) not installed yet: offer the download instead of a plain error.
+            ArcadeCoreRouter.needsDownload(app.cores, route.neededCoreId)?.let { ui.downloadCore = it; return }
             ui.error = getString(R.string.lib_launch_core_needed, ArcadeCoreRouter.displayName(app.cores, route.neededCoreId), ArcadeCoreRouter.mameVersion(route.neededCoreId))
             return
         }
         // Optional explicit core (used by "이 코어로 실행" and for diagnostics); falls back to routing/defaults.
-        val forcedCore = intent.getStringExtra(EXTRA_CORE_ID)?.let { app.cores.core(it) }?.takeIf { app.cores.isAvailable(it) }
+        val forced = intent.getStringExtra(EXTRA_CORE_ID)?.let { app.cores.core(it) }
+        if (forced != null && !app.cores.isAvailable(forced) && forced.isDownloadable) { ui.downloadCore = forced; return }
+        val forcedCore = forced?.takeIf { app.cores.isAvailable(it) }
         val core = forcedCore ?: route?.core ?: game.coreId?.let { app.cores.core(it) } ?: system?.let { app.cores.defaultCoreFor(it) }
         if (core == null) { ui.error = getString(R.string.emu_no_core); return }
+        if (!app.cores.isAvailable(core) && core.isDownloadable) { ui.downloadCore = core; return }
         val session = EmulatorSession(game, core)
         val missing = session.missingRequiredBios()
         if (missing.isNotEmpty()) { ui.error = getString(R.string.emu_missing_bios, missing.joinToString(", ")); return }
@@ -118,6 +127,13 @@ class EmulatorActivity : ComponentActivity() {
             session.applyCheats()
             updateRunning()
         }
+    }
+
+    /** After a core download finished in the download dialog: start the session for real. */
+    fun retryStart() {
+        ui.downloadCore = null
+        ui.error = null
+        lifecycleScope.launch { startSession(gameId) }
     }
 
     // ---- surface (called from EmulatorScreen's SurfaceHolder.Callback, main thread) ----

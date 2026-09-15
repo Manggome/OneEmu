@@ -1,6 +1,10 @@
-# OneEmu CI: build the libretro cores (cached per core), assemble a signed release APK and publish it
-# as a GitHub Release tagged v0.1.<commit count>. The in-app updater compares BuildConfig.VERSION_NAME
+# OneEmu CI: build the *bundled* libretro cores (cached per core), assemble a signed release APK and publish
+# it as a GitHub Release tagged v0.1.<commit count>. The in-app updater compares BuildConfig.VERSION_NAME
 # ("0.1.<commit count>") against that tag, so the two MUST stay identical (see the "version" step).
+#
+# Cores whose cores/<id>/core.json says "distribution": "download" (MAME 2010, current MAME) are NOT part of
+# the APK: cores.yml builds them and publishes them on the rolling `cores` release; the app downloads them on
+# demand. The matrix below lists bundled cores only, and the APK job drops any download-type .so as a guard.
 name: Build & Release
 
 on:
@@ -23,8 +27,8 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # One job per core. The built .so is cached on the hash of cores/<id>/** (build.sh, core.json,
-  # patches, assets), so a core is rebuilt only when its own folder changes.
+  # One job per bundled core. The built .so is cached on the hash of cores/<id>/** (build.sh, core.json,
+  # patches), so a core is rebuilt only when its own folder changes. Downloadable cores live in cores.yml.
   # ---------------------------------------------------------------------------
   build-cores:
     name: core ${{ matrix.core }}
@@ -33,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        core: [mgba, fceumm, melondsds, ppsspp, mame2003plus, play, azaharplus, mame2010]
+        core: [mgba, fceumm, melondsds, ppsspp, mame2003plus, play, azaharplus]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -119,6 +123,20 @@ jobs:
           pattern: core-*
           merge-multiple: true
           path: app/src/main/jniLibs/arm64-v8a
+
+      # Guard: a core that was switched to "distribution": "download" must never end up in the APK, even if
+      # its .so was restored from an old artifact/cache. (Gradle's packaging excludes do the same at build time.)
+      - name: Drop downloadable cores from jniLibs
+        run: |
+          command -v jq >/dev/null || { sudo apt-get update && sudo apt-get install -y --no-install-recommends jq; }
+          for cj in cores/*/core.json; do
+            id="$(jq -r '.id' "$cj")"
+            dist="$(jq -r '.distribution // "bundled"' "$cj")"
+            if [ "$dist" = "download" ]; then
+              rm -f "app/src/main/jniLibs/arm64-v8a/lib${id}_libretro.so"
+              echo "skip ${id} (distribution: download → cores.yml / cores release)"
+            fi
+          done
 
       - name: List cores
         run: ls -la app/src/main/jniLibs/arm64-v8a

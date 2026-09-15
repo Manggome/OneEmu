@@ -24,6 +24,7 @@ import com.manggome.oneemu.data.db.GameEntity
 import com.manggome.oneemu.emu.EmulatorActivity
 import com.manggome.oneemu.library.ArcadeRename
 import com.manggome.oneemu.ui.common.ConfirmDialog
+import com.manggome.oneemu.ui.common.CoreDownloadDialog
 import com.manggome.oneemu.ui.common.InfoDialog
 import kotlinx.coroutines.launch
 
@@ -35,8 +36,9 @@ fun launchGame(context: Context, game: GameEntity) {
 }
 
 /**
- * Explains why a game could not be launched (no core, missing BIOS, missing file), or asks before a launch that
- * is known to crash ([LaunchCheck.UnstableWarning]). No-op for [LaunchCheck.Ok].
+ * Explains why a game could not be launched (no core, missing BIOS, missing file), offers to download a missing
+ * downloadable core ([LaunchCheck.CoreDownload], auto-launches afterwards), or asks before a launch that is known
+ * to crash ([LaunchCheck.UnstableWarning]). No-op for [LaunchCheck.Ok].
  */
 @Composable
 fun LaunchCheckDialog(check: LaunchCheck, onDismiss: () -> Unit) {
@@ -53,6 +55,11 @@ fun LaunchCheckDialog(check: LaunchCheck, onDismiss: () -> Unit) {
             )
         }
         is LaunchCheck.ArcadeRename -> ArcadeRenameLaunchDialog(check, onDismiss)
+        is LaunchCheck.CoreDownload -> {
+            // "이 게임은 MAME 2010 코어가 필요합니다 (약 N MB). 지금 내려받을까요?" — progress in place, launch when installed.
+            val context = LocalContext.current
+            CoreDownloadDialog(check.core, onDismiss = onDismiss, onInstalled = { launchGame(context, check.game); onDismiss() })
+        }
         is LaunchCheck.MissingBios -> InfoDialog(title = stringResource(R.string.lib_launch_bios_title), onDismiss = onDismiss) {
             Column {
                 Text(stringResource(R.string.lib_launch_bios_desc))
