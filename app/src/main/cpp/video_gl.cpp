@@ -306,6 +306,13 @@ bool VideoGL::createHwFramebuffer(unsigned maxW, unsigned maxH, bool depth, bool
                                   GL_RENDERBUFFER, hwDepth_);
     }
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status == GL_FRAMEBUFFER_COMPLETE) {
+        // A fresh texture has undefined contents (Adreno shows it as green). The first frames of a HW core may
+        // present before it has drawn anything, so start from opaque black.
+        glDisable(GL_SCISSOR_TEST);
+        glClearColor(0.f, 0.f, 0.f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT | ((depth || stencil) ? GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT : 0));
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     if (status != GL_FRAMEBUFFER_COMPLETE) {
         LOGE("HW framebuffer incomplete: 0x%x", status);

@@ -50,6 +50,24 @@ object CrashMarker {
 
     fun clearNativeCrash(context: Context) { runCatching { File(context.cacheDir, "native_crash.txt").delete() } }
 
+    /**
+     * Full text for a bug report: app version, device, game/core and our recent log lines (frontend heartbeats,
+     * core log). Used by 로그 복사 in the in-game menu and on the About screen.
+     */
+    suspend fun buildLogReport(context: Context, gameTitle: String?, gamePath: String?, coreId: String?): String {
+        val log = collectLog()
+        val native = readNativeCrash(context)?.let { "네이티브 크래시:\n$it\n\n" } ?: ""
+        val head = buildString {
+            append("OneEmu 실행 로그 (v").append(com.manggome.oneemu.BuildConfig.VERSION_NAME).append(")\n")
+            append("기기: ").append(android.os.Build.MANUFACTURER).append(' ').append(android.os.Build.MODEL)
+                .append(" / Android ").append(android.os.Build.VERSION.RELEASE).append('\n')
+            if (gameTitle != null) append("게임: ").append(gameTitle).append('\n')
+            if (gamePath != null) append("파일: ").append(gamePath).append('\n')
+            if (coreId != null) append("코어: ").append(coreId).append('\n')
+        }
+        return "$head\n$native$log"
+    }
+
     /** Recent log lines of our own UID (the crashed process shares it), most relevant tags only. */
     suspend fun collectLog(): String = withContext(Dispatchers.IO) {
         runCatching {

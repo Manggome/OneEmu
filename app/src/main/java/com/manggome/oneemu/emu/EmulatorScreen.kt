@@ -83,6 +83,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
     val settings = remember { OneEmuApp.get().settings }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
     val config = rememberScreenConfig()
     val session = ui.session
 
@@ -198,6 +199,12 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                                 } else {
                                     ui.toast = context.getString(R.string.screenshot_failed)
                                 }
+                            }
+                            MenuAction.COPY_LOG -> scope.launch {
+                                val text = CrashMarker.buildLogReport(context, session.game.title, session.game.path, session.core.id)
+                                clipboard.setText(AnnotatedString(text))
+                                android.util.Log.i("OneEmu", "log report copied to clipboard (${text.length} chars)")
+                                ui.toast = context.getString(R.string.log_copied)
                             }
                             MenuAction.RESET -> confirmReset = true
                             MenuAction.CLOSE -> confirmExit = true

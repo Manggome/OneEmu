@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material.icons.outlined.Info
@@ -15,6 +16,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -32,6 +35,7 @@ private const val GITHUB_URL = "https://github.com/" + BuildConfig.GITHUB_REPO
 @Composable
 internal fun AboutSettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val cores = OneEmuApp.get().cores.cores
     val updateVm: UpdateViewModel = viewModel(key = "update-about")
     val updateState by updateVm.state.collectAsState()
@@ -60,6 +64,19 @@ internal fun AboutSettingsScreen(onBack: () -> Unit) {
             subtitle = GITHUB_URL,
             icon = Icons.Outlined.Code,
             onClick = { open(GITHUB_URL) },
+        )
+        SettingsRow(
+            title = stringResource(R.string.about_copy_log),
+            subtitle = stringResource(R.string.about_copy_log_desc),
+            icon = Icons.Outlined.BugReport,
+            onClick = {
+                scope.launch {
+                    val text = com.manggome.oneemu.emu.CrashMarker.buildLogReport(context, null, null, null)
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("OneEmu log", text))
+                    android.widget.Toast.makeText(context, R.string.log_copied, android.widget.Toast.LENGTH_SHORT).show()
+                }
+            },
         )
         if (BuildConfig.DEBUG) {
             NoteText(stringResource(R.string.about_debug_note))
