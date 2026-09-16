@@ -35,6 +35,11 @@ public:
      *  runs in a second, shared context so their cached GL state is never clobbered. */
     void setSharedContext(bool on) { sharedContext_ = on; }
     bool makeCurrentPresent();
+    /** Call with the core context current after retro_run: records a fence the present pass waits on. */
+    void fenceCoreFrame();
+    /** Call with the core context current before retro_run: the GPU waits until the previous present
+     *  (issued from the present context) has finished reading the HW texture before the core overwrites it. */
+    void waitPresentFence();
 
     void setSwapInterval(int interval);
     int width() const { return surfaceW_; }
@@ -51,6 +56,8 @@ public:
     // Hardware render path.
     bool createHwFramebuffer(unsigned maxW, unsigned maxH, bool depth, bool stencil);
     GLuint hwFramebuffer() const { return hwFbo_; }
+    /** Diagnostics: RGBA of the centre pixel of the core's HW frame (core context must be current). */
+    uint32_t sampleHwFrameCentre();
     void setHwFrameSize(unsigned w, unsigned h) { frameW_ = w; frameH_ = h; }
     void destroyHwFramebuffer();
 
@@ -87,6 +94,7 @@ private:
     std::vector<uint16_t> convBuf_;
 
     GLuint hwFbo_ = 0, hwTex_ = 0, hwDepth_ = 0;
+    GLsync presentFence_ = nullptr; // set by swap() in the present context, consumed by waitPresentFence()
     unsigned hwW_ = 0, hwH_ = 0;
     unsigned frameW_ = 0, frameH_ = 0;
     bool lastWasHw_ = false;

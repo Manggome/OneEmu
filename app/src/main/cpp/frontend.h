@@ -184,6 +184,8 @@ private:
     unsigned hwFboGrowW_ = 0, hwFboGrowH_ = 0;
     bool hwFboNeedsGrow_ = false;
     bool gotFrameThisRun_ = false;
+    /** Per-heartbeat diagnostics: HW frames (RETRO_HW_FRAME_BUFFER_VALID), software frames, NULL duplicates. */
+    unsigned hbHwFrames_ = 0, hbSwFrames_ = 0, hbDupeFrames_ = 0;
     std::atomic<int> fastForward_{0};
     unsigned ffFrameCounter_ = 0;
     std::atomic<bool> videoCfgDirty_{false};
