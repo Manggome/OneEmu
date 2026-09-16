@@ -30,6 +30,7 @@ class OneEmuApp : Application() {
         super.onCreate()
         instance = this
         com.manggome.oneemu.emu.CrashMarker.preserveCrashLog(this)
+        com.manggome.oneemu.emu.CrashMarker.installJavaCrashRecorder(this)
         runCatching { com.manggome.oneemu.emu.NativeBridge.installCrashHandler(java.io.File(cacheDir, "native_crash.txt").absolutePath) }
         // Mirror the per-system default-core preference into CoreRegistry so synchronous callers see it.
         appScope.launch {

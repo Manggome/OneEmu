@@ -30,6 +30,7 @@ object CrashMarker {
 
     fun write(context: Context, gameTitle: String, gamePath: String, coreId: String) {
         clearNativeCrash(context) // a stale record must not be attributed to this session
+        clearJavaCrash(context)
         runCatching { file(context).writeText("$gameTitle\n$gamePath\n$coreId\n${System.currentTimeMillis()}") }
     }
 
@@ -49,6 +50,25 @@ object CrashMarker {
     }.getOrNull()
 
     fun clearNativeCrash(context: Context) { runCatching { File(context.cacheDir, "native_crash.txt").delete() } }
+
+    /** Uncaught Kotlin/Java exception of the last crash (stack trace); logcat of a dead process is not readable here. */
+    fun readJavaCrash(context: Context): String? = runCatching {
+        File(context.cacheDir, "java_crash.txt").takeIf { it.exists() }?.readText()?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+
+    fun clearJavaCrash(context: Context) { runCatching { File(context.cacheDir, "java_crash.txt").delete() } }
+
+    fun installJavaCrashRecorder(context: Context) {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            runCatching {
+                File(context.cacheDir, "java_crash.txt").writeText(
+                    "thread: ${thread.name}\n" + android.util.Log.getStackTraceString(e)
+                )
+            }
+            previous?.uncaughtException(thread, e)
+        }
+    }
 
     /** Written by liboneemu (frontend LOG lines + core log) for the current/last session; truncated on each load. */
     fun sessionLogFile(context: Context) = File(context.cacheDir, "session_log.txt")
@@ -74,6 +94,7 @@ object CrashMarker {
     suspend fun buildLogReport(context: Context, gameTitle: String?, gamePath: String?, coreId: String?, crash: Boolean = false): String {
         val log = collectLog()
         val native = readNativeCrash(context)?.let { "네이티브 크래시:\n$it\n\n" } ?: ""
+        val java = readJavaCrash(context)?.let { "앱 예외 (Java):\n$it\n\n" } ?: ""
         // The session log file does not depend on logcat permissions (Samsung hides other processes' lines).
         val session = tail(if (crash) crashLogFile(context) else sessionLogFile(context))
             .takeIf { it.isNotBlank() }?.let { "세션 로그 (파일):\n$it\n\n" } ?: ""
@@ -85,7 +106,7 @@ object CrashMarker {
             if (gamePath != null) append("파일: ").append(gamePath).append('\n')
             if (coreId != null) append("코어: ").append(coreId).append('\n')
         }
-        return "$head\n$native${session}logcat:\n$log"
+        return "$head\n$native$java${session}logcat:\n$log"
     }
 
     /** Recent log lines of our own UID (the crashed process shares it), most relevant tags only. */
@@ -134,6 +155,7 @@ fun CrashReportPrompt() {
                     CrashMarker.clear(context)
                     CrashMarker.clearNativeCrash(context)
                     runCatching { CrashMarker.crashLogFile(context).delete() }
+                    CrashMarker.clearJavaCrash(context)
                     marker = null
                 }
             }) { Text("로그 복사") }
