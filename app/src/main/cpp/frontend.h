@@ -83,7 +83,8 @@ public:
 
     void setInput(unsigned port, uint32_t buttons, int16_t lx, int16_t ly, int16_t rx, int16_t ry);
     void setPointer(int16_t x, int16_t y, bool pressed);
-    void setFastForward(int speed); // 0 = off, 1..N = N×, -1 = unlimited
+    void setFastForward(int speed);
+    void setControllerPortDevice(unsigned port, unsigned device); // 0 = off, 1..N = N×, -1 = unlimited
     void setVideoConfig(bool linear, int aspectMode);
     // Rectangle (normalized 0..1 of the surface, top-left origin) the game image is letterboxed into.
     // Default 0,0,1,1 = whole surface. Takes effect on the next presented frame, also while paused.

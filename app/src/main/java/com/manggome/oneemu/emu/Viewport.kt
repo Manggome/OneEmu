@@ -70,6 +70,7 @@ object ViewportStore {
         SystemId.GBA -> 3f / 2f
         SystemId.NDS -> 256f / 384f
         SystemId.N3DS -> 400f / 480f
+        SystemId.PSX -> 4f / 3f
         SystemId.PSP -> 16f / 9f
         SystemId.PS2 -> 4f / 3f
         SystemId.GC -> 4f / 3f

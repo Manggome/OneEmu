@@ -132,6 +132,9 @@ BRIDGE(void, setInput)(JNIEnv*, jobject, jint port, jint buttons, jint lx, jint 
 BRIDGE(void, setPointer)(JNIEnv*, jobject, jint x, jint y, jboolean pressed) {
     Frontend::get().setPointer((int16_t)x, (int16_t)y, pressed);
 }
+BRIDGE(void, setControllerPortDevice)(JNIEnv*, jobject, jint port, jint device) {
+    Frontend::get().setControllerPortDevice((unsigned)port, (unsigned)device);
+}
 BRIDGE(void, setFastForward)(JNIEnv*, jobject, jint speed) { Frontend::get().setFastForward(speed); }
 BRIDGE(void, setVideoConfig)(JNIEnv*, jobject, jboolean linear, jint aspect) { Frontend::get().setVideoConfig(linear, aspect); }
 BRIDGE(void, setViewport)(JNIEnv*, jobject, jfloat x, jfloat y, jfloat w, jfloat h) { Frontend::get().setViewport(x, y, w, h); }

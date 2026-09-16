@@ -2,7 +2,9 @@
   "id": "dualshock-classic",
   "name": "듀얼쇼크 클래식",
   "systems": [
-    "ps2"
+    "ps2",
+    "psx",
+    "gc"
   ],
   "author": "libretro (twinaphex, hunterk)",
   "license": "CC BY 4.0",

@@ -58,6 +58,8 @@ object NativeBridge {
     external fun setInput(port: Int, buttons: Int, lx: Int, ly: Int, rx: Int, ry: Int)
     /** x/y in libretro pointer space: -0x7fff..0x7fff across the core's framebuffer. */
     external fun setPointer(x: Int, y: Int, pressed: Boolean)
+    /** retro_set_controller_port_device(port, device) on the emu thread. */
+    external fun setControllerPortDevice(port: Int, device: Int)
 
     // ---- runtime config ----
     /** 0 = normal speed, N = N× fast forward, -1 = unlimited. */

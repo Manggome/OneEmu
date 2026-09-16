@@ -39,6 +39,7 @@ class RomScanner(
 
     suspend fun scanFolder(folder: FolderEntity) = withContext(Dispatchers.IO) {
         _progress.value = Progress(running = true, folder = folder.path)
+        cueCache.clear()
         try {
             val root = File(folder.path)
             if (!root.isDirectory) return@withContext
@@ -80,9 +81,31 @@ class RomScanner(
     /** Multi-disc/track companions and BIOS packs we should not list as games. */
     private fun isSkippable(f: File, ext: String): Boolean {
         val name = f.nameWithoutExtension.lowercase()
-        if (ext == "bin") return true // only reachable through .cue
+        if (ext == "bin") return !isLoneDiscBin(f) // normally reached through its .cue
         if (ext == "zip" && (name in mameBiosNames || isArcadeBiosSet(name))) return true
         return false
+    }
+
+    /**
+     * A .bin is listed on its own only when it is a disc image nobody owns: at least 1 MB and no .cue in the
+     * same folder names it (same base name, or referenced from any sibling cue sheet). Whether it really is a
+     * PS1 disc is decided afterwards by [resolveSystem].
+     */
+    private fun isLoneDiscBin(f: File): Boolean {
+        if (f.length() < 1_000_000L) return false
+        val dir = f.parentFile ?: return false
+        val cues = cueSheetsIn(dir)
+        if (cues.any { it.first == f.nameWithoutExtension.lowercase() }) return false
+        val target = f.name.lowercase()
+        return cues.none { target in it.second }
+    }
+
+    /** (lower-case base name, lower-case text) of every .cue in [dir]; cached for the current scan. */
+    private val cueCache = HashMap<String, List<Pair<String, String>>>()
+    private fun cueSheetsIn(dir: File): List<Pair<String, String>> = cueCache.getOrPut(dir.absolutePath) {
+        dir.listFiles { c -> c.isFile && c.extension.equals("cue", true) }?.map { cue ->
+            cue.nameWithoutExtension.lowercase() to (runCatching { cue.readText(Charsets.ISO_8859_1) }.getOrDefault("").lowercase())
+        }.orEmpty()
     }
 
     private val mameBiosNames = setOf("neogeo", "pgm", "stvbios", "decocass", "cvs", "playch10", "skns", "konamigx", "nss", "megaplay", "megatech")
@@ -95,22 +118,7 @@ class RomScanner(
 
     private fun identify(f: File, ext: String, folderId: Long?): GameEntity? {
         val candidates = extMap[ext] ?: return null
-        val system = when {
-            candidates.size == 1 -> candidates.first()
-            ext == "zip" -> zipSystem(f, candidates)
-            ext in setOf("iso", "chd", "cso") -> when (RomInfo.isoKind(f)) {
-                RomInfo.IsoKind.PSP -> SystemId.PSP
-                RomInfo.IsoKind.PS2 -> SystemId.PS2
-                RomInfo.IsoKind.GC -> if (SystemId.GC in candidates) SystemId.GC else candidates.first()
-                RomInfo.IsoKind.UNKNOWN -> when {
-                    ext == "cso" -> SystemId.PSP
-                    f.length() > 2_000_000_000L -> SystemId.PS2
-                    else -> SystemId.PSP
-                }
-            }
-            ext == "elf" -> if (SystemId.PSP in candidates) SystemId.PSP else candidates.first()
-            else -> candidates.first()
-        } ?: return null
+        val system = resolveSystem(f, ext, candidates, lookup = { extMap[it] }, zip = ::zipSystem) ?: return null
 
         var title = RomInfo.cleanTitle(f.name)
         var autoIcon: String? = null
@@ -152,4 +160,82 @@ class RomScanner(
         if (!out.exists()) out.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         out.absolutePath
     }.getOrNull()
+
+    companion object {
+        private const val DVD_SIZED_BYTES = 2_000_000_000L
+
+        /**
+         * Which system a file belongs to when several cores claim its extension. Reads only the file itself (no
+         * Android), so the disc heuristics are unit-testable. [lookup] maps an extension to its candidate systems
+         * (used for the file an .m3u points at); [zip] peeks inside archives.
+         *
+         * Disc images: `.iso/.img/.cso` are sniffed with [RomInfo.isoKind] (PS1 `BOOT = cdrom:` / PS2 `BOOT2` /
+         * PSP `PSP_GAME` / GC magic); `.cue` sniffs its first FILE; `.pbp` tells PS1 EBOOTs from PSP games;
+         * `.chd` can only be classified by its metadata (CD vs DVD vs HDD) plus size; `.m3u` follows its first
+         * entry. Ties are broken PS1 first for CD-sized images (< [RomInfo.SMALL_DISC_BYTES]).
+         */
+        internal fun resolveSystem(
+            f: File,
+            ext: String,
+            candidates: List<SystemId>,
+            lookup: (String) -> List<SystemId>?,
+            zip: (File, List<SystemId>) -> SystemId? = { _, c -> c.firstOrNull() },
+            depth: Int = 0,
+        ): SystemId? {
+            fun prefer(vararg order: SystemId): SystemId? = order.firstOrNull { it in candidates } ?: candidates.firstOrNull()
+            fun only(sys: SystemId): SystemId? = sys.takeIf { it in candidates }
+            val size = f.length()
+            return when {
+                candidates.isEmpty() -> null
+                // PS1 executables carry a magic; anything else called .exe (Windows installers…) is not a game.
+                ext == "exe" -> only(SystemId.PSX)?.takeIf { RomInfo.isPsxExe(f) }
+                // A lone .bin (no owning .cue, see isLoneDiscBin) is listed only when it proves to be a PS1 disc.
+                ext == "bin" -> only(SystemId.PSX)?.takeIf { RomInfo.isoKind(f) == RomInfo.IsoKind.PSX }
+                candidates.size == 1 -> candidates.first()
+                ext == "zip" -> zip(f, candidates)
+                ext == "m3u" -> {
+                    val first = RomInfo.m3uFirstEntry(f)?.takeIf { it.isFile && depth < 3 }
+                        ?: return prefer(SystemId.PSX, SystemId.GC)
+                    val fext = first.extension.lowercase()
+                    val sub = lookup(fext)?.let { resolveSystem(first, fext, it, lookup, zip, depth + 1) }
+                    if (sub != null && sub in candidates) sub else prefer(SystemId.PSX, SystemId.GC)
+                }
+                ext == "cue" -> when (RomInfo.cueKind(f)) {
+                    RomInfo.IsoKind.PS2 -> prefer(SystemId.PS2, SystemId.PSX)
+                    // PS1 cue sheets are by far the common case; also the fallback when the .bin is missing.
+                    else -> prefer(SystemId.PSX, SystemId.PS2)
+                }
+                ext == "pbp" -> when (RomInfo.pbpKind(f)) {
+                    RomInfo.IsoKind.PSX -> prefer(SystemId.PSX, SystemId.PSP)
+                    else -> prefer(SystemId.PSP, SystemId.PSX)
+                }
+                ext == "chd" -> when (RomInfo.chdKind(f)) {
+                    RomInfo.ChdKind.HDD -> prefer(SystemId.ARCADE, SystemId.PSX)
+                    RomInfo.ChdKind.CD ->
+                        if (size < RomInfo.SMALL_DISC_BYTES) prefer(SystemId.PSX, SystemId.PS2, SystemId.PSP)
+                        else prefer(SystemId.PS2, SystemId.PSX, SystemId.PSP)
+                    RomInfo.ChdKind.DVD ->
+                        if (size > DVD_SIZED_BYTES) prefer(SystemId.PS2, SystemId.PSP) else prefer(SystemId.PSP, SystemId.PS2)
+                    RomInfo.ChdKind.UNKNOWN -> when {
+                        size > DVD_SIZED_BYTES -> prefer(SystemId.PS2, SystemId.PSP)
+                        size < RomInfo.SMALL_DISC_BYTES -> prefer(SystemId.PSX, SystemId.PSP, SystemId.PS2)
+                        else -> prefer(SystemId.PSP, SystemId.PS2)
+                    }
+                }
+                ext == "iso" || ext == "img" || ext == "cso" -> when (RomInfo.isoKind(f)) {
+                    RomInfo.IsoKind.PSX -> prefer(SystemId.PSX, SystemId.PS2, SystemId.PSP)
+                    RomInfo.IsoKind.PSP -> prefer(SystemId.PSP, SystemId.PSX)
+                    RomInfo.IsoKind.PS2 -> prefer(SystemId.PS2, SystemId.PSX)
+                    RomInfo.IsoKind.GC -> prefer(SystemId.GC)
+                    RomInfo.IsoKind.UNKNOWN -> when {
+                        ext == "cso" -> prefer(SystemId.PSP, SystemId.PS2)
+                        size > DVD_SIZED_BYTES -> prefer(SystemId.PS2, SystemId.PSP)
+                        else -> prefer(SystemId.PSP, SystemId.PS2)
+                    }
+                }
+                ext == "elf" -> prefer(SystemId.PSP)
+                else -> candidates.first()
+            }
+        }
+    }
 }

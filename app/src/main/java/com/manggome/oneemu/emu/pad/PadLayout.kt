@@ -115,7 +115,7 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
         }
 }
 
-val SystemId.isPlayStation: Boolean get() = this == SystemId.PSP || this == SystemId.PS2
+val SystemId.isPlayStation: Boolean get() = this == SystemId.PSX || this == SystemId.PSP || this == SystemId.PS2
 
 /** One control on screen. [x]/[y] are the normalized 0..1 center position relative to the screen. */
 @Serializable
