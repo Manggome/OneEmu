@@ -143,14 +143,18 @@ jobs:
           [ -n "$COMMIT12" ] && [ "$COMMIT12" != "null" ] || { echo "core.json has no sourceCommit"; exit 1; }
           LIBFILE="$(jq -r '.libFile' "$CJ")"
           MINAPP="$(jq -r '.minAppVersion // "0.1.0"' "$CJ")"
-          FILE="${CORE}-${COMMIT12}-arm64.zip"
+          # packageRevision (core.json, default 1) lets a rebuild of the same source commit (new patches /
+          # build flags) show up as a new version in the app.
+          REV="$(jq -r '.packageRevision // 1' "$CJ")"
+          VERSION="${COMMIT12}"; [ "$REV" -gt 1 ] 2>/dev/null && VERSION="${COMMIT12}-r${REV}"
+          FILE="${CORE}-${VERSION}-arm64.zip"
           mkdir -p dist stage
           cp "$SO" "stage/${LIBFILE}"
           cp "$CJ" stage/core.json
           (cd stage && zip -9 -X "../dist/${FILE}" "${LIBFILE}" core.json)
           SIZE="$(stat -c %s "dist/${FILE}")"
           SHA="$(sha256sum "dist/${FILE}" | cut -d' ' -f1)"
-          jq -n --arg id "$CORE" --arg version "$COMMIT12" --arg file "$FILE" \
+          jq -n --arg id "$CORE" --arg version "$VERSION" --arg file "$FILE" \
                 --arg url "https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${FILE}" \
                 --argjson size "$SIZE" --arg sha256 "$SHA" --arg libFile "$LIBFILE" --arg minAppVersion "$MINAPP" \
                 '{id:$id, version:$version, file:$file, url:$url, size:$size, sha256:$sha256, libFile:$libFile, minAppVersion:$minAppVersion}' \
