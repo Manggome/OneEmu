@@ -460,14 +460,21 @@ void Frontend::setPaused(bool paused) {
 
 // ---------------------------------------------------------------- frame loop
 void Frontend::runFrame() {
+    static int64_t lastIdleLogNs = 0;
     if (!video_.ready()) {
         // No surface yet: don't burn CPU.
+        int64_t now = nowNs();
+        if (now - lastIdleLogNs > 2000000000LL) { lastIdleLogNs = now; LOGW("runFrame idle: video not ready (surface missing)"); }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
         return;
     }
     if (hwRender_ && !hwContextReady_) {
         contextResetIfNeeded();
-        if (!hwContextReady_) { std::this_thread::sleep_for(std::chrono::milliseconds(5)); return; }
+        if (!hwContextReady_) {
+            int64_t now = nowNs();
+            if (now - lastIdleLogNs > 2000000000LL) { lastIdleLogNs = now; LOGW("runFrame idle: HW context not ready"); }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5)); return;
+        }
     }
     video_.makeCurrent();
 
@@ -509,7 +516,12 @@ void Frontend::runFrame() {
         glBindFramebuffer(GL_FRAMEBUFFER, video_.hwFramebuffer());
     }
     gotFrameThisRun_ = false;
+    // Two-context HW render (Dolphin): order the GPU work both ways. The core must not start overwriting the
+    // HW texture before the previous present finished sampling it, and the present must not sample it before
+    // the core's frame is complete. Without this Adreno shows the previous frame / uninitialised (green) tiles.
+    if (hwRender_) video_.waitPresentFence();
     core_.retro_run();
+    if (hwRender_) video_.fenceCoreFrame();
 
     // Present at most 60ish frames/sec while fast forwarding to keep the GPU free.
     bool present = true;
@@ -546,8 +558,12 @@ void Frontend::runFrame() {
             if (fscanf(f, "%ld %ld", &pages, &resident) == 2) rssKb = resident * (long)(sysconf(_SC_PAGESIZE) / 1024);
             fclose(f);
         }
-        LOGI("heartbeat: frames=%llu fps=%.1f hwFrame=%d rss=%ld MB avail=%ld/%ld MB", (unsigned long long)totalFrames_,
-             measuredFps_, frameIsHw_ ? 1 : 0, rssKb / 1024, availKb / 1024, totalKb / 1024);
+        uint32_t centre = 0;
+        if (hwRender_ && frameIsHw_) centre = video_.sampleHwFrameCentre();
+        LOGI("heartbeat: frames=%llu fps=%.1f hwFrame=%d src(hw=%u sw=%u dupe=%u) centre=%08x rss=%ld MB avail=%ld/%ld MB",
+             (unsigned long long)totalFrames_, measuredFps_, frameIsHw_ ? 1 : 0, hbHwFrames_, hbSwFrames_, hbDupeFrames_, centre,
+             rssKb / 1024, availKb / 1024, totalKb / 1024);
+        hbHwFrames_ = hbSwFrames_ = hbDupeFrames_ = 0;
     }
 }
 
@@ -556,6 +572,7 @@ void Frontend::videoRefresh(const void* data, unsigned w, unsigned h, size_t pit
     gotFrameThisRun_ = true;
     if (data == RETRO_HW_FRAME_BUFFER_VALID) {
         frameIsHw_ = true;
+        ++hbHwFrames_;
         if (w > hwFboW_ || h > hwFboH_) {
             // The core rendered at a higher internal resolution than our FBO; grow before the next frame.
             hwFboGrowW_ = std::max(w, hwFboW_); hwFboGrowH_ = std::max(h, hwFboH_);
@@ -567,6 +584,7 @@ void Frontend::videoRefresh(const void* data, unsigned w, unsigned h, size_t pit
     }
     // A NULL frame means "duplicate the previous frame". For HW-render cores (Dolphin sends this on
     // every non-new frame) we must keep presenting the HW texture, not fall back to the software one.
+    if (data == nullptr) ++hbDupeFrames_; else ++hbSwFrames_;
     if (data == nullptr && hwRender_ && frameIsHw_) return;
     frameIsHw_ = false;
     video_.uploadSoftwareFrame(data, w, h, pitch, pixelFormat_);

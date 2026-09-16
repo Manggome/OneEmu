@@ -174,6 +174,28 @@ bool VideoGL::ensurePresentContext() {
     return true;
 }
 
+uint32_t VideoGL::sampleHwFrameCentre() {
+    if (!hwFbo_ || frameW_ == 0 || frameH_ == 0) return 0;
+    if (sharedContext_ && !makeCurrent()) return 0; // the FBO lives in the core context (not shared)
+    GLint prev = 0; glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prev);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, hwFbo_);
+    uint8_t px[4] = {0, 0, 0, 0};
+    glReadPixels((GLint)(frameW_ / 2), (GLint)(frameH_ / 2), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)prev);
+    return (uint32_t)px[0] << 24 | (uint32_t)px[1] << 16 | (uint32_t)px[2] << 8 | px[3];
+}
+
+void VideoGL::fenceCoreFrame() {
+    // Called with the core's context current, right after retro_run. Commands issued in that context are
+    // not ordered against the present context, so wait (bounded) for the core's frame to finish here.
+    if (!sharedContext_ || context_ == EGL_NO_CONTEXT) return;
+    GLsync fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (!fence) { glFinish(); return; }
+    GLenum r = glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 100000000ull); // 100 ms cap
+    glDeleteSync(fence);
+    if (r == GL_TIMEOUT_EXPIRED || r == GL_WAIT_FAILED) glFinish();
+}
+
 bool VideoGL::makeCurrentPresent() {
     if (presentCtx_ == EGL_NO_CONTEXT) return makeCurrent();
     if (!eglMakeCurrent(display_, surface_, surface_, presentCtx_)) {
@@ -400,7 +422,20 @@ void VideoGL::present(const VideoConfig& cfg, float coreAspect, bool hwFrame) {
 }
 
 void VideoGL::swap() {
-    if (ready()) eglSwapBuffers(display_, surface_);
+    if (!ready()) return;
+    if (sharedContext_ && presentCtx_ != EGL_NO_CONTEXT) {
+        // Sync objects are shared across the share group: the core context waits on this before its next frame.
+        if (presentFence_) glDeleteSync(presentFence_);
+        presentFence_ = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    }
+    eglSwapBuffers(display_, surface_);
+}
+
+void VideoGL::waitPresentFence() {
+    if (!presentFence_) return;
+    glWaitSync(presentFence_, 0, GL_TIMEOUT_IGNORED); // server-side: no CPU stall, just GPU ordering
+    glDeleteSync(presentFence_);
+    presentFence_ = nullptr;
 }
 
 bool VideoGL::readback(std::vector<uint32_t>& out, int& w, int& h) {
@@ -433,6 +468,6 @@ void VideoGL::destroy() {
         eglTerminate(display_);
     }
     display_ = EGL_NO_DISPLAY; context_ = EGL_NO_CONTEXT; presentCtx_ = EGL_NO_CONTEXT; surface_ = EGL_NO_SURFACE;
-    program_ = vbo_ = vao_ = swTex_ = 0; hwFbo_ = hwTex_ = hwDepth_ = 0;
+    program_ = vbo_ = vao_ = swTex_ = 0; hwFbo_ = hwTex_ = hwDepth_ = 0; presentFence_ = nullptr;
     swTexW_ = swTexH_ = 0; swFormat_ = -1; haveFrame_ = false;
 }
