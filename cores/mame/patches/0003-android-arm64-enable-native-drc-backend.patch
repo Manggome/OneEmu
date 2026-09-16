@@ -1,0 +1,13 @@
+diff --git a/makefile b/makefile
+index 8c62521d..ad6c08a2 100644
+--- a/makefile
++++ b/makefile
+@@ -1247,7 +1252,7 @@ endif # ifdef RETRO
+ ifeq ($(OSD), retro)
+ #RETRO HACK no sdl for libretro android
+ $(PROJECTDIR)/$(MAKETYPE)-android-arm64/Makefile: makefile $(SCRIPTS) $(GENIE)
+-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=android-arm64 --gcc_version=$(CLANG_VERSION) --osd=retro --targetos=android --PLATFORM=arm64 --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --DONT_USE_NETWORK=1 --NOASM=1 $(MAKETYPE)
++	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=android-arm64 --gcc_version=$(CLANG_VERSION) --osd=retro --targetos=android --PLATFORM=arm64 --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --DONT_USE_NETWORK=1 $(MAKETYPE)
+ 
+ .PHONY: android-arm64
+ android-arm64: android-ndk generate $(PROJECTDIR)/$(MAKETYPE)-android-arm64/Makefile
