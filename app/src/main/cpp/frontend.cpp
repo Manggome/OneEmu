@@ -565,6 +565,9 @@ void Frontend::videoRefresh(const void* data, unsigned w, unsigned h, size_t pit
         video_.setHwFrameSize(w, h);
         return;
     }
+    // A NULL frame means "duplicate the previous frame". For HW-render cores (Dolphin sends this on
+    // every non-new frame) we must keep presenting the HW texture, not fall back to the software one.
+    if (data == nullptr && hwRender_ && frameIsHw_) return;
     frameIsHw_ = false;
     video_.uploadSoftwareFrame(data, w, h, pitch, pixelFormat_);
 }
