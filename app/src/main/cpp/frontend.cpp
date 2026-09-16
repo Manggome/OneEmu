@@ -726,7 +726,10 @@ bool Frontend::environment(unsigned cmd, void* data) {
             return true;
         }
         case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: *(unsigned*)data = RETRO_HW_CONTEXT_OPENGLES3; return true;
-        case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: return true;
+        case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
+            // The core keeps cached GL state across frames; present from a second, shared context.
+            video_.setSharedContext(true);
+            return true;
         case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE: return false;
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: return false; // asked every frame by some cores
         case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: return false;

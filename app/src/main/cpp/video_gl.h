@@ -31,6 +31,10 @@ public:
     void destroy();
     bool ready() const { return context_ != EGL_NO_CONTEXT && surface_ != EGL_NO_SURFACE; }
     bool makeCurrent();
+    /** Cores that ask for RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT get their own context; our presentation
+     *  runs in a second, shared context so their cached GL state is never clobbered. */
+    void setSharedContext(bool on) { sharedContext_ = on; }
+    bool makeCurrentPresent();
 
     void setSwapInterval(int interval);
     int width() const { return surfaceW_; }
@@ -63,7 +67,12 @@ private:
 
     EGLDisplay display_ = EGL_NO_DISPLAY;
     EGLConfig config_ = nullptr;
-    EGLContext context_ = EGL_NO_CONTEXT;
+    EGLContext context_ = EGL_NO_CONTEXT;      // the core's context (retro_run, context_reset, HW FBO)
+    EGLContext presentCtx_ = EGL_NO_CONTEXT;   // our blit context when sharedContext_ is on
+    bool sharedContext_ = false;
+    int ctxReqMajor_ = 0, ctxReqMinor_ = 0;
+    bool ensurePresentContext();
+    EGLContext createContext(EGLContext share);
     EGLSurface surface_ = EGL_NO_SURFACE;
     ANativeWindow* window_ = nullptr;
     int surfaceW_ = 0, surfaceH_ = 0;
