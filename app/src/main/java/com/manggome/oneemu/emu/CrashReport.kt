@@ -70,6 +70,37 @@ object CrashMarker {
         }
     }
 
+    /**
+     * Android's own record of why our recent processes ended (Android 11+): a kill by the low-memory killer, an
+     * ANR, a native signal etc. leave no trace inside the app otherwise.
+     */
+    fun exitReasons(context: Context, max: Int = 3): String = runCatching {
+        if (android.os.Build.VERSION.SDK_INT < 30) return@runCatching ""
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val fmt = java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US)
+        am.getHistoricalProcessExitReasons(context.packageName, 0, max).joinToString("\n") { info ->
+            val reason = when (info.reason) {
+                android.app.ApplicationExitInfo.REASON_EXIT_SELF -> "EXIT_SELF (exit() called)"
+                android.app.ApplicationExitInfo.REASON_SIGNALED -> "SIGNALED (signal ${info.status})"
+                android.app.ApplicationExitInfo.REASON_LOW_MEMORY -> "LOW_MEMORY (killed by the low-memory killer)"
+                android.app.ApplicationExitInfo.REASON_CRASH -> "CRASH (Java exception)"
+                android.app.ApplicationExitInfo.REASON_CRASH_NATIVE -> "CRASH_NATIVE"
+                android.app.ApplicationExitInfo.REASON_ANR -> "ANR"
+                android.app.ApplicationExitInfo.REASON_INITIALIZATION_FAILURE -> "INITIALIZATION_FAILURE"
+                android.app.ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "PERMISSION_CHANGE"
+                android.app.ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "EXCESSIVE_RESOURCE_USAGE"
+                android.app.ApplicationExitInfo.REASON_USER_REQUESTED -> "USER_REQUESTED (force stop / swipe)"
+                android.app.ApplicationExitInfo.REASON_USER_STOPPED -> "USER_STOPPED"
+                android.app.ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "DEPENDENCY_DIED"
+                android.app.ApplicationExitInfo.REASON_OTHER -> "OTHER"
+                else -> "reason=${info.reason}"
+            }
+            "${fmt.format(java.util.Date(info.timestamp))} pid=${info.pid} $reason status=${info.status} " +
+                "rss=${info.rss / 1024 / 1024} MB pss=${info.pss / 1024 / 1024} MB importance=${info.importance}" +
+                (info.description?.let { " desc=\"$it\"" } ?: "")
+        }
+    }.getOrDefault("")
+
     /** Written by liboneemu (frontend LOG lines + core log) for the current/last session; truncated on each load. */
     fun sessionLogFile(context: Context) = File(context.cacheDir, "session_log.txt")
     /** Copy of the session log preserved at app start when the previous session did not end cleanly. */
@@ -95,6 +126,7 @@ object CrashMarker {
         val log = collectLog()
         val native = readNativeCrash(context)?.let { "네이티브 크래시:\n$it\n\n" } ?: ""
         val java = readJavaCrash(context)?.let { "앱 예외 (Java):\n$it\n\n" } ?: ""
+        val exits = exitReasons(context).takeIf { it.isNotBlank() }?.let { "Android 프로세스 종료 기록 (최근 3건):\n$it\n\n" } ?: ""
         // The session log file does not depend on logcat permissions (Samsung hides other processes' lines).
         val session = tail(if (crash) crashLogFile(context) else sessionLogFile(context))
             .takeIf { it.isNotBlank() }?.let { "세션 로그 (파일):\n$it\n\n" } ?: ""
@@ -106,7 +138,7 @@ object CrashMarker {
             if (gamePath != null) append("파일: ").append(gamePath).append('\n')
             if (coreId != null) append("코어: ").append(coreId).append('\n')
         }
-        return "$head\n$native$java${session}logcat:\n$log"
+        return "$head\n$native$java$exits${session}logcat:\n$log"
     }
 
     /** Recent log lines of our own UID (the crashed process shares it), most relevant tags only. */
@@ -148,7 +180,7 @@ fun CrashReportPrompt() {
             TextButton(onClick = {
                 scope.launch {
                     val text = "OneEmu 비정상 종료 보고\n" + CrashMarker.buildLogReport(context, m.title, m.path, m.coreId, crash = true)
-                    android.util.Log.i("OneEmu", "crash report copied (${text.length} chars, sessionLog=${"세션 로그 (파일)" in text})")
+                    android.util.Log.i("OneEmu", "crash report copied (${text.length} chars, sessionLog=${"세션 로그 (파일)" in text}, exitInfo=${"종료 기록" in text})")
                     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     cm.setPrimaryClip(ClipData.newPlainText("OneEmu crash log", text))
                     Toast.makeText(context, "로그를 클립보드에 복사했습니다", Toast.LENGTH_SHORT).show()
