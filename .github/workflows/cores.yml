@@ -11,8 +11,9 @@ on:
   push:
     branches: [main]
     paths:
-      - "cores/mame/**"
-      - "cores/mame2010/**"
+      - "cores/*/build.sh"
+      - "cores/*/core.json"
+      - "cores/*/patches/**"
       - ".github/workflows/cores.yml"
   workflow_dispatch:
     inputs:
