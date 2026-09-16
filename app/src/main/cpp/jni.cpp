@@ -1,6 +1,7 @@
 #include "frontend.h"
 #include "crash_handler.h"
 #include "log.h"
+#include "logsink.h"
 #include <android/native_window_jni.h>
 #include <jni.h>
 #include <string>
@@ -96,6 +97,16 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
 BRIDGE(void, installCrashHandler)(JNIEnv* env, jobject, jstring path) {
     std::string p = jstr(env, path);
     installCrashHandler(p.c_str());
+}
+
+BRIDGE(void, openSessionLog)(JNIEnv* env, jobject, jstring path) {
+    std::string p = jstr(env, path);
+    logSinkOpen(p.c_str());
+}
+
+BRIDGE(void, sessionLogLine)(JNIEnv* env, jobject, jstring line) {
+    std::string l = jstr(env, line);
+    logSinkWrite('I', l.c_str());
 }
 
 BRIDGE(jboolean, loadCoreNative)(JNIEnv* env, jobject, jstring corePath, jstring systemDir, jstring saveDir, jstring options,

@@ -32,6 +32,9 @@ object NativeBridge {
 
     /** Installs a SIGSEGV/SIGBUS/... recorder that writes to [path] (see CrashMarker). */
     external fun installCrashHandler(path: String)
+    /** Starts a fresh session log file (frontend + core log lines); see CrashMarker.sessionLogFile. */
+    external fun openSessionLog(path: String)
+    external fun sessionLogLine(line: String)
 
     // ---- lifecycle ----
     /**

@@ -33,7 +33,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     /** Why a load (or a later fatal event) failed; mirrors the C++ `LoadError` codes. */
     enum class ErrorKind(val code: Int) {
         UNKNOWN(0), CORE_MISSING(1), DLOPEN_FAILED(2), CORE_INIT_FAILED(3), ROM_READ_FAILED(4), ROM_LOAD_FAILED(5),
-        ROM_ENCRYPTED(6), GLES_UNSUPPORTED(7), GL_INIT_FAILED(8), ROM_EMPTY(9), CORE_SHUTDOWN(100);
+        ROM_ENCRYPTED(6), GLES_UNSUPPORTED(7), GL_INIT_FAILED(8), ROM_EMPTY(9), DISC_IMAGE_CORRUPT(10), CORE_SHUTDOWN(100);
 
         companion object {
             fun fromCode(code: Int): ErrorKind = entries.firstOrNull { it.code == code } ?: UNKNOWN
@@ -89,6 +89,17 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
             _state.value = makeError(ErrorKind.ROM_EMPTY, "ROM file is empty (0 bytes): ${game.path}")
             return@withContext false
         } }
+        // A raw disc image is a whole number of 2048- or 2352-byte sectors; anything else was cut short or damaged
+        // (PCSX-ReARMed only reports "unsupported/invalid CD image" for these).
+        File(game.path).let { f ->
+            val ext = f.extension.lowercase()
+            if (f.isFile && system in DISC_SYSTEMS && ext in RAW_DISC_EXTS && f.length() % 2048L != 0L && f.length() % 2352L != 0L) {
+                _state.value = makeError(ErrorKind.DISC_IMAGE_CORRUPT, "disc image size ${f.length()} is not a multiple of 2048 or 2352 bytes: ${game.path}")
+                return@withContext false
+            }
+        }
+        NativeBridge.openSessionLog(CrashMarker.sessionLogFile(app).absolutePath)
+        NativeBridge.sessionLogLine("session: game=\"${game.title}\" path=${game.path} system=${system.id} core=${core.id} app=${com.manggome.oneemu.BuildConfig.VERSION_NAME} device=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} android=${android.os.Build.VERSION.RELEASE}")
         val libPath = app.cores.libraryPath(core)
         if (!libPath.exists()) {
             _state.value = makeError(ErrorKind.CORE_MISSING, (if (core.isDownloadable) "downloadable core not installed: " else "core library not in APK: ") + libPath.absolutePath)
@@ -135,6 +146,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
             ErrorKind.ROM_LOAD_FAILED -> app.getString(R.string.emu_err_rom_load)
             ErrorKind.ROM_ENCRYPTED -> app.getString(R.string.emu_err_rom_encrypted)
             ErrorKind.ROM_EMPTY -> app.getString(R.string.emu_err_rom_empty)
+            ErrorKind.DISC_IMAGE_CORRUPT -> app.getString(R.string.emu_err_disc_corrupt)
             ErrorKind.GLES_UNSUPPORTED -> {
                 // reason: "core requires OpenGL ES 3.2 but the device context is OpenGL ES 3.1 ..."
                 val need = Regex("requires OpenGL ES (\\d\\.\\d)").find(reason)?.groupValues?.get(1) ?: "3.2"
@@ -146,6 +158,10 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
             ErrorKind.UNKNOWN -> app.getString(R.string.emu_err_unknown)
         }
         val log = runCatching { NativeBridge.getRecentCoreLog() }.getOrDefault("").trim()
+        // PCSX-ReARMed: the last core message is the harmless BIOS notice; the real failure is the disc image.
+        if (kind == ErrorKind.ROM_LOAD_FAILED && system == SystemId.PSX && "unsupported/invalid CD image" in log) {
+            message = app.getString(R.string.emu_err_disc_corrupt)
+        }
         // Arcade: say what the MAME set lacks (BIOS/parent zip, wrong-version files) instead of a generic load failure,
         // and pull MAME's own "NOT FOUND" / "WRONG CHECKSUMS" lines out of the log for the detail box.
         var arcadeDetail = ""
@@ -320,6 +336,8 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     override fun onRumble(port: Int, strength: Int) { if (port == 0) _rumble.value = strength }
     override fun onGeometryChanged(width: Int, height: Int, aspect: Float) { _geometry.value = Geometry(width, height, aspect) }
     private companion object {
+        val DISC_SYSTEMS = setOf(SystemId.PSX, SystemId.PS2, SystemId.PSP, SystemId.GC)
+        val RAW_DISC_EXTS = setOf("iso", "bin", "img")
         /** Failures that have nothing to do with the ROM set; the arcade ROM check is skipped for these. */
         val ARCADE_UNRELATED_KINDS = setOf(
             ErrorKind.CORE_MISSING, ErrorKind.DLOPEN_FAILED, ErrorKind.ROM_READ_FAILED, ErrorKind.GLES_UNSUPPORTED, ErrorKind.GL_INIT_FAILED,
