@@ -101,6 +101,7 @@ class RomScanner(
             ext in setOf("iso", "chd", "cso") -> when (RomInfo.isoKind(f)) {
                 RomInfo.IsoKind.PSP -> SystemId.PSP
                 RomInfo.IsoKind.PS2 -> SystemId.PS2
+                RomInfo.IsoKind.GC -> if (SystemId.GC in candidates) SystemId.GC else candidates.first()
                 RomInfo.IsoKind.UNKNOWN -> when {
                     ext == "cso" -> SystemId.PSP
                     f.length() > 2_000_000_000L -> SystemId.PS2

@@ -1,0 +1,36 @@
+Complete BlobReader / Common::PCAP in the headers that hold them in std::unique_ptr.
+
+VolumeWad.h (class VolumeWAD final, member std::unique_ptr<BlobReader>) and DSPCaptureLogger.h
+(class PCAPDSPCaptureLogger final, member std::unique_ptr<Common::PCAP>) only forward-declare the
+pointee. NDK r28.2 (clang 19 / its libc++) instantiates the implicit virtual destructor of these
+final classes right at the class definition, where the pointee is still incomplete:
+  unique_ptr.h:66: error: invalid application of 'sizeof' to an incomplete type 'DiscIO::BlobReader'
+  unique_ptr.h:66: error: invalid application of 'sizeof' to an incomplete type 'Common::PCAP'
+(The fork's own CI uses NDK r29 and does not hit this.) Including the defining headers is the
+minimal fix; declaring out-of-line destructors instead would suppress VolumeWAD's implicit move
+constructor and break the std::variant move in Core/Boot/Boot.cpp (BootParameters).
+
+diff --git a/Source/Core/Core/DSP/DSPCaptureLogger.h b/Source/Core/Core/DSP/DSPCaptureLogger.h
+index cfa66f2..792fadf 100644
+--- a/Source/Core/Core/DSP/DSPCaptureLogger.h
++++ b/Source/Core/Core/DSP/DSPCaptureLogger.h
+@@ -7,6 +7,7 @@
+ #include <string>
+ 
+ #include "Common/CommonTypes.h"
++#include "Common/PcapFile.h"
+ 
+ namespace Common
+ {
+diff --git a/Source/Core/DiscIO/VolumeWad.h b/Source/Core/DiscIO/VolumeWad.h
+index 88a0847..c925f8c 100644
+--- a/Source/Core/DiscIO/VolumeWad.h
++++ b/Source/Core/DiscIO/VolumeWad.h
+@@ -12,6 +12,7 @@
+ 
+ #include "Common/CommonTypes.h"
+ #include "Core/IOS/ES/Formats.h"
++#include "DiscIO/Blob.h"
+ #include "DiscIO/Volume.h"
+ 
+ namespace DiscIO
