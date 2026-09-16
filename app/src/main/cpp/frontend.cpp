@@ -111,6 +111,7 @@ void Frontend::noteLog(char level, const std::string& line) {
     if (l.empty()) return;
     if (l.size() > 400) l.resize(400);
     std::string entry = std::string("[") + level + "] " + l;
+    logSinkWrite(level, l.c_str());
     std::lock_guard<std::mutex> lock(logMutex_);
     if (logRing_.size() < kLogRingSize) {
         logRing_.push_back(std::move(entry));

@@ -50,13 +50,33 @@ object CrashMarker {
 
     fun clearNativeCrash(context: Context) { runCatching { File(context.cacheDir, "native_crash.txt").delete() } }
 
+    /** Written by liboneemu (frontend LOG lines + core log) for the current/last session; truncated on each load. */
+    fun sessionLogFile(context: Context) = File(context.cacheDir, "session_log.txt")
+    /** Copy of the session log preserved at app start when the previous session did not end cleanly. */
+    fun crashLogFile(context: Context) = File(context.cacheDir, "session_log.crash.txt")
+
+    /** Call first thing in Application.onCreate: keeps the crashed session's log before a new session truncates it. */
+    fun preserveCrashLog(context: Context) {
+        runCatching {
+            val log = sessionLogFile(context)
+            if (file(context).exists() && log.exists()) log.copyTo(crashLogFile(context), overwrite = true)
+        }
+    }
+
+    private fun tail(f: File, maxLines: Int = 400): String = runCatching {
+        if (!f.exists()) "" else f.readLines().takeLast(maxLines).joinToString("\n")
+    }.getOrDefault("")
+
     /**
      * Full text for a bug report: app version, device, game/core and our recent log lines (frontend heartbeats,
      * core log). Used by 로그 복사 in the in-game menu and on the About screen.
      */
-    suspend fun buildLogReport(context: Context, gameTitle: String?, gamePath: String?, coreId: String?): String {
+    suspend fun buildLogReport(context: Context, gameTitle: String?, gamePath: String?, coreId: String?, crash: Boolean = false): String {
         val log = collectLog()
         val native = readNativeCrash(context)?.let { "네이티브 크래시:\n$it\n\n" } ?: ""
+        // The session log file does not depend on logcat permissions (Samsung hides other processes' lines).
+        val session = tail(if (crash) crashLogFile(context) else sessionLogFile(context))
+            .takeIf { it.isNotBlank() }?.let { "세션 로그 (파일):\n$it\n\n" } ?: ""
         val head = buildString {
             append("OneEmu 실행 로그 (v").append(com.manggome.oneemu.BuildConfig.VERSION_NAME).append(")\n")
             append("기기: ").append(android.os.Build.MANUFACTURER).append(' ').append(android.os.Build.MODEL)
@@ -65,7 +85,7 @@ object CrashMarker {
             if (gamePath != null) append("파일: ").append(gamePath).append('\n')
             if (coreId != null) append("코어: ").append(coreId).append('\n')
         }
-        return "$head\n$native$log"
+        return "$head\n$native${session}logcat:\n$log"
     }
 
     /** Recent log lines of our own UID (the crashed process shares it), most relevant tags only. */
@@ -106,14 +126,14 @@ fun CrashReportPrompt() {
         confirmButton = {
             TextButton(onClick = {
                 scope.launch {
-                    val log = CrashMarker.collectLog()
-                    val native = CrashMarker.readNativeCrash(context)?.let { "네이티브 크래시:\n$it\n\n" } ?: ""
-                    val text = "OneEmu 비정상 종료 보고\n게임: ${m.title}\n파일: ${m.path}\n코어: ${m.coreId}\n\n$native$log"
+                    val text = "OneEmu 비정상 종료 보고\n" + CrashMarker.buildLogReport(context, m.title, m.path, m.coreId, crash = true)
+                    android.util.Log.i("OneEmu", "crash report copied (${text.length} chars, sessionLog=${"세션 로그 (파일)" in text})")
                     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     cm.setPrimaryClip(ClipData.newPlainText("OneEmu crash log", text))
                     Toast.makeText(context, "로그를 클립보드에 복사했습니다", Toast.LENGTH_SHORT).show()
                     CrashMarker.clear(context)
                     CrashMarker.clearNativeCrash(context)
+                    runCatching { CrashMarker.crashLogFile(context).delete() }
                     marker = null
                 }
             }) { Text("로그 복사") }
