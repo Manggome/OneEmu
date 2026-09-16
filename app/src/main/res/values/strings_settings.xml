@@ -101,6 +101,8 @@
     <string name="about_check_failed">업데이트를 확인할 수 없습니다: %1$s</string>
     <string name="about_github">GitHub 저장소</string>
     <string name="about_github_desc">소스 코드, 이슈 제보, 릴리스</string>
+    <string name="about_copy_log">최근 실행 로그 복사</string>
+    <string name="about_copy_log_desc">마지막으로 실행한 게임의 코어 로그와 상태를 클립보드에 복사합니다. 문제 신고 때 붙여 넣어 주세요.</string>
     <string name="about_debug_note">지금 실행 중인 빌드는 디버그 빌드입니다. 앱 내 업데이트로 받은 릴리스 APK는 이 빌드 위에 덮어 설치되지 않으니, GitHub Releases의 릴리스 APK를 설치해서 사용하세요.</string>
     <string name="about_license_title">라이선스</string>
     <string name="about_license_app">OneEmu 앱 코드: GPL-3.0</string>
