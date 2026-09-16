@@ -45,6 +45,30 @@ static GLuint compile(GLenum type, const char* src) {
 
 VideoGL::~VideoGL() { destroy(); }
 
+EGLContext VideoGL::createContext(EGLContext share) {
+    EGLContext ctx = EGL_NO_CONTEXT;
+    // Ask for the version the core wants first (RetroArch does the same), then an explicit ES 3.2
+    // (Azahar/Play! need 3.2 features), then any ES 3.x. Drivers may still hand back a lower context
+    // than requested, so the real version is parsed from GL_VERSION below.
+    if (ctxReqMajor_ >= 3) {
+        const EGLint attribsReq[] = { EGL_CONTEXT_MAJOR_VERSION, ctxReqMajor_, EGL_CONTEXT_MINOR_VERSION, ctxReqMinor_, EGL_NONE };
+        ctx = eglCreateContext(display_, config_, share, attribsReq);
+        if (ctx == EGL_NO_CONTEXT) LOGW("eglCreateContext(ES %d.%d) failed: 0x%x", ctxReqMajor_, ctxReqMinor_, eglGetError());
+    }
+    // Some drivers (ANGLE, a few Mali builds) hand out exactly 3.0 for a bare CLIENT_VERSION 3 request even
+    // though they support 3.1/3.2, so walk down explicit minors before the generic request.
+    for (int minor = 2; minor >= 1 && ctx == EGL_NO_CONTEXT; minor--) {
+        const EGLint attribs3x[] = { EGL_CONTEXT_MAJOR_VERSION, 3, EGL_CONTEXT_MINOR_VERSION, minor, EGL_NONE };
+        ctx = eglCreateContext(display_, config_, share, attribs3x);
+    }
+    if (ctx == EGL_NO_CONTEXT) {
+        const EGLint ctxAttribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
+        ctx = eglCreateContext(display_, config_, share, ctxAttribs);
+    }
+    return ctx;
+}
+
+
 bool VideoGL::init(ANativeWindow* window, bool needDepth, bool needStencil, int reqMajor, int reqMinor) {
     destroy();
     window_ = window;
@@ -66,30 +90,15 @@ bool VideoGL::init(ANativeWindow* window, bool needDepth, bool needStencil, int 
         LOGE("eglChooseConfig failed");
         return false;
     }
-    // Ask for the version the core wants first (RetroArch does the same), then an explicit ES 3.2
-    // (Azahar/Play! need 3.2 features), then any ES 3.x. Drivers may still hand back a lower context
-    // than requested, so the real version is parsed from GL_VERSION below.
-    if (reqMajor >= 3) {
-        const EGLint attribsReq[] = { EGL_CONTEXT_MAJOR_VERSION, reqMajor, EGL_CONTEXT_MINOR_VERSION, reqMinor, EGL_NONE };
-        context_ = eglCreateContext(display_, config_, EGL_NO_CONTEXT, attribsReq);
-        if (context_ == EGL_NO_CONTEXT) LOGW("eglCreateContext(ES %d.%d) failed: 0x%x", reqMajor, reqMinor, eglGetError());
-    }
-    // Some drivers (ANGLE, a few Mali builds) hand out exactly 3.0 for a bare CLIENT_VERSION 3 request even
-    // though they support 3.1/3.2, so walk down explicit minors before the generic request.
-    for (int minor = 2; minor >= 1 && context_ == EGL_NO_CONTEXT; minor--) {
-        const EGLint attribs3x[] = { EGL_CONTEXT_MAJOR_VERSION, 3, EGL_CONTEXT_MINOR_VERSION, minor, EGL_NONE };
-        context_ = eglCreateContext(display_, config_, EGL_NO_CONTEXT, attribs3x);
-    }
-    if (context_ == EGL_NO_CONTEXT) {
-        const EGLint ctxAttribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
-        context_ = eglCreateContext(display_, config_, EGL_NO_CONTEXT, ctxAttribs);
-    }
+    ctxReqMajor_ = reqMajor; ctxReqMinor_ = reqMinor;
+    context_ = createContext(EGL_NO_CONTEXT);
     if (context_ == EGL_NO_CONTEXT) {
         LOGE("eglCreateContext failed: 0x%x", eglGetError());
         return false;
     }
     if (!createSurface()) return false;
     if (!makeCurrent()) return false;
+    if (sharedContext_) { if (!ensurePresentContext()) return false; makeCurrentPresent(); }
     ensureProgram();
     const char* ver = (const char*)glGetString(GL_VERSION);
     const char* ren = (const char*)glGetString(GL_RENDERER);
@@ -104,6 +113,7 @@ bool VideoGL::init(ANativeWindow* window, bool needDepth, bool needStencil, int 
             break;
         }
     }
+    if (sharedContext_) makeCurrent(); // leave the core's context current for context_reset / retro_run
     LOGI("GL ready: %s / %s (parsed ES %d.%d)", glRenderer_.c_str(), glVersion_.c_str(), glMajor_, glMinor_);
     return true;
 }
@@ -147,6 +157,28 @@ bool VideoGL::makeCurrent() {
     if (surface_ != EGL_NO_SURFACE) {
         eglQuerySurface(display_, surface_, EGL_WIDTH, &surfaceW_);
         eglQuerySurface(display_, surface_, EGL_HEIGHT, &surfaceH_);
+    }
+    return true;
+}
+
+bool VideoGL::ensurePresentContext() {
+    if (!sharedContext_ || display_ == EGL_NO_DISPLAY || context_ == EGL_NO_CONTEXT) return false;
+    if (presentCtx_ != EGL_NO_CONTEXT) return true;
+    presentCtx_ = createContext(context_);
+    if (presentCtx_ == EGL_NO_CONTEXT) { LOGE("shared present context creation failed: 0x%x", eglGetError()); return false; }
+    // Program/VAO/VBO are per-context objects: if they were created in the core's context before the
+    // core asked for a shared context, recreate them in the present context (the old ones are tiny leaks).
+    program_ = vbo_ = vao_ = 0;
+    swTex_ = 0; swTexW_ = swTexH_ = 0; swFormat_ = -1;
+    LOGI("shared present context created");
+    return true;
+}
+
+bool VideoGL::makeCurrentPresent() {
+    if (presentCtx_ == EGL_NO_CONTEXT) return makeCurrent();
+    if (!eglMakeCurrent(display_, surface_, surface_, presentCtx_)) {
+        LOGE("eglMakeCurrent(present) failed: 0x%x", eglGetError());
+        return false;
     }
     return true;
 }
@@ -273,6 +305,10 @@ void VideoGL::bindDefaultFramebuffer() { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
 
 void VideoGL::present(const VideoConfig& cfg, float coreAspect, bool hwFrame) {
     if (!ready()) return;
+    if (sharedContext_) {
+        if (!ensurePresentContext()) return;
+        makeCurrentPresent();
+    }
     ensureProgram();
     if (hwFrame) { lastWasHw_ = true; haveFrame_ = true; }
     unsigned fw = frameW_, fh = frameH_;
@@ -388,6 +424,7 @@ bool VideoGL::readback(std::vector<uint32_t>& out, int& w, int& h) {
 void VideoGL::destroy() {
     if (display_ != EGL_NO_DISPLAY) {
         eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        if (presentCtx_ != EGL_NO_CONTEXT) eglDestroyContext(display_, presentCtx_);
         if (context_ != EGL_NO_CONTEXT) {
             // GL objects die with the context.
             eglDestroyContext(display_, context_);
@@ -395,7 +432,7 @@ void VideoGL::destroy() {
         if (surface_ != EGL_NO_SURFACE) eglDestroySurface(display_, surface_);
         eglTerminate(display_);
     }
-    display_ = EGL_NO_DISPLAY; context_ = EGL_NO_CONTEXT; surface_ = EGL_NO_SURFACE;
+    display_ = EGL_NO_DISPLAY; context_ = EGL_NO_CONTEXT; presentCtx_ = EGL_NO_CONTEXT; surface_ = EGL_NO_SURFACE;
     program_ = vbo_ = vao_ = swTex_ = 0; hwFbo_ = hwTex_ = hwDepth_ = 0;
     swTexW_ = swTexH_ = 0; swFormat_ = -1; haveFrame_ = false;
 }
