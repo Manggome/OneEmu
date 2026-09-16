@@ -11,6 +11,7 @@
 | 게임보이 어드밴스 · 게임보이 · 게임보이 컬러 | mGBA | 안정 |
 | 닌텐도 패미컴 (NES / FDS) | FCEUmm | 안정 |
 | 닌텐도 DS | melonDS DS | 안정 (소프트웨어 렌더러) |
+| 플레이스테이션 (PS1) | PCSX-ReARMed | 안정 (BIOS 선택) |
 | 플레이스테이션 포터블 | PPSSPP | 실험적 (HW 렌더, OpenGL ES 3) |
 | 플레이스테이션 2 | Play! | 실험적 (호환성 낮음) |
 | 아케이드 | MAME 2003-Plus | 안정 (MAME 0.78 롬셋) |
@@ -43,6 +44,7 @@
    - GBA/GB/GBC: `gba`, `gb`, `gbc`, `sgb`, `zip`
    - NES: `nes`, `fds`, `unf`, `unif`, `zip`
    - NDS: `nds`, `dsi`, `ids`, `zip`
+   - PS1: `cue`(+`bin`), `chd`, `iso`, `img`, `pbp`(PS1 Classics EBOOT), `m3u`(멀티 디스크), `mdf`, `toc`, `cbn`, `exe`(PS-X EXE). 트랙별 `bin`은 `cue`로 열리므로 목록에 따로 나오지 않습니다. PS1/PS2/PSP 디스크는 파일 내용(SYSTEM.CNF)으로 자동 구분됩니다
    - PSP: `iso`, `cso`, `pbp`, `chd`, `elf`, `prx`, `zip`(안에 ISO/CSO가 바로 들어 있는 경우)
    - PS2: `iso`, `chd`, `cso`, `isz`, `cue`, `elf`
    - 아케이드: MAME 2003-Plus 전용 롬셋 `zip` (파일 이름 = MAME 짧은 이름, 예: `sf2.zip`)
@@ -66,6 +68,7 @@ Android/data/com.manggome.oneemu/files/system/
 | NES (FDS) | FCEUmm | `disksys.rom` | 선택 | 패미컴 디스크 시스템 게임(.fds)에만 필요 |
 | NDS | melonDS DS | `bios7.bin`, `bios9.bin`, `firmware.bin` | 선택 | 없으면 내장 FreeBIOS/펌웨어 사용 |
 | NDS (DSi 모드) | melonDS DS | `dsi_bios7.bin`, `dsi_bios9.bin`, `dsi_firmware.bin`, `dsi_nand.bin` | 선택 | DSi 모드에서만 필요 |
+| PS1 | PCSX-ReARMed | `scph5500.bin`(일본), `scph5501.bin`(북미), `scph5502.bin`(유럽) | 선택 | 없으면 내장 HLE BIOS로 실행. 실제 BIOS가 있으면 호환성이 좋아집니다. `scph1001.bin`, `scph7001.bin`, `scph101.bin`, `psxonpsp660.bin`도 인식 |
 | PSP | PPSSPP | 없음 | – | BIOS 불필요. 필요한 에셋은 앱이 `system/PPSSPP/`에 자동 설치 |
 | PS2 | Play! | 없음 | – | HLE 방식이라 BIOS 불필요 |
 | 3DS | AzaharPlus | `Azahar/sysdata/aes_keys.txt`, `seeddb.bin`, `boot9.bin` | 선택 | 내장 키로 대부분의 암호화 롬이 열립니다. 열리지 않는 롬이 있을 때만 본체에서 추출한 키 파일을 넣으세요 |
@@ -161,6 +164,7 @@ OneEmu 앱 코드는 **GPL-3.0**입니다 (GPL 코어를 함께 배포하기 때
 | mGBA | MPL-2.0 | https://github.com/libretro/mgba |
 | FCEUmm | GPL-2.0 | https://github.com/libretro/libretro-fceumm |
 | melonDS DS | GPL-3.0-or-later | https://github.com/JesseTG/melonds-ds |
+| PCSX-ReARMed | GPL-2.0 | https://github.com/libretro/pcsx_rearmed |
 | PPSSPP | GPL-2.0-or-later | https://github.com/hrydgard/ppsspp |
 | Play! | BSD-2-Clause | https://github.com/jpd002/Play- |
 | MAME 2003-Plus | MAME 라이선스 (비상업적) | https://github.com/libretro/mame2003-plus-libretro |

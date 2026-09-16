@@ -114,6 +114,7 @@ object SkinStore {
         SystemId.GBA -> "gba-classic"
         SystemId.NDS -> "lite-nds"
         SystemId.N3DS -> "flat-3ds"
+        SystemId.PSX -> "dualshock-classic"
         SystemId.PSP -> "flat-psp"
         SystemId.PS2 -> "dualshock-classic"
         SystemId.GC -> "dualshock-classic"

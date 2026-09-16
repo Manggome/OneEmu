@@ -26,6 +26,7 @@ object DefaultLayouts {
         SystemId.GBA -> twoButton(landscape, shoulders = true)
         SystemId.NDS -> fourButton(landscape, shoulders = true, leftStick = false, rightStick = false, triggers = false, lowPortrait = true)
         SystemId.N3DS -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = false, triggers = false, lowPortrait = true)
+        SystemId.PSX -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = true, triggers = true, lowPortrait = false)
         SystemId.PSP -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = false, triggers = false, lowPortrait = false)
         SystemId.PS2 -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = true, triggers = true, lowPortrait = false)
         SystemId.GC -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = true, triggers = true, lowPortrait = false)

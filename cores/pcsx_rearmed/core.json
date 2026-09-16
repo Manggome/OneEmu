@@ -1,0 +1,115 @@
+{
+  "id": "pcsx_rearmed",
+  "displayName": "PCSX-ReARMed",
+  "libFile": "libpcsx_rearmed_libretro.so",
+  "systems": [
+    "psx"
+  ],
+  "extensions": [
+    "bin",
+    "cue",
+    "img",
+    "mdf",
+    "pbp",
+    "toc",
+    "cbn",
+    "m3u",
+    "chd",
+    "iso",
+    "exe"
+  ],
+  "needFullPath": true,
+  "hwRender": "none",
+  "bios": [
+    {
+      "system": "psx",
+      "file": "scph5500.bin",
+      "required": false,
+      "description": "PS1 BIOS (일본, SCPH-5500). 없으면 내장 HLE BIOS로 실행되지만 실제 BIOS가 있으면 호환성이 좋아집니다"
+    },
+    {
+      "system": "psx",
+      "file": "scph5501.bin",
+      "required": false,
+      "description": "PS1 BIOS (북미, SCPH-5501). 선택 — 없으면 HLE BIOS, 있으면 호환성 향상"
+    },
+    {
+      "system": "psx",
+      "file": "scph5502.bin",
+      "required": false,
+      "description": "PS1 BIOS (유럽, SCPH-5502). 선택 — 없으면 HLE BIOS, 있으면 호환성 향상"
+    },
+    {
+      "system": "psx",
+      "file": "scph1001.bin",
+      "required": false,
+      "description": "PS1 BIOS (북미, SCPH-1001). scph5501 대신 사용 가능"
+    },
+    {
+      "system": "psx",
+      "file": "scph7001.bin",
+      "required": false,
+      "description": "PS1 BIOS (북미, SCPH-7001). scph5501 대신 사용 가능"
+    },
+    {
+      "system": "psx",
+      "file": "scph101.bin",
+      "required": false,
+      "description": "PS1 BIOS (북미, PSone SCPH-101). scph5501 대신 사용 가능"
+    },
+    {
+      "system": "psx",
+      "file": "psxonpsp660.bin",
+      "required": false,
+      "description": "PS1 BIOS (PSP 내장 PS1 BIOS 6.60). 선택 — 지역 무관하게 사용 가능"
+    }
+  ],
+  "sourceRepo": "https://github.com/libretro/pcsx_rearmed",
+  "sourceCommit": "8625c395a24411f8c77e69802b516df9c613a712",
+  "license": "GPL-2.0",
+  "defaultOptions": {
+    "pcsx_rearmed_region": "auto",
+    "pcsx_rearmed_bios": "auto",
+    "pcsx_rearmed_show_bios_bootlogo": "disabled",
+    "pcsx_rearmed_memcard1": "libretro",
+    "pcsx_rearmed_memcard2": "shared",
+    "pcsx_rearmed_cd_readahead": "12",
+    "pcsx_rearmed_drc": "enabled",
+    "pcsx_rearmed_drc_thread": "auto",
+    "pcsx_rearmed_psxclock": "auto",
+    "pcsx_rearmed_dithering": "enabled",
+    "pcsx_rearmed_gpu_thread_rendering": "disabled",
+    "pcsx_rearmed_frameskip_type": "disabled",
+    "pcsx_rearmed_frameskip_threshold": "33",
+    "pcsx_rearmed_frameskip_interval": "3",
+    "pcsx_rearmed_display_fps_v2": "disabled",
+    "pcsx_rearmed_display_info": "enabled",
+    "pcsx_rearmed_fractional_framerate": "auto",
+    "pcsx_rearmed_alt_flip": "auto",
+    "pcsx_rearmed_rgb32_output": "disabled",
+    "pcsx_rearmed_scale_hires": "disabled",
+    "pcsx_rearmed_gpu_slow_llists": "auto",
+    "pcsx_rearmed_show_overscan": "disabled",
+    "pcsx_rearmed_screen_centering": "auto",
+    "pcsx_rearmed_neon_interlace_enable_v2": "auto",
+    "pcsx_rearmed_neon_enhancement_enable": "disabled",
+    "pcsx_rearmed_neon_enhancement_no_main": "disabled",
+    "pcsx_rearmed_neon_enhancement_tex_adj_v2": "enabled",
+    "pcsx_rearmed_spu_reverb": "enabled",
+    "pcsx_rearmed_spu_interpolation": "simple",
+    "pcsx_rearmed_nocdaudio": "disabled",
+    "pcsx_rearmed_noxadecoding": "disabled",
+    "pcsx_rearmed_spu_thread": "disabled",
+    "pcsx_rearmed_vibration": "enabled",
+    "pcsx_rearmed_analog_combo": "l1+r1+select",
+    "pcsx_rearmed_analog_axis_modifier": "square",
+    "pcsx_rearmed_input_sensitivity": "1.00",
+    "pcsx_rearmed_multitap": "disabled",
+    "pcsx_rearmed_icache_emulation": "enabled",
+    "pcsx_rearmed_exception_emulation": "disabled",
+    "pcsx_rearmed_cd_turbo": "disabled",
+    "pcsx_rearmed_nocompathacks": "disabled"
+  },
+  "notes": "libretro/pcsx_rearmed master 2026-09-05 (8625c395). 빌드: jni/Android.mk + ndk-build (buildbot 경로; Makefile.libretro 에는 android 타깃 없음), arm64-v8a 에서 Ari64 ARM64 다이나렉(HAVE_ARI64, NDRC_THREAD) + NEON GPU(HAVE_GPU_NEON, aarch64 는 SIMD_BUILD C 포트) + libchdr(ARM64 LZMA asm) + 비동기 CD/GPU/SPU 스레드가 자동 선택됨. 패치 없음. 소프트웨어 렌더(RGB565, rgb32_output 으로 XRGB8888 가능; GL 플러그인 없음). need_fullpath=true: bin/cue/img/mdf/toc/cbn/pbp/chd/iso/m3u/exe 경로를 그대로 넘김(.bin 은 .cue 로 열어야 트랙/CDDA 가 맞음). BIOS: <GET_SYSTEM_DIRECTORY> 루트에서 scph5500/5501/5502/psxonpsp660/scph101/scph7001/scph1001 .bin 을 차례로 찾고, 없으면 폴더 안의 512 KB PS1 BIOS 를 아무거나 사용, 그것도 없으면 HLE BIOS(정품 BIOS 권장, 로드 시 안내 메시지). 메모리카드: 슬롯 1 = libretro SRAM(retro_get_memory_data, 프론트가 .srm 으로 저장), 슬롯 2 = <GET_SAVE_DIRECTORY>/pcsx-card2.mcd 공유. 세이브 스테이트 지원. 컨트롤러: retro_load_game 직후 모든 포트가 '표준 패드'(디지털)로 초기화되고 프론트의 retro_set_controller_port_device(RETRO_DEVICE_JOYPAD) 도 표준 패드로 매핑되므로 아날로그 스틱을 쓰려면 프론트가 포트 0 에 RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_ANALOG, 1) = 517 (DualShock) 을 넘겨야 함(pad type 코어 옵션은 이 버전에 없음). 디스크 교체는 retro_set_disk_control 인터페이스(.m3u 로 멀티 디스크). PS1 디스크 판별은 프론트(RomInfo.isoKind: SYSTEM.CNF 의 'BOOT = cdrom:').",
+  "controllerDevice": 517
+}

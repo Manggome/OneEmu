@@ -112,6 +112,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
             NativeBridge.unload()
             return@withContext false
         }
+        if (core.controllerDevice != 0) NativeBridge.setControllerPortDevice(0, core.controllerDevice)
         applyVideoSettings()
         startedAt = System.currentTimeMillis()
         _state.value = State.Paused

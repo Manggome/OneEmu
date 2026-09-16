@@ -28,6 +28,8 @@ data class CoreInfo(
     val notes: String = "",
     /** Optional: subfolder under coreassets/<id>/ that must be installed into <systemDir>/<assetsInstallDir>. */
     val assetsInstallDir: String = "",
+    /** libretro device id to set on port 0 after load (0 = leave the core default JOYPAD). e.g. 517 = DualShock analog for PCSX-ReARMed. */
+    val controllerDevice: Int = 0,
     /**
      * Optional, HW-render cores only: minimum GLES version the core's shaders really need (e.g. "3.2"). When set,
      * the frontend refuses to start on a lower device context with a clear error instead of calling the core's

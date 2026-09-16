@@ -625,6 +625,10 @@ void Frontend::setPointer(int16_t x, int16_t y, bool pressed) {
     pointerX_ = x; pointerY_ = y; pointerPressed_ = pressed;
 }
 
+void Frontend::setControllerPortDevice(unsigned port, unsigned device) {
+    run([&] { if (core_.loaded() && gameLoaded_) core_.retro_set_controller_port_device(port, device); });
+}
+
 void Frontend::setFastForward(int speed) { fastForward_ = speed; nextFrameNs_ = 0; }
 
 void Frontend::setVideoConfig(bool linear, int aspectMode) {
