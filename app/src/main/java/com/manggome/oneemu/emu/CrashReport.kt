@@ -106,12 +106,37 @@ object CrashMarker {
     /** Copy of the session log preserved at app start when the previous session did not end cleanly. */
     fun crashLogFile(context: Context) = File(context.cacheDir, "session_log.crash.txt")
 
-    /** Call first thing in Application.onCreate: keeps the crashed session's log before a new session truncates it. */
+    /**
+     * Call first thing in Application.onCreate. After a native crash Android relaunches the game activity in a
+     * new process; that new session truncates the session log and clears the crash records, which is how three
+     * reports in a row arrived empty. Everything the crashed process left behind is copied to *.prev files here.
+     */
     fun preserveCrashLog(context: Context) {
         runCatching {
+            if (!file(context).exists()) return // previous session ended cleanly
             val log = sessionLogFile(context)
-            if (file(context).exists() && log.exists()) log.copyTo(crashLogFile(context), overwrite = true)
+            if (log.exists()) log.copyTo(crashLogFile(context), overwrite = true)
+            for (name in listOf("native_crash.txt", "java_crash.txt")) {
+                val f = File(context.cacheDir, name)
+                if (f.exists()) f.copyTo(File(context.cacheDir, name.removeSuffix(".txt") + ".prev.txt"), overwrite = true)
+            }
         }
+    }
+
+    private fun preservedOrCurrent(context: Context, name: String, crash: Boolean): String? = runCatching {
+        val prev = File(context.cacheDir, name.removeSuffix(".txt") + ".prev.txt")
+        val f = if (crash && prev.exists()) prev else File(context.cacheDir, name)
+        f.takeIf { it.exists() }?.readText()?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+
+    fun clearPreserved(context: Context) {
+        for (n in listOf("session_log.crash.txt", "native_crash.prev.txt", "java_crash.prev.txt")) runCatching { File(context.cacheDir, n).delete() }
+    }
+
+    /** True when [gamePath] crashed within the last two minutes: the activity is being relaunched by the system. */
+    fun crashedJustNow(context: Context, gamePath: String): Boolean {
+        val m = read(context) ?: return false
+        return m.path == gamePath && System.currentTimeMillis() - m.at < 2 * 60 * 1000L
     }
 
     private fun tail(f: File, maxLines: Int = 400): String = runCatching {
@@ -124,8 +149,8 @@ object CrashMarker {
      */
     suspend fun buildLogReport(context: Context, gameTitle: String?, gamePath: String?, coreId: String?, crash: Boolean = false): String {
         val log = collectLog()
-        val native = readNativeCrash(context)?.let { "네이티브 크래시:\n$it\n\n" } ?: ""
-        val java = readJavaCrash(context)?.let { "앱 예외 (Java):\n$it\n\n" } ?: ""
+        val native = preservedOrCurrent(context, "native_crash.txt", crash)?.let { "네이티브 크래시:\n$it\n\n" } ?: ""
+        val java = preservedOrCurrent(context, "java_crash.txt", crash)?.let { "앱 예외 (Java):\n$it\n\n" } ?: ""
         val exits = exitReasons(context).takeIf { it.isNotBlank() }?.let { "Android 프로세스 종료 기록 (최근 3건):\n$it\n\n" } ?: ""
         // The session log file does not depend on logcat permissions (Samsung hides other processes' lines).
         val session = tail(if (crash) crashLogFile(context) else sessionLogFile(context))
@@ -167,7 +192,7 @@ fun CrashReportPrompt() {
     }
     val m = marker ?: return
     AlertDialog(
-        onDismissRequest = { CrashMarker.clear(context); marker = null },
+        onDismissRequest = { CrashMarker.clear(context); CrashMarker.clearPreserved(context); marker = null },
         title = { Text("이전 게임 실행이 비정상 종료되었습니다") },
         text = {
             Text(
@@ -186,14 +211,14 @@ fun CrashReportPrompt() {
                     Toast.makeText(context, "로그를 클립보드에 복사했습니다", Toast.LENGTH_SHORT).show()
                     CrashMarker.clear(context)
                     CrashMarker.clearNativeCrash(context)
-                    runCatching { CrashMarker.crashLogFile(context).delete() }
+                    CrashMarker.clearPreserved(context)
                     CrashMarker.clearJavaCrash(context)
                     marker = null
                 }
             }) { Text("로그 복사") }
         },
         dismissButton = {
-            TextButton(onClick = { CrashMarker.clear(context); marker = null }) { Text("닫기") }
+            TextButton(onClick = { CrashMarker.clear(context); CrashMarker.clearPreserved(context); marker = null }) { Text("닫기") }
         },
     )
 }
