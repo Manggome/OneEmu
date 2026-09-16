@@ -35,7 +35,7 @@
     "dolphin_dsp_jit": "enabled",
     "dolphin_call_back_audio_method": "0",
     "dolphin_osd_enabled": "enabled",
-    "dolphin_log_level": "2",
+    "dolphin_log_level": "3",
     "dolphin_enable_rumble": "enabled",
     "dolphin_efb_scale": "1",
     "dolphin_aspect_ratio": "0",

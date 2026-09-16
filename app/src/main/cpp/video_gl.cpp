@@ -1,4 +1,5 @@
 #include "video_gl.h"
+#include <time.h>
 #include "libretro.h"
 #include "log.h"
 #include <cctype>
@@ -436,6 +437,28 @@ void VideoGL::swap() {
         presentFence_ = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     }
     eglSwapBuffers(display_, surface_);
+}
+
+void VideoGL::logGlErrors(const char* where) {
+    static int64_t lastLogNs = 0;
+    static int suppressed = 0;
+    GLenum err;
+    int n = 0;
+    while ((err = glGetError()) != GL_NO_ERROR && n < 8) {
+        n++;
+        timespec ts{}; clock_gettime(CLOCK_MONOTONIC, &ts);
+        int64_t now = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+        if (now - lastLogNs > 5000000000LL) {
+            lastLogNs = now;
+            const char* name = err == GL_INVALID_ENUM ? "GL_INVALID_ENUM" : err == GL_INVALID_VALUE ? "GL_INVALID_VALUE" :
+                err == GL_INVALID_OPERATION ? "GL_INVALID_OPERATION" : err == GL_OUT_OF_MEMORY ? "GL_OUT_OF_MEMORY" :
+                err == GL_INVALID_FRAMEBUFFER_OPERATION ? "GL_INVALID_FRAMEBUFFER_OPERATION" : "?";
+            LOGW("GL error 0x%x (%s) after %s%s", err, name, where, suppressed ? " (earlier ones suppressed)" : "");
+            suppressed = 0;
+        } else {
+            suppressed++;
+        }
+    }
 }
 
 void VideoGL::waitPresentFence() {

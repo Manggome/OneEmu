@@ -522,13 +522,14 @@ void Frontend::runFrame() {
     // the core's frame is complete. Without this Adreno shows the previous frame / uninitialised (green) tiles.
     if (hwRender_) video_.waitPresentFence();
     core_.retro_run();
-    if (hwRender_) video_.fenceCoreFrame();
+    if (hwRender_) { video_.logGlErrors("retro_run (core context)"); video_.fenceCoreFrame(); }
 
     // Present at most 60ish frames/sec while fast forwarding to keep the GPU free.
     bool present = true;
     if (ff != 0) { ffFrameCounter_++; present = (ffFrameCounter_ % (ff > 0 ? ff : 8)) == 0; }
     if (present) {
         video_.present(videoCfg_, avInfo_.geometry.aspect_ratio, frameIsHw_);
+        if (hwRender_) video_.logGlErrors("present");
         video_.swap();
     }
 

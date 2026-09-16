@@ -40,6 +40,8 @@ public:
     /** Call with the core context current before retro_run: the GPU waits until the previous present
      *  (issued from the present context) has finished reading the HW texture before the core overwrites it. */
     void waitPresentFence();
+    /** Diagnostics: drains glGetError() and logs each distinct error once per ~5 s with [where]. */
+    void logGlErrors(const char* where);
 
     void setSwapInterval(int interval);
     int width() const { return surfaceW_; }

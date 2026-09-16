@@ -107,6 +107,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
         }
         app.cores.installAssets(core, dirs.system)
         val overrides = buildOptionOverrides()
+        NativeBridge.sessionLogLine("core options: " + overrides.lines().joinToString(" "))
         val strictGles = core.glesMinVersion.isNotEmpty()
         if (!NativeBridge.loadCore(libPath.absolutePath, dirs.system.absolutePath, dirs.saves(system.id).absolutePath, overrides, strictGles)) {
             _state.value = makeError(ErrorKind.fromCode(NativeBridge.lastErrorCode()), NativeBridge.lastError())
