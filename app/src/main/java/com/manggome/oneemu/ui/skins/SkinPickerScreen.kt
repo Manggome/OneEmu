@@ -34,6 +34,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -48,6 +51,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,6 +87,7 @@ import kotlinx.coroutines.launch
 /**
  * Routes.SKINS destination: choose the on-screen pad skin for one system, import RetroArch overlays
  * (zip or folder), delete imports, and jump to the layout editor. Attribution is shown on every card.
+ * The 온라인 tab ([OnlineSkinsTab]) browses and installs skins from the `skins` release catalog.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,6 +104,8 @@ fun SkinPickerScreen(system: SystemId, onBack: () -> Unit, onEdit: () -> Unit) {
     var importDialog by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<SkinInfo?>(null) }
+    var tab by rememberSaveable { mutableStateOf(0) } // 0 = 내 스킨, 1 = 온라인
+    val onlineDoneMsg = stringResource(R.string.skins_online_done)
 
     val importedMsg = stringResource(R.string.skins_import_done)
     val failedMsg = stringResource(R.string.skins_import_failed)
@@ -123,10 +130,6 @@ fun SkinPickerScreen(system: SystemId, onBack: () -> Unit, onEdit: () -> Unit) {
         if (uri != null) runImport { SkinStore.importTree(context, uri) }
     }
 
-    val recommended = bundled.filter { it.suits(system) }
-    val universal = bundled.filter { it.neutral }
-    val other = bundled.filter { !it.suits(system) && !it.neutral }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -135,50 +138,37 @@ fun SkinPickerScreen(system: SystemId, onBack: () -> Unit, onEdit: () -> Unit) {
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { importDialog = true },
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text(stringResource(if (importing) R.string.skins_importing else R.string.skins_import)) },
-            )
+            if (tab == 0) {
+                ExtendedFloatingActionButton(
+                    onClick = { importDialog = true },
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text(stringResource(if (importing) R.string.skins_importing else R.string.skins_import)) },
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        LazyColumn(
-            Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            item(key = "vector") {
-                VectorCard(system, selected = selectedId == SkinStore.VECTOR, onSelect = { scope.launch { SkinStore.select(system.id, SkinStore.VECTOR) } }, onEdit = onEdit)
-            }
-            if (recommended.isNotEmpty()) {
-                item(key = "h-rec") { SectionHeader(stringResource(R.string.skins_section_recommended)) }
-                items(recommended, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, null) }
-            }
-            if (universal.isNotEmpty()) {
-                item(key = "h-uni") { SectionHeader(stringResource(R.string.skins_section_universal)) }
-                items(universal, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, null) }
-            }
-            item(key = "h-imp") { SectionHeader(stringResource(R.string.skins_section_imported)) }
-            val imp = imported.orEmpty()
-            if (imp.isEmpty()) {
-                item(key = "no-imp") {
-                    Text(stringResource(R.string.skins_no_imported), style = MaterialTheme.typography.bodyMedium, color = OneEmuColors.OnSurfaceMuted, modifier = Modifier.padding(horizontal = 4.dp))
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+                listOf(R.string.skins_tab_mine, R.string.skins_tab_online).forEachIndexed { i, label ->
+                    SegmentedButton(
+                        selected = tab == i,
+                        onClick = { tab = i },
+                        shape = SegmentedButtonDefaults.itemShape(index = i, count = 2),
+                        colors = SegmentedButtonDefaults.colors(activeContainerColor = OneEmuColors.Accent.copy(alpha = 0.25f), activeContentColor = MaterialTheme.colorScheme.onSurface),
+                    ) { Text(stringResource(label)) }
                 }
-            } else {
-                items(imp, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, onDelete = { deleteTarget = it }) }
             }
-            if (other.isNotEmpty()) {
-                item(key = "h-other") { SectionHeader(stringResource(R.string.skins_section_other)) }
-                items(other, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, null) }
-            }
-            item(key = "footer") {
-                Text(
-                    stringResource(R.string.skins_credits_footer),
-                    style = MaterialTheme.typography.bodySmall, color = OneEmuColors.OnSurfaceMuted,
-                    modifier = Modifier.padding(top = 12.dp, start = 4.dp, end = 4.dp),
+            if (tab == 1) {
+                OnlineSkinsTab(
+                    system = system,
+                    selectedId = selectedId,
+                    imported = imported.orEmpty(),
+                    onDelete = { deleteTarget = it },
+                    onInstalled = { id -> scope.launch { snackbar.showSnackbar(onlineDoneMsg.replace("%1\$s", id)) } },
+                    contentPadding = PaddingValues(0.dp),
                 )
-            }
+            } else MySkinsList(bundled, imported, system, selectedId, scope, onEdit, onDeleteRequest = { deleteTarget = it })
         }
     }
 
@@ -212,6 +202,59 @@ fun SkinPickerScreen(system: SystemId, onBack: () -> Unit, onEdit: () -> Unit) {
             confirmText = stringResource(R.string.skins_delete),
             destructive = true,
         )
+    }
+}
+
+/** The 내 스킨 tab: vector pad, bundled skins by fit, imported skins, credits footer. */
+@Composable
+private fun MySkinsList(
+    bundled: List<SkinInfo>,
+    imported: List<SkinInfo>?,
+    system: SystemId,
+    selectedId: String?,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onEdit: () -> Unit,
+    onDeleteRequest: (SkinInfo) -> Unit,
+) {
+    val recommended = bundled.filter { it.suits(system) }
+    val universal = bundled.filter { it.neutral }
+    val other = bundled.filter { !it.suits(system) && !it.neutral }
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item(key = "vector") {
+            VectorCard(system, selected = selectedId == SkinStore.VECTOR, onSelect = { scope.launch { SkinStore.select(system.id, SkinStore.VECTOR) } }, onEdit = onEdit)
+        }
+        if (recommended.isNotEmpty()) {
+            item(key = "h-rec") { SectionHeader(stringResource(R.string.skins_section_recommended)) }
+            items(recommended, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, null) }
+        }
+        if (universal.isNotEmpty()) {
+            item(key = "h-uni") { SectionHeader(stringResource(R.string.skins_section_universal)) }
+            items(universal, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, null) }
+        }
+        item(key = "h-imp") { SectionHeader(stringResource(R.string.skins_section_imported)) }
+        val imp = imported.orEmpty()
+        if (imp.isEmpty()) {
+            item(key = "no-imp") {
+                Text(stringResource(R.string.skins_no_imported), style = MaterialTheme.typography.bodyMedium, color = OneEmuColors.OnSurfaceMuted, modifier = Modifier.padding(horizontal = 4.dp))
+            }
+        } else {
+            items(imp, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, onDelete = { onDeleteRequest(it) }) }
+        }
+        if (other.isNotEmpty()) {
+            item(key = "h-other") { SectionHeader(stringResource(R.string.skins_section_other)) }
+            items(other, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, null) }
+        }
+        item(key = "footer") {
+            Text(
+                stringResource(R.string.skins_credits_footer),
+                style = MaterialTheme.typography.bodySmall, color = OneEmuColors.OnSurfaceMuted,
+                modifier = Modifier.padding(top = 12.dp, start = 4.dp, end = 4.dp),
+            )
+        }
     }
 }
 

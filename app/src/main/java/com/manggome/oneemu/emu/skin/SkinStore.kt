@@ -213,25 +213,53 @@ object SkinStore {
         val display = queryDisplayName(context, uri)?.substringBeforeLast('.') ?: "skin"
         val target = uniqueDir(context, display)
         try {
-            context.contentResolver.openInputStream(uri)?.use { raw ->
-                ZipInputStream(raw.buffered()).use { zip ->
-                    while (true) {
-                        val entry = zip.nextEntry ?: break
-                        val name = entry.name.replace('\\', '/')
-                        if (entry.isDirectory || name.startsWith("__MACOSX") || name.substringAfterLast('/').startsWith(".")) { zip.closeEntry(); continue }
-                        val out = File(target, name).canonicalFile
-                        if (!out.path.startsWith(target.canonicalPath + File.separator)) { zip.closeEntry(); continue } // zip-slip
-                        out.parentFile?.mkdirs()
-                        out.outputStream().use { zip.copyTo(it) }
-                        zip.closeEntry()
-                    }
-                }
-            } ?: throw ImportException("open failed")
+            context.contentResolver.openInputStream(uri)?.use { raw -> extractZip(raw, target) } ?: throw ImportException("open failed")
             flattenSingleDir(target)
             finishImport(context, target)
         } catch (e: Exception) {
             target.deleteRecursively()
             throw e
+        }
+    }
+
+    /**
+     * Installs a skin zip that is already on disk (online catalog download) as `skins/<dirName>/`, replacing an
+     * earlier install of the same id. The resulting skin id is `user:<dirName>`, exactly like a manual import.
+     */
+    suspend fun installZip(context: Context, zip: File, dirName: String): SkinInfo = withContext(Dispatchers.IO) {
+        val target = File(userDir(context), AppDirs.sanitize(dirName).take(60).ifBlank { "skin" })
+        val staging = File(userDir(context), ".${target.name}.part").also { it.deleteRecursively(); it.mkdirs() }
+        try {
+            zip.inputStream().use { extractZip(it, staging) }
+            flattenSingleDir(staging)
+            if (describeUserDir(staging) == null) throw ImportException("no cfg")
+            if (target.exists()) { SkinLoader.evict(USER_PREFIX + target.name); target.deleteRecursively() }
+            if (!staging.renameTo(target)) throw ImportException("rename failed")
+            finishImport(context, target)
+        } catch (e: Exception) {
+            staging.deleteRecursively()
+            throw e
+        }
+    }
+
+    /** Whether `skins/<dirName>/` holds an installed skin (bundled ids are never "installed"). */
+    fun isInstalled(context: Context, dirName: String): Boolean =
+        File(userDir(context), AppDirs.sanitize(dirName).take(60)).let { it.isDirectory && it.listFiles()?.any { f -> f.extension.equals("cfg", true) } == true }
+
+    fun userSkinId(dirName: String): String = USER_PREFIX + AppDirs.sanitize(dirName).take(60)
+
+    private fun extractZip(raw: InputStream, target: File) {
+        ZipInputStream(raw.buffered()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                val name = entry.name.replace('\\', '/')
+                if (entry.isDirectory || name.startsWith("__MACOSX") || name.substringAfterLast('/').startsWith(".")) { zip.closeEntry(); continue }
+                val out = File(target, name).canonicalFile
+                if (!out.path.startsWith(target.canonicalPath + File.separator)) { zip.closeEntry(); continue } // zip-slip
+                out.parentFile?.mkdirs()
+                out.outputStream().use { zip.copyTo(it) }
+                zip.closeEntry()
+            }
         }
     }
 

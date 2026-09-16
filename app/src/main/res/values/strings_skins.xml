@@ -29,6 +29,41 @@
     <string name="skins_loading">스킨 불러오는 중…</string>
     <string name="skins_load_failed">스킨을 불러올 수 없습니다</string>
 
+    <!-- 패드 스킨: 온라인 카탈로그 -->
+    <string name="skins_tab_mine">내 스킨</string>
+    <string name="skins_tab_online">온라인</string>
+    <string name="skins_online_search_hint">스킨 검색 (이름, 계열, 제작자)</string>
+    <string name="skins_online_filter_all">전체</string>
+    <string name="skins_online_filter_system">%1$s 추천</string>
+    <string name="skins_online_filter_universal">공용</string>
+    <string name="skins_online_filter_flat">플랫</string>
+    <string name="skins_online_filter_neo">네오</string>
+    <string name="skins_online_filter_lite">라이트</string>
+    <string name="skins_online_filter_console">콘솔형</string>
+    <string name="skins_online_filter_analog">스틱 포함</string>
+    <string name="skins_online_filter_classic">클래식</string>
+    <string name="skins_online_loading">온라인 스킨 목록을 가져오는 중…</string>
+    <string name="skins_online_empty">조건에 맞는 스킨이 없습니다</string>
+    <string name="skins_online_retry">다시 시도</string>
+    <string name="skins_online_download">내려받기</string>
+    <string name="skins_online_download_size">내려받기 · %1$s</string>
+    <string name="skins_online_downloading">내려받는 중…</string>
+    <string name="skins_online_downloading_pct">내려받는 중… %1$d%%</string>
+    <string name="skins_online_installing">설치 중…</string>
+    <string name="skins_online_use">사용</string>
+    <string name="skins_online_done">\'%1$s\' 스킨을 설치했습니다. 카드를 눌러 적용하세요.</string>
+    <string name="skins_online_badge_stick">스틱</string>
+    <string name="skins_online_landscape_only">가로 전용</string>
+    <string name="skins_online_portrait_only">세로 전용</string>
+    <string name="skins_online_footer">스킨 출처: libretro/common-overlays (CC BY 4.0) · %1$d개 · 내려받은 스킨은 \'내 스킨\' 탭의 가져온 스킨에도 표시됩니다.</string>
+    <string name="skins_online_err_no_release">아직 배포된 온라인 스킨이 없습니다. 이후 업데이트를 기다려 주세요.</string>
+    <string name="skins_online_err_network">스킨 목록을 가져올 수 없습니다. 네트워크 연결을 확인해 주세요.</string>
+    <string name="skins_online_err_network_during">내려받는 중 연결이 끊어졌습니다. 네트워크를 확인하고 다시 시도해 주세요.</string>
+    <string name="skins_online_err_http">서버 오류 (HTTP %1$d)</string>
+    <string name="skins_online_err_sha">내려받은 파일이 손상되었습니다 (체크섬 불일치). 다시 시도해 주세요.</string>
+    <string name="skins_online_err_invalid">내려받은 스킨을 읽을 수 없습니다 (버튼이 정의된 .cfg 가 없음).</string>
+    <string name="skins_online_err_generic">내려받기 실패: %1$s</string>
+
     <!-- 스킨 배치 편집기 -->
     <string name="se_title">스킨 배치 편집</string>
     <string name="se_hint">버튼 묶음을 끌어서 이동 · 탭 선택 · 길게 눌러 여러 개 선택 · 점선 화면 상자는 끌어서 옮기고 모서리로 크기 조절</string>
