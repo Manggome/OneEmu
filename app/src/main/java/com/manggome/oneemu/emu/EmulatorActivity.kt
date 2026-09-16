@@ -101,6 +101,13 @@ class EmulatorActivity : ComponentActivity() {
 
     private suspend fun startSession(gameId: Long) {
         val game = app.db.games().get(gameId) ?: run { ui.error = getString(R.string.emu_game_not_found); return }
+        if (CrashMarker.crashedJustNow(this, game.path)) {
+            // The system relaunches a crashed foreground app into the same activity (no saved state). Running the
+            // game that died a moment ago would loop and wipe its crash records: show the library and the report.
+            startActivity(Intent(this, com.manggome.oneemu.ui.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP))
+            finish()
+            return
+        }
         ui.title = game.title
         val system = SystemId.fromId(game.system)
         // Arcade zips are routed to the MAME core whose DAT lists them (same rule as the library's launch check).
