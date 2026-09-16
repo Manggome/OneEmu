@@ -33,7 +33,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     /** Why a load (or a later fatal event) failed; mirrors the C++ `LoadError` codes. */
     enum class ErrorKind(val code: Int) {
         UNKNOWN(0), CORE_MISSING(1), DLOPEN_FAILED(2), CORE_INIT_FAILED(3), ROM_READ_FAILED(4), ROM_LOAD_FAILED(5),
-        ROM_ENCRYPTED(6), GLES_UNSUPPORTED(7), GL_INIT_FAILED(8), CORE_SHUTDOWN(100);
+        ROM_ENCRYPTED(6), GLES_UNSUPPORTED(7), GL_INIT_FAILED(8), ROM_EMPTY(9), CORE_SHUTDOWN(100);
 
         companion object {
             fun fromCode(code: Int): ErrorKind = entries.firstOrNull { it.code == code } ?: UNKNOWN
@@ -84,6 +84,11 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
             _state.value = makeError(ErrorKind.ROM_ENCRYPTED, ".cia files cannot be run directly by the Azahar libretro core")
             return@withContext false
         }
+        // A 0-byte file (interrupted copy, cloud placeholder) makes some cores crash instead of failing; say so first.
+        File(game.path).let { f -> if (f.isFile && f.length() == 0L) {
+            _state.value = makeError(ErrorKind.ROM_EMPTY, "ROM file is empty (0 bytes): ${game.path}")
+            return@withContext false
+        } }
         val libPath = app.cores.libraryPath(core)
         if (!libPath.exists()) {
             _state.value = makeError(ErrorKind.CORE_MISSING, (if (core.isDownloadable) "downloadable core not installed: " else "core library not in APK: ") + libPath.absolutePath)
@@ -129,6 +134,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
             ErrorKind.ROM_READ_FAILED -> app.getString(R.string.emu_err_rom_read)
             ErrorKind.ROM_LOAD_FAILED -> app.getString(R.string.emu_err_rom_load)
             ErrorKind.ROM_ENCRYPTED -> app.getString(R.string.emu_err_rom_encrypted)
+            ErrorKind.ROM_EMPTY -> app.getString(R.string.emu_err_rom_empty)
             ErrorKind.GLES_UNSUPPORTED -> {
                 // reason: "core requires OpenGL ES 3.2 but the device context is OpenGL ES 3.1 ..."
                 val need = Regex("requires OpenGL ES (\\d\\.\\d)").find(reason)?.groupValues?.get(1) ?: "3.2"

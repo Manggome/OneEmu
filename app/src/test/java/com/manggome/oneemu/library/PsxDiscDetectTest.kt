@@ -207,6 +207,19 @@ class PsxDiscDetectTest {
         assertEquals(SystemId.PSP, resolve(tmp.newFile("r4.iso").also { it.writeBytes(ByteArray(0x20000)) }))
     }
 
+    @Test fun resolve_folderNameHintForUnknownImage() {
+        // No marker in the image (empty / unreadable) but the folder says what it is.
+        val ps1 = tmp.newFolder("게임 롬파일", "PS1")
+        assertEquals(SystemId.PSX, resolve(File(ps1, "a.iso").also { it.writeBytes(ByteArray(0x20000)) }))
+        val gc = tmp.newFolder("roms", "GameCube")
+        assertEquals(SystemId.GC, resolve(File(gc, "b.iso").also { it.writeBytes(ByteArray(0x20000)) }))
+        val ps2 = tmp.newFolder("PlayStation 2")
+        assertEquals(SystemId.PS2, resolve(File(ps2, "c.iso").also { it.writeBytes(ByteArray(0x20000)) }))
+        // A marker in the image beats the folder name.
+        tmp.newFolder("PSP")
+        assertEquals(SystemId.PSX, resolve(iso2048("PSP/d.iso", psxCnf)))
+    }
+
     @Test fun resolve_cueAndBin() {
         val dir = tmp.newFolder("rc")
         File(dir, "g.bin").writeBytes(raw2352("tmp3.bin", psxCnf).readBytes())

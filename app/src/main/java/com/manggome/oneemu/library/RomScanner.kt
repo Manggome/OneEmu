@@ -53,7 +53,16 @@ class RomScanner(
                 if (ext !in extMap) continue
                 if (isSkippable(f, ext)) continue
                 seen.add(f.absolutePath)
-                if (existing.containsKey(f.absolutePath)) continue
+                existing[f.absolutePath]?.let { old ->
+                    // Disc images keep the system they were given when first scanned. Detection improves over time
+                    // (PS1 support arrived after many libraries already held .iso files as PSP), so re-run it for
+                    // ambiguous extensions and move the entry when the user has not pinned a core themselves.
+                    if (ext in AMBIGUOUS_EXTS && old.coreId == null) {
+                        val sys = extMap[ext]?.let { resolveSystem(f, ext, it, lookup = { e -> extMap[e] }, zip = ::zipSystem) }
+                        if (sys != null && sys.id != old.system) db.games().update(old.copy(system = sys.id))
+                    }
+                    continue
+                }
                 val entity = identify(f, ext, folder.id) ?: continue
                 db.games().insert(entity)
                 found++
@@ -163,6 +172,30 @@ class RomScanner(
 
     companion object {
         private const val DVD_SIZED_BYTES = 2_000_000_000L
+        /** Extensions shared by several systems whose detection reads the file (re-checked on every rescan). */
+        private val AMBIGUOUS_EXTS = setOf("iso", "img", "bin", "cue", "chd", "pbp", "m3u", "cso")
+
+        /**
+         * A system named by the enclosing folders ("PS1", "PSX", "PlayStation 2", "PSP", "GameCube", ...), used when
+         * the image itself gives no clue (unreadable, empty or an unusual layout). Nearest folder wins.
+         */
+        internal fun folderHint(f: File, candidates: List<SystemId>): SystemId? {
+            var dir = f.parentFile
+            var depth = 0
+            while (dir != null && depth < 3) {
+                val n = dir.name.lowercase().replace(Regex("[\\s_\\-.]"), "")
+                val hit = when {
+                    n in setOf("ps1", "psx", "psone", "playstation", "playstation1", "플스1", "플레이스테이션1") -> SystemId.PSX
+                    n in setOf("ps2", "playstation2", "플스2", "플레이스테이션2") -> SystemId.PS2
+                    n in setOf("psp", "playstationportable") -> SystemId.PSP
+                    n in setOf("gc", "ngc", "gamecube", "게임큐브") -> SystemId.GC
+                    else -> null
+                }
+                if (hit != null) return hit.takeIf { it in candidates }
+                dir = dir.parentFile; depth++
+            }
+            return null
+        }
 
         /**
          * Which system a file belongs to when several cores claim its extension. Reads only the file itself (no
@@ -216,7 +249,7 @@ class RomScanner(
                         else prefer(SystemId.PS2, SystemId.PSX, SystemId.PSP)
                     RomInfo.ChdKind.DVD ->
                         if (size > DVD_SIZED_BYTES) prefer(SystemId.PS2, SystemId.PSP) else prefer(SystemId.PSP, SystemId.PS2)
-                    RomInfo.ChdKind.UNKNOWN -> when {
+                    RomInfo.ChdKind.UNKNOWN -> folderHint(f, candidates) ?: when {
                         size > DVD_SIZED_BYTES -> prefer(SystemId.PS2, SystemId.PSP)
                         size < RomInfo.SMALL_DISC_BYTES -> prefer(SystemId.PSX, SystemId.PSP, SystemId.PS2)
                         else -> prefer(SystemId.PSP, SystemId.PS2)
@@ -227,7 +260,7 @@ class RomScanner(
                     RomInfo.IsoKind.PSP -> prefer(SystemId.PSP, SystemId.PSX)
                     RomInfo.IsoKind.PS2 -> prefer(SystemId.PS2, SystemId.PSX)
                     RomInfo.IsoKind.GC -> prefer(SystemId.GC)
-                    RomInfo.IsoKind.UNKNOWN -> when {
+                    RomInfo.IsoKind.UNKNOWN -> folderHint(f, candidates) ?: when {
                         ext == "cso" -> prefer(SystemId.PSP, SystemId.PS2)
                         size > DVD_SIZED_BYTES -> prefer(SystemId.PS2, SystemId.PSP)
                         else -> prefer(SystemId.PSP, SystemId.PS2)
