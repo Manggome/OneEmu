@@ -395,17 +395,22 @@ void VideoGL::present(const VideoConfig& cfg, float coreAspect, bool hwFrame) {
     glActiveTexture(GL_TEXTURE0);
     if (hwFrame || (lastWasHw_ && hwTex_)) {
         glBindTexture(GL_TEXTURE_2D, hwTex_);
-        // The core only used the fw×fh sub-rectangle of the hwW×hwH texture.
+        // The core only used the fw×fh sub-rectangle of the hwW×hwH texture, anchored at texel (0,0).
+        // GL cores (bottom_left_origin) put the frame's top row at texture row fh-1, i.e. tex coord v: the
+        // flip must stay inside [0, v]. Flipping the whole [0,1] range (the old uFlipY path) sampled the
+        // unused upper part of the texture whenever fh < hwH — black 3DS output, 48 px offset for Dolphin.
         float u = (float)fw / (float)hwW_, v = (float)fh / (float)hwH_;
+        float vBottom = cfg.bottomLeftOrigin ? 0.f : v; // tex coord at the bottom screen edge
+        float vTop = cfg.bottomLeftOrigin ? v : 0.f;    // tex coord at the top screen edge
         const float quad[] = {
-            -1.f, -1.f, 0.f, v,
-             1.f, -1.f, u,   v,
-            -1.f,  1.f, 0.f, 0.f,
-             1.f,  1.f, u,   0.f,
+            -1.f, -1.f, 0.f, vBottom,
+             1.f, -1.f, u,   vBottom,
+            -1.f,  1.f, 0.f, vTop,
+             1.f,  1.f, u,   vTop,
         };
         glBindBuffer(GL_ARRAY_BUFFER, vbo_);
         glBufferData(GL_ARRAY_BUFFER, sizeof quad, quad, GL_DYNAMIC_DRAW);
-        glUniform1i(uFlipY_, cfg.bottomLeftOrigin ? 1 : 0);
+        glUniform1i(uFlipY_, 0);
         glUniform1i(uSwizzleBGR_, 0);
     } else {
         glBindTexture(GL_TEXTURE_2D, swTex_);
