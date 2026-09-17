@@ -10,6 +10,10 @@ bool AudioOutput::start(double sampleRate) {
     ring_.assign(capacityFrames_ * 2, 0);
     readPos_ = 0;
     writePos_ = 0;
+    primeFrames_ = (size_t)(sampleRate_ * 0.06);   // 60 ms
+    reprimeFrames_ = (size_t)(sampleRate_ * 0.03); // 30 ms
+    primed_ = false;
+    underruns_ = 0;
     ensureStream();
     return stream_ != nullptr;
 }
@@ -70,10 +74,10 @@ void AudioOutput::write(const int16_t* frames, size_t frameCount) {
     // Dynamic rate control: fill 50% is the target. ratio > 1 produces more output frames
     // (buffer draining), ratio < 1 produces fewer (buffer filling).
     const double fill = (double)avail / (double)capacityFrames_;
-    const double delta = 0.005;
+    const double delta = 0.02;
     double ratio = 1.0 + delta * (1.0 - 2.0 * fill);
     if (freeFrames < frameCount * 2) ratio = std::min(ratio, 0.98); // emergency shrink
-    ratio = std::clamp(ratio, 0.95, 1.05);
+    ratio = std::clamp(ratio, 0.94, 1.06);
 
     // Linear interpolation resampler.
     size_t w = writePos_.load(std::memory_order_relaxed);
@@ -101,7 +105,17 @@ void AudioOutput::write(const int16_t* frames, size_t frameCount) {
 oboe::DataCallbackResult AudioOutput::onAudioReady(oboe::AudioStream*, void* audioData, int32_t numFrames) {
     int16_t* out = static_cast<int16_t*>(audioData);
     size_t avail = available();
+    if (!primed_) {
+        size_t need = underruns_ == 0 ? primeFrames_ : reprimeFrames_;
+        if (avail < need) { memset(out, 0, numFrames * 2 * sizeof(int16_t)); return oboe::DataCallbackResult::Continue; }
+        primed_ = true;
+    }
     size_t n = std::min((size_t)numFrames, avail);
+    if (n < (size_t)numFrames && !muted_ && !fastForward_) {
+        // Ran dry: count it and wait for a cushion before resuming, one audible gap instead of many clicks.
+        underruns_++;
+        primed_ = false;
+    }
     size_t r = readPos_.load(std::memory_order_relaxed);
     if (muted_) {
         memset(out, 0, numFrames * 2 * sizeof(int16_t));

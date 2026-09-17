@@ -14,6 +14,8 @@ public:
     void stop();
     void setMuted(bool muted) { muted_ = muted; }
     void setFastForward(bool ff) { fastForward_ = ff; }
+    /** Times the output ran dry since start (diagnostics for the heartbeat log). */
+    unsigned underruns() const { return underruns_.load(); }
 
     // Called from the emu thread with interleaved stereo int16 frames.
     void write(const int16_t* frames, size_t frameCount);
@@ -35,6 +37,12 @@ private:
     std::atomic<bool> fastForward_{false};
     std::atomic<bool> needRestart_{false};
     std::mutex streamMutex_;
+    // Output starts (and, after an underrun, resumes) only once the ring holds a cushion of audio again.
+    // Without this the first seconds and every hiccup of a slow core turn into machine-gun crackle.
+    std::atomic<bool> primed_{false};
+    size_t primeFrames_ = 0;         // cushion before the first output
+    size_t reprimeFrames_ = 0;       // cushion before resuming after an underrun
+    std::atomic<unsigned> underruns_{0};
 
     // resampler state
     double phase_ = 0.0;
