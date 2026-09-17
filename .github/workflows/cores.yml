@@ -169,7 +169,7 @@ jobs:
           name: pkg-${{ matrix.core }}
           path: dist/*
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
   # ---------------------------------------------------------------------------
   # Merge manifest.json with what the `cores` release already has, drop superseded zips, upload.
