@@ -47,7 +47,28 @@ bool LibretroCore::load(const std::string& path, std::string* error) {
         unload();
         return false;
     }
+    handOverJavaVM();
     return true;
+}
+
+void* LibretroCore::javaVm_ = nullptr;
+
+// System.loadLibrary would call JNI_OnLoad; dlopen does not. Cores built from Android app code (Play!) still
+// expect a JavaVM: without it CPS2VM::EmuThread calls AttachCurrentThread on a null VM and crashes.
+void LibretroCore::handOverJavaVM() {
+    if (!javaVm_ || !handle_) return;
+    using OnLoadFn = int (*)(void*, void*);
+    if (auto onLoad = (OnLoadFn)dlsym(handle_, "JNI_OnLoad")) {
+        onLoad(javaVm_, nullptr);
+        LOGI("core JNI_OnLoad called");
+        return;
+    }
+    using SetVmFn = void (*)(void*);
+    // Framework::CJavaVM::SetJavaVM(JavaVM*) — Play! (libplay_libretro.so) exports this instead of JNI_OnLoad.
+    if (auto setVm = (SetVmFn)dlsym(handle_, "_ZN9Framework7CJavaVM9SetJavaVMEP7_JavaVM")) {
+        setVm(javaVm_);
+        LOGI("core Framework::CJavaVM::SetJavaVM called");
+    }
 }
 
 void LibretroCore::unload(bool keepLibrary) {
