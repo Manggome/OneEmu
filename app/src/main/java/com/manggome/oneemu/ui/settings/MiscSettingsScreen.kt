@@ -17,7 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val FF_SPEEDS = listOf(2, 3, 4, 0) // 0 = unlimited
+private val FF_SPEEDS = Settings.FF_SPEEDS // 0 = unlimited
 
 @Composable
 internal fun MiscSettingsScreen(onBack: () -> Unit) {
