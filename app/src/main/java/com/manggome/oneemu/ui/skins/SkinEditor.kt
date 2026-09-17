@@ -61,6 +61,10 @@ import com.manggome.oneemu.emu.skin.LoadedSkin
 import com.manggome.oneemu.emu.skin.Overlay
 import com.manggome.oneemu.emu.skin.PlacedDesc
 import com.manggome.oneemu.emu.skin.SkinInfo
+import com.manggome.oneemu.emu.pad.PadElementId
+import com.manggome.oneemu.emu.pad.PadLayout
+import com.manggome.oneemu.emu.pad.PadLayoutStore
+import androidx.compose.runtime.collectAsState
 import com.manggome.oneemu.emu.skin.SkinLayout
 import com.manggome.oneemu.emu.skin.SkinLoader
 import com.manggome.oneemu.emu.skin.SkinStore
@@ -128,6 +132,9 @@ fun SkinEditor(
     val haptics = remember { Haptics(context) }
 
     val loaded by produceState<Result<LoadedSkin>?>(null, skinInfo.id) { value = runCatching { SkinLoader.load(context, skinInfo) } }
+    // The 배속 button lives in the vector layout even while a skin is active (PadHost draws it on top).
+    val padLayout by remember(system, config) { PadLayoutStore.observe(system, config) }.collectAsState(initial = null)
+    val speedButton = padLayout?.get(PadElementId.SPEED)
     var layout by remember { mutableStateOf<SkinLayout?>(null) }
     var viewport by remember { mutableStateOf<ViewportRect?>(null) }
     var viewportSelected by remember { mutableStateOf(false) }
@@ -484,6 +491,18 @@ fun SkinEditor(
                     selected = viewportSelected,
                     onClick = { viewportSelected = !viewportSelected; if (viewportSelected) selection = emptyList() },
                     label = { Text(stringResource(R.string.vp_select)) },
+                )
+                // Skins carry no speed control: this places the vector pad's 배속 button over the skin.
+                FilterChip(
+                    selected = speedButton?.visible == true,
+                    onClick = {
+                        val cur = padLayout ?: PadLayout(emptyList())
+                        val on = cur[PadElementId.SPEED]?.visible == true
+                        val next = if (on) cur.update(PadElementId.SPEED) { it.copy(visible = false) }
+                        else cur.withElement(PadElementId.SPEED, PadElementId.SPEED.defaultSpot.first, PadElementId.SPEED.defaultSpot.second)
+                        scope.launch { PadLayoutStore.save(system, config, next) }
+                    },
+                    label = { Text(stringResource(R.string.se_speed_button)) },
                 )
                 TextButton(onClick = {
                     history.record(snapshot())

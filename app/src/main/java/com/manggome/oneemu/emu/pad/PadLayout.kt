@@ -32,6 +32,7 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
     RIGHT_STICK(0, Kind.STICK),
     MENU(0, Kind.SMALL),
     FAST_FORWARD(0, Kind.SMALL),
+    SPEED(0, Kind.SMALL),
     COIN(Buttons.SELECT, Kind.PILL),
     ARCADE_1(Buttons.B, Kind.ROUND),
     ARCADE_2(Buttons.A, Kind.ROUND),
@@ -76,6 +77,7 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
         SELECT -> "SELECT"
         MENU -> "☰"
         FAST_FORWARD -> "▶▶"
+        SPEED -> "1×" // replaced with the live speed while a game runs
         COIN -> "COIN"
         ARCADE_1 -> "1"
         ARCADE_2 -> "2"
@@ -85,6 +87,15 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
         ARCADE_6 -> "6"
         DPAD, ABXY_CLUSTER, LEFT_STICK, RIGHT_STICK -> ""
     }
+
+    /** Where the editor drops a control the current layout does not have yet (normalized, top-left origin). */
+    val defaultSpot: Pair<Float, Float>
+        get() = when (this) {
+            SPEED -> 0.96f to 0.18f
+            FAST_FORWARD -> 0.96f to 0.08f
+            MENU -> 0.04f to 0.08f
+            else -> 0.5f to 0.5f
+        }
 
     /** Korean name shown in the layout editor list. */
     val displayName: String
@@ -105,6 +116,7 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             RIGHT_STICK -> "오른쪽 스틱"
             MENU -> "메뉴 버튼"
             FAST_FORWARD -> "빨리감기 버튼"
+            SPEED -> "배속 버튼"
             COIN -> "코인"
             ARCADE_1 -> "버튼 1"
             ARCADE_2 -> "버튼 2"
@@ -133,6 +145,11 @@ data class PadLayout(val elements: List<PadElement>) {
 
     fun update(id: PadElementId, transform: (PadElement) -> PadElement): PadLayout =
         copy(elements = elements.map { if (it.id == id) transform(it) else it })
+
+    /** Adds [id] at ([x], [y]) when the layout does not contain it yet, otherwise just shows it again. */
+    fun withElement(id: PadElementId, x: Float, y: Float): PadLayout =
+        if (this[id] != null) update(id) { it.copy(visible = true) }
+        else copy(elements = elements + PadElement(id, x, y))
 
     fun toJson(): String = json.encodeToString(serializer(), this)
 

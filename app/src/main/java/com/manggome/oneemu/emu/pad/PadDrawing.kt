@@ -36,6 +36,8 @@ data class PadElementVisual(
     /** Stick thumb offset, -1..1 per axis. */
     val stickOffset: Offset = Offset.Zero,
     val selected: Boolean = false,
+    /** Replaces the element's static label (the 배속 button shows the current speed). */
+    val labelOverride: String? = null,
 )
 
 fun DrawScope.drawPadElement(
@@ -48,13 +50,14 @@ fun DrawScope.drawPadElement(
     val id = element.id
     val strokeW = (rect.width * 0.035f).coerceIn(1.5f, 4f)
     val pressed = id in visual.pressedElements || (id.mask != 0 && visual.pressedMask and id.mask == id.mask)
+    val label = visual.labelOverride ?: id.label(system)
     when (id.kind) {
         PadElementId.Kind.DPAD -> drawDpad(rect, visual.pressedMask, strokeW)
-        PadElementId.Kind.ROUND -> drawRound(rect, id.label(system), pressed, strokeW, textMeasurer)
+        PadElementId.Kind.ROUND -> drawRound(rect, label, pressed, strokeW, textMeasurer)
         PadElementId.Kind.CLUSTER -> drawCluster(rect, system, visual.pressedMask, strokeW, textMeasurer)
-        PadElementId.Kind.PILL -> drawPill(rect, id.label(system), pressed, strokeW, textMeasurer, 12.sp.toPx())
+        PadElementId.Kind.PILL -> drawPill(rect, label, pressed, strokeW, textMeasurer, 12.sp.toPx())
         PadElementId.Kind.STICK -> drawStick(rect, visual.stickOffset, pressed, strokeW)
-        PadElementId.Kind.SMALL -> drawPill(rect, id.label(system), pressed, strokeW, textMeasurer, 13.sp.toPx())
+        PadElementId.Kind.SMALL -> drawPill(rect, label, pressed, strokeW, textMeasurer, 13.sp.toPx())
     }
     if (visual.selected) {
         drawRoundRect(

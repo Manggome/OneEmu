@@ -54,6 +54,9 @@ fun VirtualPad(
     onPointer: (x: Float, y: Float, pressed: Boolean) -> Unit,
     onMenu: () -> Unit,
     onFastForward: (Boolean) -> Unit,
+    /** Text drawn on the 배속 button, e.g. "3×"; a tap asks for the next step. */
+    speedLabel: String = "1×",
+    onSpeedCycle: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current.density
@@ -71,6 +74,7 @@ fun VirtualPad(
     val onPointerState = rememberUpdatedState(onPointer)
     val onMenuState = rememberUpdatedState(onMenu)
     val onFfState = rememberUpdatedState(onFastForward)
+    val onSpeedState = rememberUpdatedState(onSpeedCycle)
 
     // Visual state read by the canvas.
     var pressedMask by remember { mutableIntStateOf(0) }
@@ -161,6 +165,8 @@ fun VirtualPad(
                             } else if (t.id == PadElementId.FAST_FORWARD) {
                                 val held = System.currentTimeMillis() - t.downAt
                                 onFfState.value(if (held < LONG_PRESS_MS) !t.ffWasActive else t.ffWasActive)
+                            } else if (t.id == PadElementId.SPEED) {
+                                if (inside) onSpeedState.value()
                             }
                         }
                         is Tracker.GameTouch -> onPointerState.value(t.lastX, t.lastY, false)
@@ -195,7 +201,8 @@ fun VirtualPad(
                     else -> Offset.Zero
                 }
                 val elements = if (element.id == PadElementId.FAST_FORWARD && fastForwardActive) pressedElements + element.id else pressedElements
-                drawPadElement(element, rect, system, PadElementVisual(pressedMask, elements, stick), textMeasurer)
+                val labelOverride = if (element.id == PadElementId.SPEED) speedLabel else null
+                drawPadElement(element, rect, system, PadElementVisual(pressedMask, elements, stick, labelOverride = labelOverride), textMeasurer)
             }
         }
     }

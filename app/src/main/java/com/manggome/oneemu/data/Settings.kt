@@ -93,5 +93,15 @@ class Settings(private val context: Context) {
         const val DEFAULT_PAD_SCALE = 1.0f
         const val DEFAULT_VIBRATION_MS = 15
         const val DEFAULT_FF_SPEED = 3
+        /** Fast-forward speeds offered in the settings, 0 = unlimited. */
+        val FF_SPEEDS = listOf(2, 3, 5, 10, 0)
+        /** Steps the on-screen 배속 button cycles through; 1 = normal speed (fast forward off). */
+        val SPEED_CYCLE = listOf(1) + FF_SPEEDS
+
+        /** Next step of [SPEED_CYCLE] after [current]; an unknown speed continues at the second step. */
+        fun nextSpeed(current: Int): Int {
+            val i = SPEED_CYCLE.indexOf(current)
+            return SPEED_CYCLE[((if (i < 0) 0 else i) + 1) % SPEED_CYCLE.size]
+        }
     }
 }

@@ -200,6 +200,19 @@ class EmulatorActivity : ComponentActivity() {
         )
     }
 
+    /** 배속 button: steps through 1× (normal) → 2 → 3 → 5 → 10 → 무제한 and applies it at once. */
+    fun cycleSpeed() {
+        val s = ui.session ?: return
+        lifecycleScope.launch {
+            val current = if (ui.fastForward) settings.get(Settings.Keys.fastForwardSpeed, Settings.DEFAULT_FF_SPEED) else 1
+            val next = Settings.nextSpeed(current)
+            if (next != 1) settings.set(Settings.Keys.fastForwardSpeed, next)
+            ui.fastForward = next != 1
+            s.setFastForward(next != 1, next)
+            ui.toast = if (next == 0) getString(R.string.ff_unlimited) else getString(R.string.ff_speed_x, next)
+        }
+    }
+
     fun setFastForward(enabled: Boolean) {
         val s = ui.session ?: return
         ui.fastForward = enabled

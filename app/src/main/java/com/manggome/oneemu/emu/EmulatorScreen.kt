@@ -152,6 +152,8 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     onPointer = { x, y, pressed -> session.setPointer(x, y, pressed) },
                     onMenu = { ui.menuOpen = true },
                     onFastForward = host::setFastForward,
+                    speedLabel = if (!ui.fastForward) "1×" else if (ffSpeed <= 0) "∞" else "${ffSpeed}×",
+                    onSpeedCycle = host::cycleSpeed,
                 )
             }
 

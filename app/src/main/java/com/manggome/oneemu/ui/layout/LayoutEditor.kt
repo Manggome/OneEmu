@@ -478,14 +478,27 @@ private fun VectorLayoutEditor(
             onDismissRequest = { showElementList = false },
             title = { Text(stringResource(R.string.le_elements)) },
             text = {
+                // Everything this system can use: what the layout holds, what its default layout has, plus the
+                // two overlay buttons — so a control that was never placed (or deleted) can be brought back.
+                val defaults = DefaultLayouts.forSystem(system, config)
+                val ids = remember(l, defaults) {
+                    (l?.elements.orEmpty().map { it.id } + defaults.elements.map { it.id } +
+                        listOf(PadElementId.SPEED, PadElementId.FAST_FORWARD, PadElementId.MENU)).distinct()
+                }
                 LazyColumn(Modifier.height(360.dp)) {
-                    items(l?.elements.orEmpty(), key = { it.id }) { e ->
+                    items(ids, key = { it }) { id ->
+                        val placed = l?.get(id)
+                        fun toggle(on: Boolean) = edit { cur ->
+                            if (cur[id] != null) cur.update(id) { el -> el.copy(visible = on) }
+                            // Not in this layout yet: drop it where the default layout has it, else in the middle.
+                            else cur.withElement(id, defaults[id]?.x ?: id.defaultSpot.first, defaults[id]?.y ?: id.defaultSpot.second)
+                        }
                         Row(
-                            Modifier.fillMaxWidth().clickable { edit { it.update(e.id) { el -> el.copy(visible = !el.visible) } } }.padding(vertical = 4.dp),
+                            Modifier.fillMaxWidth().clickable { toggle(placed?.visible != true) }.padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Checkbox(checked = e.visible, onCheckedChange = { v -> edit { it.update(e.id) { el -> el.copy(visible = v) } } })
-                            Text(e.id.displayName, style = MaterialTheme.typography.bodyLarge)
+                            Checkbox(checked = placed?.visible == true, onCheckedChange = ::toggle)
+                            Text(id.displayName, style = MaterialTheme.typography.bodyLarge)
                         }
                     }
                 }
