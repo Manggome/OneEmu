@@ -112,3 +112,21 @@ void installCrashHandler(const char* filePath) {
     for (int s : kSignals) sigaction(s, &sa, &g_prev[s]);
     LOGI("native crash handler installed -> %s", filePath);
 }
+
+void reinstallCrashHandler() {
+    if (!g_path[0]) return;
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_sigaction = handler;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sigemptyset(&sa.sa_mask);
+    for (int s : kSignals) {
+        struct sigaction cur;
+        if (sigaction(s, nullptr, &cur) == 0 && cur.sa_sigaction == handler) continue; // still ours
+        sigaction(s, &sa, nullptr);
+        // Whatever was there belonged to the core that is going away: re-raise into the default action instead.
+        memset(&g_prev[s], 0, sizeof g_prev[s]);
+        g_prev[s].sa_handler = SIG_DFL;
+        LOGI("native crash handler re-installed for signal %d (a core had replaced it)", s);
+    }
+}

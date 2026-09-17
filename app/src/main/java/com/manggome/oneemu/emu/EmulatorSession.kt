@@ -111,7 +111,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         NativeBridge.sessionLogLine("core options: " + overrides.lines().joinToString(" "))
         val strictGles = core.glesMinVersion.isNotEmpty()
         NativeBridge.sessionLogLine("graphics api offered: $hwApi")
-        if (!NativeBridge.loadCore(libPath.absolutePath, dirs.system.absolutePath, dirs.saves(system.id).absolutePath, overrides, strictGles, hwApi)) {
+        if (!NativeBridge.loadCore(libPath.absolutePath, dirs.system.absolutePath, dirs.saves(system.id).absolutePath, overrides, strictGles, hwApi, core.keepLoaded)) {
             _state.value = makeError(ErrorKind.fromCode(NativeBridge.lastErrorCode()), NativeBridge.lastError())
             return@withContext false
         }

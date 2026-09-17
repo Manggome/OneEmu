@@ -110,10 +110,10 @@ BRIDGE(void, sessionLogLine)(JNIEnv* env, jobject, jstring line) {
 }
 
 BRIDGE(jboolean, loadCoreNative)(JNIEnv* env, jobject, jstring corePath, jstring systemDir, jstring saveDir, jstring options,
-                                 jboolean strictGlesVersion, jstring hwApi) {
+                                 jboolean strictGlesVersion, jstring hwApi, jboolean keepLoaded) {
     g_lastError.clear();
     return Frontend::get().loadCore(jstr(env, corePath), jstr(env, systemDir), jstr(env, saveDir), jstr(env, options),
-                                    strictGlesVersion, jstr(env, hwApi), &g_lastError);
+                                    strictGlesVersion, jstr(env, hwApi), keepLoaded, &g_lastError);
 }
 
 BRIDGE(jboolean, loadGame)(JNIEnv* env, jobject, jstring romPath) {

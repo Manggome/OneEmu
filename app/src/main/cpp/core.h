@@ -6,7 +6,10 @@
 class LibretroCore {
 public:
     bool load(const std::string& path, std::string* error);
-    void unload();
+    /** keepLibrary: drop our handle but leave the .so mapped (no dlclose). For cores that leave threads or
+     *  process-wide state behind (Azahar/dynarmic keep a SIGSEGV handler installed): dlclose would unmap the
+     *  code those still point at and the next fault kills the process without a trace. */
+    void unload(bool keepLibrary = false);
     bool loaded() const { return handle_ != nullptr; }
 
     void (*retro_init)() = nullptr;

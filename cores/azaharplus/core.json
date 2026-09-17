@@ -5,6 +5,7 @@
   "systems": ["3ds"],
   "extensions": ["3ds", "3dsx", "z3dsx", "elf", "axf", "cci", "zcci", "cxi", "zcxi", "app"],
   "needFullPath": true,
+  "keepLoaded": true,
   "hwRender": "gles3",
   "glesMinVersion": "3.2",
   "bios": [

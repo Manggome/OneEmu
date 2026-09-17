@@ -19,6 +19,8 @@ data class CoreInfo(
     val systems: List<String>,
     val extensions: List<String>,
     val needFullPath: Boolean = false,
+    /** Never dlclose this core's library (it leaves threads / signal handlers behind; Azahar). */
+    val keepLoaded: Boolean = false,
     val hwRender: String = "none",
     val bios: List<BiosEntry> = emptyList(),
     val sourceRepo: String = "",
