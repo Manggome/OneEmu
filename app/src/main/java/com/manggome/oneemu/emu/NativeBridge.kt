@@ -43,9 +43,9 @@ object NativeBridge {
      * the core requests; false only warns (for cores whose requested version is nominal).
      */
     /** hwApi: "vulkan" offers Vulkan to the core in GET_PREFERRED_HW_RENDER; anything else offers OpenGL ES 3. */
-    fun loadCore(corePath: String, systemDir: String, saveDir: String, options: String, strictGlesVersion: Boolean = false, hwApi: String = "gles3"): Boolean =
-        loadCoreNative(corePath, systemDir, saveDir, options, strictGlesVersion, hwApi)
-    private external fun loadCoreNative(corePath: String, systemDir: String, saveDir: String, options: String, strictGlesVersion: Boolean, hwApi: String): Boolean
+    fun loadCore(corePath: String, systemDir: String, saveDir: String, options: String, strictGlesVersion: Boolean = false, hwApi: String = "gles3", keepLoaded: Boolean = false): Boolean =
+        loadCoreNative(corePath, systemDir, saveDir, options, strictGlesVersion, hwApi, keepLoaded)
+    private external fun loadCoreNative(corePath: String, systemDir: String, saveDir: String, options: String, strictGlesVersion: Boolean, hwApi: String, keepLoaded: Boolean): Boolean
     external fun loadGame(romPath: String): Boolean
     external fun lastError(): String
     /** Numeric reason of the last load failure (0 = none); see EmulatorSession.ErrorKind.fromCode. */

@@ -1,5 +1,6 @@
 #include "frontend.h"
 #include "log.h"
+#include "crash_handler.h"
 #include <EGL/egl.h>
 #include <algorithm>
 #include <chrono>
@@ -345,7 +346,8 @@ bool Frontend::rumble(unsigned port, unsigned strength) {
 
 // ---------------------------------------------------------------- load / unload
 bool Frontend::loadCore(const std::string& corePath, const std::string& systemDir, const std::string& saveDir,
-                        const std::string& optionOverrides, bool strictGlesVersion, const std::string& hwApi, std::string* error) {
+                        const std::string& optionOverrides, bool strictGlesVersion, const std::string& hwApi, bool keepLoaded,
+                        std::string* error) {
     unload();
     { std::lock_guard<std::mutex> lock(logMutex_); logRing_.clear(); logNext_ = 0; lastCoreMessage_.clear(); }
     lastError_ = LoadError::None;
@@ -360,6 +362,7 @@ bool Frontend::loadCore(const std::string& corePath, const std::string& systemDi
         hwRender_ = false; hwContextReady_ = false; hwUnsupported_ = false; hwCb_ = {};
         hwApi_ = HwApi::None; vkNego_ = nullptr;
         preferVulkan_ = (hwApi == "vulkan");
+        keepCoreLoaded_ = keepLoaded;
         strictGlesVersion_ = strictGlesVersion;
         pixelFormat_ = RETRO_PIXEL_FORMAT_0RGB1555;
         supportsBitmasks_ = false;
@@ -465,7 +468,8 @@ void Frontend::unload() {
         audio_.stop();
         if (core_.loaded()) {
             core_.retro_deinit();
-            core_.unload();
+            reinstallCrashHandler();
+            core_.unload(keepCoreLoaded_);
         }
         video_.destroyHwFramebuffer();
         video_.destroy();

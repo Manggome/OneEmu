@@ -50,9 +50,9 @@ bool LibretroCore::load(const std::string& path, std::string* error) {
     return true;
 }
 
-void LibretroCore::unload() {
+void LibretroCore::unload(bool keepLibrary) {
     if (handle_) {
-        dlclose(handle_);
+        if (!keepLibrary) dlclose(handle_);
         handle_ = nullptr;
     }
 }

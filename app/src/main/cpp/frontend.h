@@ -69,7 +69,8 @@ public:
     // requests in SET_HW_RENDER (cores whose shaders need it, e.g. Azahar); otherwise only warn and proceed.
     // hwApi: graphics API offered to the core in GET_PREFERRED_HW_RENDER: "vulkan" or anything else = OpenGL ES 3.
     bool loadCore(const std::string& corePath, const std::string& systemDir, const std::string& saveDir,
-                  const std::string& optionOverrides, bool strictGlesVersion, const std::string& hwApi, std::string* error);
+                  const std::string& optionOverrides, bool strictGlesVersion, const std::string& hwApi, bool keepLoaded,
+                  std::string* error);
     bool loadGame(const std::string& romPath, std::string* error);
     void unload();
     LoadError lastErrorCode() const { return lastError_; }
@@ -178,6 +179,7 @@ private:
     VideoVK vk_;
     HwApi hwApi_ = HwApi::None;          // API the core is rendering with (set by SET_HW_RENDER)
     bool preferVulkan_ = false;          // answer to GET_PREFERRED_HW_RENDER (core.json hwRender = "vulkan")
+    bool keepCoreLoaded_ = false;        // core.json keepLoaded: never dlclose this core (see LibretroCore::unload)
     const retro_hw_render_context_negotiation_interface_vulkan* vkNego_ = nullptr;
     VideoConfig videoCfg_;
     ANativeWindow* pendingWindow_ = nullptr;
