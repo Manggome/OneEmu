@@ -621,9 +621,9 @@ void Frontend::runFrame() {
         }
         uint32_t centre = 0;
         if (hwRender_ && frameIsHw_ && hwApi_ != HwApi::Vulkan) centre = video_.sampleHwFrameCentre();
-        LOGI("heartbeat: frames=%llu fps=%.1f hwFrame=%d src(hw=%u sw=%u dupe=%u) centre=%08x rss=%ld MB avail=%ld/%ld MB",
+        LOGI("heartbeat: frames=%llu fps=%.1f hwFrame=%d src(hw=%u sw=%u dupe=%u) centre=%08x audioUnderruns=%u rss=%ld MB avail=%ld/%ld MB",
              (unsigned long long)totalFrames_, measuredFps_, frameIsHw_ ? 1 : 0, hbHwFrames_, hbSwFrames_, hbDupeFrames_, centre,
-             rssKb / 1024, availKb / 1024, totalKb / 1024);
+             audio_.underruns(), rssKb / 1024, availKb / 1024, totalKb / 1024);
         hbHwFrames_ = hbSwFrames_ = hbDupeFrames_ = 0;
     }
 }
