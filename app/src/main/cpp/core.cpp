@@ -57,14 +57,11 @@ void* LibretroCore::javaVm_ = nullptr;
 // expect a JavaVM: without it CPS2VM::EmuThread calls AttachCurrentThread on a null VM and crashes.
 void LibretroCore::handOverJavaVM() {
     if (!javaVm_ || !handle_) return;
-    using OnLoadFn = int (*)(void*, void*);
-    if (auto onLoad = (OnLoadFn)dlsym(handle_, "JNI_OnLoad")) {
-        onLoad(javaVm_, nullptr);
-        LOGI("core JNI_OnLoad called");
-        return;
-    }
+    // Never call a core's JNI_OnLoad: it belongs to that project's own Android app and registers natives for
+    // Java classes that do not exist in this APK. Dolphin's aborts the process there (SIGABRT in libart).
+    // Only the narrow, side-effect-free setters of cores that need the VM are called.
     using SetVmFn = void (*)(void*);
-    // Framework::CJavaVM::SetJavaVM(JavaVM*) — Play! (libplay_libretro.so) exports this instead of JNI_OnLoad.
+    // Framework::CJavaVM::SetJavaVM(JavaVM*) — Play! (libplay_libretro.so); its emu thread attaches through it.
     if (auto setVm = (SetVmFn)dlsym(handle_, "_ZN9Framework7CJavaVM9SetJavaVMEP7_JavaVM")) {
         setVm(javaVm_);
         LOGI("core Framework::CJavaVM::SetJavaVM called");
