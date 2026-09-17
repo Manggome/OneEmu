@@ -6,10 +6,14 @@
 class LibretroCore {
 public:
     bool load(const std::string& path, std::string* error);
+    /** The process's JavaVM, handed to cores that expect JNI_OnLoad (dlopen never calls it): Play! keeps it in
+     *  Framework::CJavaVM and attaches its emu thread through it. Set once from JNI_OnLoad of liboneemu. */
+    static void setJavaVM(void* vm) { javaVm_ = vm; }
     /** keepLibrary: drop our handle but leave the .so mapped (no dlclose). For cores that leave threads or
      *  process-wide state behind (Azahar/dynarmic keep a SIGSEGV handler installed): dlclose would unmap the
      *  code those still point at and the next fault kills the process without a trace. */
     void unload(bool keepLibrary = false);
+    void handOverJavaVM();
     bool loaded() const { return handle_ != nullptr; }
 
     void (*retro_init)() = nullptr;
@@ -40,4 +44,5 @@ public:
 
 private:
     void* handle_ = nullptr;
+    static void* javaVm_;
 };
