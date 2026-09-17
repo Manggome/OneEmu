@@ -205,7 +205,7 @@ void Frontend::threadMain() {
             if (!active) {
                 queueCv_.wait(lock, [&] {
                     // Pending video config only wakes us when the paused branch below can actually re-present.
-                    bool canRepresent = gameLoaded_ && video_.ready();
+                    bool canRepresent = gameLoaded_ && videoReady();
                     return !queue_.empty() || !threadRunning_ || windowDirty_ || (gameLoaded_ && !paused_) ||
                            (canRepresent && (videoCfgDirty_ || viewportDirty_));
                 });
@@ -218,21 +218,30 @@ void Frontend::threadMain() {
         if (windowDirty_.exchange(false)) {
             ANativeWindow* w;
             { std::lock_guard<std::mutex> lock(windowMutex_); w = pendingWindow_; }
-            if (video_.ready() || w) {
-                if (!video_.ready() && w) ensureGlReady();
-                else video_.setWindow(w);
+            if (hwApi_ == HwApi::Vulkan) {
+                if (!vk_.hasDevice() || !vk_.ready()) { if (w) ensureVulkanReady(); }
+                else vk_.setWindow(w);
+            } else {
+                if (video_.ready() || w) {
+                    if (!video_.ready() && w) ensureGlReady();
+                    else video_.setWindow(w);
+                }
+                if (w) video_.setSwapInterval(0);
             }
-            if (w) video_.setSwapInterval(0);
         }
 
         if (gameLoaded_ && !paused_ && !shutdownRequested_) {
             runFrame();
-        } else if (gameLoaded_ && paused_ && video_.ready()) {
+        } else if (gameLoaded_ && paused_ && videoReady()) {
             // keep the last frame on screen after a surface change / viewport edit
-            video_.makeCurrent();
             applyPendingVideoConfig();
-            video_.present(videoCfg_, avInfo_.geometry.aspect_ratio, frameIsHw_);
-            video_.swap();
+            if (hwApi_ == HwApi::Vulkan) {
+                vk_.present(videoCfg_, avInfo_.geometry.aspect_ratio, frameIsHw_);
+            } else {
+                video_.makeCurrent();
+                video_.present(videoCfg_, avInfo_.geometry.aspect_ratio, frameIsHw_);
+                video_.swap();
+            }
         }
         if (shutdownRequested_.exchange(false) && listener_) listener_->onCoreShutdown();
     }
@@ -247,6 +256,7 @@ void Frontend::ensureGlReady() {
     if (!w) return;
     bool depth = hwRender_ && hwCb_.depth;
     bool stencil = hwRender_ && hwCb_.stencil;
+    if (hwApi_ == HwApi::Vulkan) return; // the window belongs to the Vulkan swapchain
     int reqMajor = hwRender_ ? (int)hwCb_.version_major : 0;
     int reqMinor = hwRender_ ? (int)hwCb_.version_minor : 0;
     if (!video_.init(w, depth, stencil, reqMajor, reqMinor)) {
@@ -260,8 +270,34 @@ void Frontend::ensureGlReady() {
     contextResetIfNeeded();
 }
 
+void Frontend::ensureVulkanReady() {
+    if (vk_.ready()) return;
+    ANativeWindow* w;
+    { std::lock_guard<std::mutex> lock(windowMutex_); w = pendingWindow_; }
+    if (!w) return;
+    bool ok = vk_.initInstance(vkNego_) && vk_.initDevice(w);
+    if (!ok) {
+        if (hwUnsupported_) return; // already reported
+        hwUnsupported_ = true;
+        lastError_ = LoadError::VulkanUnavailable;
+        noteLog('E', "frontend: Vulkan instance/device/swapchain creation failed");
+        if (listener_) listener_->onFatal("Vulkan initialisation failed", (int)LoadError::VulkanUnavailable);
+        return;
+    }
+    noteLog('I', "Vulkan: " + vk_.deviceName() + " / " + vk_.apiVersionString());
+    contextResetIfNeeded();
+}
+
 void Frontend::contextResetIfNeeded() {
-    if (!hwRender_ || hwContextReady_ || hwUnsupported_ || !video_.ready()) return;
+    if (!hwRender_ || hwContextReady_ || hwUnsupported_ || !videoReady()) return;
+    if (hwApi_ == HwApi::Vulkan) {
+        // No framebuffer of ours: the core renders into its own images and hands them over with set_image().
+        videoCfg_.bottomLeftOrigin = false;
+        if (hwCb_.context_reset) hwCb_.context_reset();
+        hwContextReady_ = true;
+        LOGI("HW render context reset done (Vulkan)");
+        return;
+    }
     // A core whose shaders really need ES 3.2 (Azahar: "#version 320 es") cannot run on a 3.0/3.1 context;
     // calling its context_reset would only crash or leave a black screen. When core.json marks the version
     // as a hard requirement (glesMinVersion → strictGlesVersion_), fail clearly instead.
@@ -309,7 +345,7 @@ bool Frontend::rumble(unsigned port, unsigned strength) {
 
 // ---------------------------------------------------------------- load / unload
 bool Frontend::loadCore(const std::string& corePath, const std::string& systemDir, const std::string& saveDir,
-                        const std::string& optionOverrides, bool strictGlesVersion, std::string* error) {
+                        const std::string& optionOverrides, bool strictGlesVersion, const std::string& hwApi, std::string* error) {
     unload();
     { std::lock_guard<std::mutex> lock(logMutex_); logRing_.clear(); logNext_ = 0; lastCoreMessage_.clear(); }
     lastError_ = LoadError::None;
@@ -322,6 +358,8 @@ bool Frontend::loadCore(const std::string& corePath, const std::string& systemDi
         { std::lock_guard<std::mutex> lock(optionsMutex_); options_.clear(); optionOverrides_.clear(); }
         applyOptionOverrides(optionOverrides);
         hwRender_ = false; hwContextReady_ = false; hwUnsupported_ = false; hwCb_ = {};
+        hwApi_ = HwApi::None; vkNego_ = nullptr;
+        preferVulkan_ = (hwApi == "vulkan");
         strictGlesVersion_ = strictGlesVersion;
         pixelFormat_ = RETRO_PIXEL_FORMAT_0RGB1555;
         supportsBitmasks_ = false;
@@ -386,6 +424,13 @@ bool Frontend::loadGame(const std::string& romPath, std::string* error) {
             return;
         }
         romData_.clear();
+        if (hwApi_ == HwApi::Vulkan && video_.ready()) {
+            // The window may have arrived before the core asked for Vulkan and an EGL surface now owns it;
+            // vkCreateAndroidSurfaceKHR would fail with NATIVE_WINDOW_IN_USE. Give it back and redo the window setup.
+            video_.destroyHwFramebuffer();
+            video_.destroy();
+            windowDirty_ = true;
+        }
         avInfo_ = {};
         core_.retro_get_system_av_info(&avInfo_);
         LOGI("av info: %ux%u max %ux%u aspect %.3f fps %.3f rate %.1f", avInfo_.geometry.base_width,
@@ -398,7 +443,7 @@ bool Frontend::loadGame(const std::string& romPath, std::string* error) {
         paused_ = true;
         nextFrameNs_ = 0;
         lastSramSaveNs_ = nowNs();
-        ensureGlReady();
+        if (hwApi_ == HwApi::Vulkan) ensureVulkanReady(); else ensureGlReady();
         contextResetIfNeeded();
         if (listener_) listener_->onGeometryChanged(avInfo_.geometry.base_width, avInfo_.geometry.base_height,
                                                      avInfo_.geometry.aspect_ratio);
@@ -424,6 +469,8 @@ void Frontend::unload() {
         }
         video_.destroyHwFramebuffer();
         video_.destroy();
+        vk_.destroy();
+        hwApi_ = HwApi::None; vkNego_ = nullptr;
         { std::lock_guard<std::mutex> lock(optionsMutex_); options_.clear(); }
     });
     stopThread();
@@ -462,7 +509,7 @@ void Frontend::setPaused(bool paused) {
 // ---------------------------------------------------------------- frame loop
 void Frontend::runFrame() {
     static int64_t lastIdleLogNs = 0;
-    if (!video_.ready()) {
+    if (!videoReady()) {
         // No surface yet: don't burn CPU.
         int64_t now = nowNs();
         if (now - lastIdleLogNs > 2000000000LL) { lastIdleLogNs = now; LOGW("runFrame idle: video not ready (surface missing)"); }
@@ -477,7 +524,8 @@ void Frontend::runFrame() {
             std::this_thread::sleep_for(std::chrono::milliseconds(5)); return;
         }
     }
-    video_.makeCurrent();
+    const bool vulkan = hwApi_ == HwApi::Vulkan;
+    if (!vulkan) video_.makeCurrent();
 
     applyPendingVideoConfig();
 
@@ -505,7 +553,10 @@ void Frontend::runFrame() {
         frameTimeCb_.callback(delta);
     }
 
-    if (hwRender_) {
+    if (vulkan) {
+        // The sync index the core reads during retro_run is the swapchain image acquired here.
+        if (!vk_.beginFrame()) { std::this_thread::sleep_for(std::chrono::milliseconds(5)); return; }
+    } else if (hwRender_) {
         if (hwFboNeedsGrow_) {
             hwFboNeedsGrow_ = false;
             unsigned maxW = avInfo_.geometry.max_width ? avInfo_.geometry.max_width : 8192u;
@@ -520,17 +571,21 @@ void Frontend::runFrame() {
     // Two-context HW render (Dolphin): order the GPU work both ways. The core must not start overwriting the
     // HW texture before the previous present finished sampling it, and the present must not sample it before
     // the core's frame is complete. Without this Adreno shows the previous frame / uninitialised (green) tiles.
-    if (hwRender_) video_.waitPresentFence();
+    if (hwRender_ && !vulkan) video_.waitPresentFence();
     core_.retro_run();
-    if (hwRender_) { video_.logGlErrors("retro_run (core context)"); video_.fenceCoreFrame(); }
+    if (hwRender_ && !vulkan) { video_.logGlErrors("retro_run (core context)"); video_.fenceCoreFrame(); }
 
     // Present at most 60ish frames/sec while fast forwarding to keep the GPU free.
     bool present = true;
     if (ff != 0) { ffFrameCounter_++; present = (ffFrameCounter_ % (ff > 0 ? ff : 8)) == 0; }
     if (present) {
-        video_.present(videoCfg_, avInfo_.geometry.aspect_ratio, frameIsHw_);
-        if (hwRender_) video_.logGlErrors("present");
-        video_.swap();
+        if (vulkan) {
+            vk_.present(videoCfg_, avInfo_.geometry.aspect_ratio, frameIsHw_);
+        } else {
+            video_.present(videoCfg_, avInfo_.geometry.aspect_ratio, frameIsHw_);
+            if (hwRender_) video_.logGlErrors("present");
+            video_.swap();
+        }
     }
 
     fpsFrames_++;
@@ -561,7 +616,7 @@ void Frontend::runFrame() {
             fclose(f);
         }
         uint32_t centre = 0;
-        if (hwRender_ && frameIsHw_) centre = video_.sampleHwFrameCentre();
+        if (hwRender_ && frameIsHw_ && hwApi_ != HwApi::Vulkan) centre = video_.sampleHwFrameCentre();
         LOGI("heartbeat: frames=%llu fps=%.1f hwFrame=%d src(hw=%u sw=%u dupe=%u) centre=%08x rss=%ld MB avail=%ld/%ld MB",
              (unsigned long long)totalFrames_, measuredFps_, frameIsHw_ ? 1 : 0, hbHwFrames_, hbSwFrames_, hbDupeFrames_, centre,
              rssKb / 1024, availKb / 1024, totalKb / 1024);
@@ -575,6 +630,7 @@ void Frontend::videoRefresh(const void* data, unsigned w, unsigned h, size_t pit
     if (data == RETRO_HW_FRAME_BUFFER_VALID) {
         frameIsHw_ = true;
         ++hbHwFrames_;
+        if (hwApi_ == HwApi::Vulkan) return; // the image itself arrived through set_image()
         if (w > hwFboW_ || h > hwFboH_) {
             // The core rendered at a higher internal resolution than our FBO; grow before the next frame.
             hwFboGrowW_ = std::max(w, hwFboW_); hwFboGrowH_ = std::max(h, hwFboH_);
@@ -739,29 +795,56 @@ bool Frontend::environment(unsigned cmd, void* data) {
             auto* hw = (retro_hw_render_callback*)data;
             bool gles = hw->context_type == RETRO_HW_CONTEXT_OPENGLES3 || hw->context_type == RETRO_HW_CONTEXT_OPENGLES_VERSION ||
                         hw->context_type == RETRO_HW_CONTEXT_OPENGLES2;
-            if (!gles) {
+            bool vulkan = hw->context_type == RETRO_HW_CONTEXT_VULKAN;
+            if (!gles && !vulkan) {
                 LOGW("core requested unsupported HW context type %d", hw->context_type);
                 return false;
             }
-            hw->get_current_framebuffer = cb_hw_get_current_framebuffer;
-            hw->get_proc_address = cb_hw_get_proc_address;
+            if (vulkan) {
+                hw->get_current_framebuffer = nullptr;
+                hw->get_proc_address = nullptr;
+            } else {
+                hw->get_current_framebuffer = cb_hw_get_current_framebuffer;
+                hw->get_proc_address = cb_hw_get_proc_address;
+            }
             hwCb_ = *hw;
+            hwApi_ = vulkan ? HwApi::Vulkan : HwApi::Gles;
             hwRender_ = true;
             hwContextReady_ = false;
             LOGI("core requested HW render: type %d v%u.%u depth=%d stencil=%d bottomLeft=%d", hw->context_type,
                  hw->version_major, hw->version_minor, hw->depth, hw->stencil, hw->bottom_left_origin);
             return true;
         }
-        case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: *(unsigned*)data = RETRO_HW_CONTEXT_OPENGLES3; return true;
+        case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
+            *(unsigned*)data = preferVulkan_ ? RETRO_HW_CONTEXT_VULKAN : RETRO_HW_CONTEXT_OPENGLES3;
+            return true;
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
             // The core keeps cached GL state across frames; present from a second, shared context.
             video_.setSharedContext(true);
             return true;
-        case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE: return false;
+        case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE: {
+            // Cores ask for this from inside context_reset (Dolphin, Azahar every frame); Vulkan only.
+            if (hwApi_ != HwApi::Vulkan || !vk_.hasDevice()) return false;
+            *(const retro_hw_render_interface**)data = (const retro_hw_render_interface*)vk_.iface();
+            return true;
+        }
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: return false; // asked every frame by some cores
         case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: return false;
-        case RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT: return false;
-        case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE: return false;
+        case RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT: {
+            // The core asks which negotiation interface version we speak for its API (0 = not supported).
+            auto* iface = (retro_hw_render_context_negotiation_interface*)data;
+            iface->interface_version = iface->interface_type == RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN
+                ? RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN_VERSION : 0;
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE: {
+            auto* iface = (const retro_hw_render_context_negotiation_interface*)data;
+            if (iface && iface->interface_type == RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN) {
+                vkNego_ = (const retro_hw_render_context_negotiation_interface_vulkan*)iface;
+                LOGI("core registered a Vulkan context negotiation interface v%u", iface->interface_version);
+            }
+            return true;
+        }
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
             auto* var = (retro_variable*)data;
             var->value = nullptr;
@@ -1034,7 +1117,8 @@ void Frontend::reset() {
 bool Frontend::screenshot(std::vector<uint32_t>& rgba, int& w, int& h) {
     bool ok = false;
     run([&] {
-        if (!video_.ready()) return;
+        if (!videoReady()) return;
+        if (hwApi_ == HwApi::Vulkan) { ok = vk_.readback(rgba, w, h); return; }
         video_.makeCurrent();
         applyPendingVideoConfig();
         video_.present(videoCfg_, avInfo_.geometry.aspect_ratio, frameIsHw_);

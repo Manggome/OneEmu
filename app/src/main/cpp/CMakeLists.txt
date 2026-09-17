@@ -10,6 +10,7 @@ add_library(oneemu SHARED
     core.cpp
     audio.cpp
     video_gl.cpp
+    video_vk.cpp
     frontend.cpp
     jni.cpp
     crash_handler.cpp
@@ -17,4 +18,4 @@ add_library(oneemu SHARED
 )
 target_include_directories(oneemu PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(oneemu PRIVATE -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden)
-target_link_libraries(oneemu PRIVATE oboe::oboe android log GLESv3 EGL)
+target_link_libraries(oneemu PRIVATE oboe::oboe android log GLESv3 EGL vulkan)

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -206,6 +207,7 @@ private fun SystemSection(
             TextButton(onClick = { onCoreOptions(core.id) }, enabled = available) { Text(stringResource(R.string.cores_core_options)) }
         }
         if (core.isDownloadable) DownloadableCoreCard(core, dlStates[core.id] ?: DownloadState.Idle)
+        if (core.hwRender != "none") GraphicsApiRow(core)
     }
 
     // BIOS entries for this system (a core may serve several systems, so filter by entry.system when set).
@@ -226,6 +228,30 @@ private fun SystemSection(
         bios.forEach { entry -> BiosRow(entry, systemDir, refreshKey) }
     }
     SettingsDivider()
+}
+
+/** Vulkan / OpenGL ES choice for a HW-rendering core; empty = the core.json default (core.hwRender). */
+@Composable
+private fun GraphicsApiRow(core: CoreInfo) {
+    val pref = rememberPref(Settings.Keys.graphicsApi(core.id), "")
+    val default = if (core.hwRender == "vulkan") "Vulkan" else "OpenGL ES"
+    Column(Modifier.padding(start = 56.dp, end = 16.dp, bottom = 6.dp)) {
+        Text(
+            stringResource(R.string.cores_graphics_api),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = pref.value.isEmpty(), onClick = { pref.set("") }, label = { Text(stringResource(R.string.cores_gfx_default, default)) })
+            FilterChip(selected = pref.value == "vulkan", onClick = { pref.set("vulkan") }, label = { Text("Vulkan") })
+            FilterChip(selected = pref.value == "gles3", onClick = { pref.set("gles3") }, label = { Text("OpenGL ES") })
+        }
+        Text(
+            stringResource(R.string.cores_gfx_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 /**

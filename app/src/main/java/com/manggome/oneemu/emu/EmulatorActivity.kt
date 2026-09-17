@@ -56,6 +56,8 @@ class EmulatorActivity : ComponentActivity() {
     companion object {
         const val EXTRA_GAME_ID = "game_id"
         const val EXTRA_CORE_ID = "core_id"
+        /** Debug builds only: "vulkan" / "gles3" forces the graphics API offered to the core (adb diagnostics). */
+        const val EXTRA_HW_API = "hw_api"
 
         fun intent(context: Context, gameId: Long): Intent =
             Intent(context, EmulatorActivity::class.java).putExtra(EXTRA_GAME_ID, gameId)
@@ -125,7 +127,8 @@ class EmulatorActivity : ComponentActivity() {
         val core = forcedCore ?: route?.core ?: game.coreId?.let { app.cores.core(it) } ?: system?.let { app.cores.defaultCoreFor(it) }
         if (core == null) { ui.error = getString(R.string.emu_no_core); return }
         if (!app.cores.isAvailable(core) && core.isDownloadable) { ui.downloadCore = core; return }
-        val session = EmulatorSession(game, core)
+        val hwApi = if (com.manggome.oneemu.BuildConfig.DEBUG) intent.getStringExtra(EXTRA_HW_API) else null
+        val session = EmulatorSession(game, core, hwApi)
         val missing = session.missingRequiredBios()
         if (missing.isNotEmpty()) { ui.error = getString(R.string.emu_missing_bios, missing.joinToString(", ")); return }
         ui.session = session

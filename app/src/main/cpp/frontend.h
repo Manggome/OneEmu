@@ -2,6 +2,7 @@
 #include "audio.h"
 #include "core.h"
 #include "video_gl.h"
+#include "video_vk.h"
 #include <android/native_window.h>
 #include <atomic>
 #include <condition_variable>
@@ -35,6 +36,7 @@ enum class LoadError : int {
     RomEncrypted = 6,    // retro_load_game failed and the core complained about encryption (3DS)
     GlesUnsupported = 7, // the core needs a newer GLES than the device context provides
     GlInitFailed = 8,    // EGL/GLES context could not be created at all
+    VulkanUnavailable = 11, // the core wants Vulkan and instance/device/swapchain creation failed
 };
 
 struct InputState {
@@ -65,8 +67,9 @@ public:
 
     // strictGlesVersion: fail with GlesUnsupported when the device context is older than what the core
     // requests in SET_HW_RENDER (cores whose shaders need it, e.g. Azahar); otherwise only warn and proceed.
+    // hwApi: graphics API offered to the core in GET_PREFERRED_HW_RENDER: "vulkan" or anything else = OpenGL ES 3.
     bool loadCore(const std::string& corePath, const std::string& systemDir, const std::string& saveDir,
-                  const std::string& optionOverrides, bool strictGlesVersion, std::string* error);
+                  const std::string& optionOverrides, bool strictGlesVersion, const std::string& hwApi, std::string* error);
     bool loadGame(const std::string& romPath, std::string* error);
     void unload();
     LoadError lastErrorCode() const { return lastError_; }
@@ -131,6 +134,8 @@ private:
     void runFrame();
     void applyPendingVideoConfig();
     void ensureGlReady();
+    void ensureVulkanReady();
+    bool videoReady() const { return hwApi_ == HwApi::Vulkan ? vk_.ready() : video_.ready(); }
     void contextResetIfNeeded();
     std::string sramPath() const;
     bool saveSramInternal();
@@ -168,7 +173,12 @@ private:
     std::vector<Command> queue_;
 
     // video
+    enum class HwApi { None, Gles, Vulkan };
     VideoGL video_;
+    VideoVK vk_;
+    HwApi hwApi_ = HwApi::None;          // API the core is rendering with (set by SET_HW_RENDER)
+    bool preferVulkan_ = false;          // answer to GET_PREFERRED_HW_RENDER (core.json hwRender = "vulkan")
+    const retro_hw_render_context_negotiation_interface_vulkan* vkNego_ = nullptr;
     VideoConfig videoCfg_;
     ANativeWindow* pendingWindow_ = nullptr;
     std::atomic<bool> windowDirty_{false};

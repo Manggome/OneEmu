@@ -38,6 +38,7 @@ object OpenWithHandler {
         }
         val launch = EmulatorActivity.intent(context, game.id)
         intent.getStringExtra(EmulatorActivity.EXTRA_CORE_ID)?.let { launch.putExtra(EmulatorActivity.EXTRA_CORE_ID, it) }
+        intent.getStringExtra(EmulatorActivity.EXTRA_HW_API)?.let { launch.putExtra(EmulatorActivity.EXTRA_HW_API, it) }
         context.startActivity(launch)
         return true
     }

@@ -54,6 +54,8 @@ class Settings(private val context: Context) {
         val storageGranted = booleanPreferencesKey("storage_granted_once")
 
         fun coreOptions(coreId: String) = stringPreferencesKey("coreopts.$coreId")
+        /** Per-core graphics API override: "vulkan" or "gles3"; unset = core.json hwRender. */
+        fun graphicsApi(coreId: String) = stringPreferencesKey("gfxapi.$coreId")
         fun coreForSystem(systemId: String) = stringPreferencesKey("core.$systemId")
         /** Per-(system, screen configuration) pad layout JSON: `layout.<system>.<port|land|port_wide|land_wide>`. */
         fun layout(systemId: String, config: ScreenConfig) = stringPreferencesKey("layout.$systemId.${config.key}")
@@ -72,6 +74,9 @@ class Settings(private val context: Context) {
     // Convenience accessors used across features.
     val viewMode: Flow<ViewMode> get() = observe(Keys.viewMode, ViewMode.LIST.name).map { runCatching { ViewMode.valueOf(it) }.getOrDefault(ViewMode.LIST) }
     val sortMode: Flow<SortMode> get() = observe(Keys.sortMode, SortMode.TITLE.name).map { runCatching { SortMode.valueOf(it) }.getOrDefault(SortMode.TITLE) }
+
+    suspend fun graphicsApi(coreId: String): String? = get(Keys.graphicsApi(coreId), "").takeIf { it.isNotEmpty() }
+    suspend fun setGraphicsApi(coreId: String, api: String?) = set(Keys.graphicsApi(coreId), api ?: "")
 
     suspend fun coreOptionOverrides(coreId: String): Map<String, String> =
         get(Keys.coreOptions(coreId), "").lineSequence().filter { '=' in it }

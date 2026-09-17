@@ -25,7 +25,7 @@ import java.util.zip.ZipFile
  *
  * Lifecycle: [load] → (surface attach via [setSurface]) → [resume]/[pause] → [close].
  */
-class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.Listener {
+class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwApiOverride: String? = null) : NativeBridge.Listener {
     private val app = OneEmuApp.get()
     private val dirs: AppDirs get() = app.dirs
     val system: SystemId = SystemId.fromId(game.system) ?: SystemId.GBA
@@ -33,7 +33,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     /** Why a load (or a later fatal event) failed; mirrors the C++ `LoadError` codes. */
     enum class ErrorKind(val code: Int) {
         UNKNOWN(0), CORE_MISSING(1), DLOPEN_FAILED(2), CORE_INIT_FAILED(3), ROM_READ_FAILED(4), ROM_LOAD_FAILED(5),
-        ROM_ENCRYPTED(6), GLES_UNSUPPORTED(7), GL_INIT_FAILED(8), ROM_EMPTY(9), DISC_IMAGE_CORRUPT(10), CORE_SHUTDOWN(100);
+        ROM_ENCRYPTED(6), GLES_UNSUPPORTED(7), GL_INIT_FAILED(8), ROM_EMPTY(9), DISC_IMAGE_CORRUPT(10), VULKAN_UNAVAILABLE(11), CORE_SHUTDOWN(100);
 
         companion object {
             fun fromCode(code: Int): ErrorKind = entries.firstOrNull { it.code == code } ?: UNKNOWN
@@ -106,10 +106,12 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
             return@withContext false
         }
         app.cores.installAssets(core, dirs.system)
-        val overrides = buildOptionOverrides()
+        val hwApi = hwApiOverride ?: app.settings.graphicsApi(core.id) ?: core.hwRender
+        val overrides = buildOptionOverrides(hwApi)
         NativeBridge.sessionLogLine("core options: " + overrides.lines().joinToString(" "))
         val strictGles = core.glesMinVersion.isNotEmpty()
-        if (!NativeBridge.loadCore(libPath.absolutePath, dirs.system.absolutePath, dirs.saves(system.id).absolutePath, overrides, strictGles)) {
+        NativeBridge.sessionLogLine("graphics api offered: $hwApi")
+        if (!NativeBridge.loadCore(libPath.absolutePath, dirs.system.absolutePath, dirs.saves(system.id).absolutePath, overrides, strictGles, hwApi)) {
             _state.value = makeError(ErrorKind.fromCode(NativeBridge.lastErrorCode()), NativeBridge.lastError())
             return@withContext false
         }
@@ -155,6 +157,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
                 app.getString(R.string.emu_err_gles, name, need, have)
             }
             ErrorKind.GL_INIT_FAILED -> app.getString(R.string.emu_err_gl_init)
+            ErrorKind.VULKAN_UNAVAILABLE -> app.getString(R.string.emu_err_vulkan, name)
             ErrorKind.CORE_SHUTDOWN -> app.getString(R.string.emu_err_shutdown)
             ErrorKind.UNKNOWN -> app.getString(R.string.emu_err_unknown)
         }
@@ -191,9 +194,14 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
         return State.Error(message, detail, kind)
     }
 
-    private suspend fun buildOptionOverrides(): String {
+    private suspend fun buildOptionOverrides(hwApi: String): String {
         val merged = core.defaultOptions.toMutableMap()
-        merged.putAll(app.settings.coreOptionOverrides(core.id))
+        // Cores that pick their backend through their own option must agree with the API the frontend offers;
+        // the user's explicit override of that option still wins.
+        val user = app.settings.coreOptionOverrides(core.id)
+        val vulkan = hwApi == "vulkan"
+        BACKEND_OPTIONS[core.id]?.let { (key, vk, gl) -> if (key !in user) merged[key] = if (vulkan) vk else gl }
+        merged.putAll(user)
         return merged.entries.joinToString("\n") { "${it.key}=${it.value}" }
     }
 
@@ -337,6 +345,11 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo) : NativeBridge.L
     override fun onRumble(port: Int, strength: Int) { if (port == 0) _rumble.value = strength }
     override fun onGeometryChanged(width: Int, height: Int, aspect: Float) { _geometry.value = Geometry(width, height, aspect) }
     private companion object {
+        /** core id -> (option key, value for Vulkan, value for OpenGL ES) */
+        val BACKEND_OPTIONS = mapOf(
+            "ppsspp" to Triple("ppsspp_backend", "vulkan", "opengl"),
+            "azaharplus" to Triple("citra_graphics_api", "Vulkan", "OpenGL"),
+        )
         val DISC_SYSTEMS = setOf(SystemId.PSX, SystemId.PS2, SystemId.PSP, SystemId.GC)
         val RAW_DISC_EXTS = setOf("iso", "bin", "img")
         /** Failures that have nothing to do with the ROM set; the arcade ROM check is skipped for these. */
