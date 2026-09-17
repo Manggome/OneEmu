@@ -25,6 +25,7 @@
     <string name="emu_err_disc_corrupt">디스크 이미지를 읽을 수 없습니다. 파일 크기가 섹터 단위(2048/2352바이트)의 배수가 아니어서 복사가 덜 되었거나 손상된 파일로 보입니다. 원본에서 다시 복사하거나 .bin + .cue 형식의 덤프를 사용해 주세요.</string>
     <string name="emu_err_rom_encrypted">암호화된 롬은 실행할 수 없습니다. 복호화된 .3ds/.cci/.cxi 파일이 필요하며 .cia 설치는 지원하지 않습니다.</string>
     <string name="emu_err_gles">이 기기의 그래픽 드라이버가 지원하지 않는 OpenGL ES 버전입니다. %1$s 코어는 OpenGL ES %2$s 이상이 필요하지만 기기는 %3$s까지만 지원합니다.</string>
+    <string name="emu_err_vulkan">Vulkan 그래픽을 초기화할 수 없습니다. 이 기기의 드라이버가 %1$s 코어가 요구하는 Vulkan 기능을 지원하지 않을 수 있습니다. 설정 → 코어에서 그래픽 API를 OpenGL ES로 바꿔 보세요.</string>
     <string name="emu_err_gl_init">그래픽(OpenGL ES) 초기화에 실패했습니다.</string>
     <string name="emu_err_shutdown">코어가 종료를 요청했습니다.</string>
     <string name="emu_err_unknown">알 수 없는 오류로 게임을 시작할 수 없습니다.</string>
