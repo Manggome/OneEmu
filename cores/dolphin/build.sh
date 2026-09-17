@@ -11,8 +11,9 @@
 #    pip-installed into a venv under build/. Ninja still comes from the SDK cmake/3.22.1 dir (or PATH).
 #  * The fork's own Android CI (.github/workflows/build-android-libretro.yml) configures with exactly
 #    -DLIBRETRO=ON -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 (NDK r29).
-#    We use the project NDK (r28.2) and add ENABLE_VULKAN=OFF: OneEmu only offers a GLES 3.x context and
-#    Video.cpp already prefers what GET_PREFERRED_HW_RENDER returns (OPENGLES3), so Vulkan would be dead code.
+#    We use the project NDK (r28.2) and build with ENABLE_VULKAN=ON: the frontend answers GET_PREFERRED_HW_RENDER
+#    with RETRO_HW_CONTEXT_VULKAN for this core (core.json hwRender = "vulkan"), so Dolphin's Vulkan backend is used;
+#    Video.cpp falls back to OGL when the frontend offers GLES instead.
 #    LIBRETRO=ON itself forces Qt/NoGUI/tests/SDL/evdev/ALSA/Pulse/analytics/autoupdate/cubeb/discord/
 #    RetroAchievements/UPnP off (top-level CMakeLists.txt).
 #  * Recursive clone (~30 submodules, ~1.1 GB with shallow submodules).
@@ -189,7 +190,7 @@ mkdir -p "$CMAKE_BUILD_DIR" "$OUT_DIR"
   -DANDROID_STL=c++_static \
   -DCMAKE_BUILD_TYPE=Release \
   -DLIBRETRO=ON \
-  -DENABLE_VULKAN=OFF \
+  -DENABLE_VULKAN=ON \
   ${LAUNCHER_ARGS[@]+"${LAUNCHER_ARGS[@]}"}
 
 # ---------------------------------------------------------------- build
