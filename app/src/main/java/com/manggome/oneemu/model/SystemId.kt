@@ -26,7 +26,10 @@ enum class SystemId(
     PSP("psp", "플레이스테이션 포터블", "PSP", Color(0xFF3F8EE0), setOf("iso", "cso", "pbp", "chd", "elf", "prx"), hasAnalog = true),
     PS2("ps2", "플레이스테이션 2", "PS2", Color(0xFF2F5BB8), setOf("iso", "chd", "cso", "isz", "cue", "elf"), hasAnalog = true),
     GC("gc", "닌텐도 게임큐브", "GC", Color(0xFF6C4FD6), setOf("iso", "gcm", "gcz", "rvz", "wbfs", "wia", "ciso", "tgc", "dol"), hasAnalog = true),
-    ARCADE("arcade", "아케이드 (MAME)", "MAME", Color(0xFFF0C24B), setOf("zip"));
+    ARCADE("arcade", "아케이드 (MAME)", "MAME", Color(0xFFF0C24B), setOf("zip")),
+
+    /** Not an emulated console: an open-source remake that reads the original PC game's data files. */
+    JAZZ2("jazz2", "재즈 잭래빗 2", "JJ2", Color(0xFF4CAF50), setOf("j2l", "j2e", "j2a"));
 
     companion object {
         fun fromId(id: String?): SystemId? = entries.firstOrNull { it.id == id }

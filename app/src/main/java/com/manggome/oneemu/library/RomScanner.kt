@@ -6,6 +6,7 @@ import com.manggome.oneemu.core.CoreRegistry
 import com.manggome.oneemu.data.db.AppDatabase
 import com.manggome.oneemu.data.db.FolderEntity
 import com.manggome.oneemu.data.db.GameEntity
+import com.manggome.oneemu.emu.EmulatorSession
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.util.AppDirs
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +75,20 @@ class RomScanner(
             db.folders().update(folder.copy(lastScannedAt = System.currentTimeMillis()))
         } finally {
             _progress.value = Progress(running = false)
+        }
+    }
+
+    /**
+     * Cores that run without a ROM (Jazz² Resurrection) get one library entry each, so the user has something
+     * to tap. Their data lives in the system directory, not in a ROM folder, so no scan can find them.
+     */
+    suspend fun ensureNoContentEntries() = withContext(Dispatchers.IO) {
+        for (core in registry.cores) {
+            if (!core.supportsNoContent || !registry.isAvailable(core)) continue
+            val system = core.systems.firstOrNull()?.let { SystemId.fromId(it) } ?: continue
+            val path = EmulatorSession.NO_CONTENT_PREFIX + core.id
+            if (db.games().getByPath(path) != null) continue
+            db.games().insert(GameEntity(path = path, title = core.displayName, system = system.id, coreId = core.id, folderId = null))
         }
     }
 

@@ -407,6 +407,32 @@ bool Frontend::loadGame(const std::string& romPath, std::string* error) {
         size_t dot = base.find_last_of('.');
         romBase_ = dot == std::string::npos ? base : base.substr(0, dot);
 
+        // Cores that advertise SET_SUPPORT_NO_GAME (the Jazz2 engine) are started with no content at all:
+        // everything they need is in the system directory.
+        if (romPath.empty()) {
+            if (!core_.retro_load_game(nullptr)) {
+                std::string reason = lastCoreMessage_.empty() ? "retro_load_game(nullptr) returned false" : lastCoreMessage_;
+                fail(LoadError::RomLoadFailed, reason, error);
+                return;
+            }
+            avInfo_ = {};
+            core_.retro_get_system_av_info(&avInfo_);
+            LOGI("av info: %ux%u max %ux%u aspect %.3f fps %.3f rate %.1f", avInfo_.geometry.base_width,
+                 avInfo_.geometry.base_height, avInfo_.geometry.max_width, avInfo_.geometry.max_height,
+                 avInfo_.geometry.aspect_ratio, avInfo_.timing.fps, avInfo_.timing.sample_rate);
+            for (unsigned p = 0; p < 2; p++) core_.retro_set_controller_port_device(p, RETRO_DEVICE_JOYPAD);
+            audio_.start(avInfo_.timing.sample_rate);
+            gameLoaded_ = true;
+            paused_ = true;
+            nextFrameNs_ = 0;
+            lastSramSaveNs_ = nowNs();
+            if (hwApi_ == HwApi::Vulkan) ensureVulkanReady(); else ensureGlReady();
+            contextResetIfNeeded();
+            if (listener_) listener_->onGeometryChanged(avInfo_.geometry.base_width, avInfo_.geometry.base_height,
+                                                         avInfo_.geometry.aspect_ratio);
+            ok = true;
+            return;
+        }
         retro_game_info info{};
         info.path = romPath_.c_str();
         info.meta = "";

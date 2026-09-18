@@ -109,6 +109,7 @@ object SkinStore {
 
     /** Default skin for a system when the user never chose one. */
     fun defaultSkinId(system: SystemId): String = when (system) {
+        SystemId.JAZZ2 -> "" // no skin: the game is not a console
         SystemId.NES -> "nes-classic"
         SystemId.GB, SystemId.GBC -> "gameboy-classic"
         SystemId.GBA -> "gba-classic"

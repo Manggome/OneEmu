@@ -115,6 +115,16 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
             _state.value = makeError(ErrorKind.fromCode(NativeBridge.lastErrorCode()), NativeBridge.lastError())
             return@withContext false
         }
+        if (core.supportsNoContent && game.path.startsWith(NO_CONTENT_PREFIX)) {
+            if (!NativeBridge.loadGame("")) {
+                _state.value = makeError(ErrorKind.fromCode(NativeBridge.lastErrorCode()), NativeBridge.lastError())
+                NativeBridge.unload()
+                return@withContext false
+            }
+            if (_state.value !is State.Error) _state.value = State.Paused
+            startedAt = System.currentTimeMillis()
+            return@withContext true
+        }
         val romPath = resolveRomPath() ?: run {
             _state.value = makeError(ErrorKind.ROM_READ_FAILED, "ROM not found: ${game.path}")
             NativeBridge.unload()
@@ -344,16 +354,19 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     override fun onCoreMessage(message: String, durationMs: Int, priority: Int) { _messages.value = message }
     override fun onRumble(port: Int, strength: Int) { if (port == 0) _rumble.value = strength }
     override fun onGeometryChanged(width: Int, height: Int, aspect: Float) { _geometry.value = Geometry(width, height, aspect) }
-    private companion object {
+    companion object {
+        /** Library path of a game that is really "just start this core" (see CoreInfo.supportsNoContent). */
+        const val NO_CONTENT_PREFIX = "core:"
+
         /** core id -> (option key, value for Vulkan, value for OpenGL ES) */
-        val BACKEND_OPTIONS = mapOf(
+        private val BACKEND_OPTIONS = mapOf(
             "ppsspp" to Triple("ppsspp_backend", "vulkan", "opengl"),
             "azaharplus" to Triple("citra_graphics_api", "Vulkan", "OpenGL"),
         )
-        val DISC_SYSTEMS = setOf(SystemId.PSX, SystemId.PS2, SystemId.PSP, SystemId.GC)
-        val RAW_DISC_EXTS = setOf("iso", "bin", "img")
+        private val DISC_SYSTEMS = setOf(SystemId.PSX, SystemId.PS2, SystemId.PSP, SystemId.GC)
+        private val RAW_DISC_EXTS = setOf("iso", "bin", "img")
         /** Failures that have nothing to do with the ROM set; the arcade ROM check is skipped for these. */
-        val ARCADE_UNRELATED_KINDS = setOf(
+        private val ARCADE_UNRELATED_KINDS = setOf(
             ErrorKind.CORE_MISSING, ErrorKind.DLOPEN_FAILED, ErrorKind.ROM_READ_FAILED, ErrorKind.GLES_UNSUPPORTED, ErrorKind.GL_INIT_FAILED,
         )
     }
