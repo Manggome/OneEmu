@@ -482,12 +482,17 @@ private fun VectorLayoutEditor(
             onDismissRequest = { showElementList = false },
             title = { Text(stringResource(R.string.le_elements)) },
             text = {
-                // Everything this system can use: what the layout holds, what its default layout has, plus the
-                // two overlay buttons — so a control that was never placed (or deleted) can be brought back.
+                // Every control the pad has, not just the ones this system's default layout happened to place:
+                // the core decides what a button does, so a system whose default shows two buttons (Jazz²) may
+                // still want X and Y. What is already in the layout comes first, the rest follows.
                 val defaults = DefaultLayouts.forSystem(system, config)
-                val ids = remember(l, defaults) {
-                    (l?.elements.orEmpty().map { it.id } + defaults.elements.map { it.id } +
-                        listOf(PadElementId.SPEED, PadElementId.FAST_FORWARD, PadElementId.MENU)).distinct()
+                val ids = remember(l, defaults, system) {
+                    val arcadeOnly = setOf(
+                        PadElementId.COIN, PadElementId.ARCADE_1, PadElementId.ARCADE_2, PadElementId.ARCADE_3,
+                        PadElementId.ARCADE_4, PadElementId.ARCADE_5, PadElementId.ARCADE_6,
+                    )
+                    val usable = PadElementId.entries.filter { it !in arcadeOnly || system == SystemId.ARCADE }
+                    (l?.elements.orEmpty().map { it.id } + defaults.elements.map { it.id } + usable).distinct()
                 }
                 LazyColumn(Modifier.height(360.dp)) {
                     items(ids, key = { it }) { id ->
