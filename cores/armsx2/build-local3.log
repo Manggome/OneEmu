@@ -1,0 +1,258 @@
+[1;34m[armsx2][0m ccache: /opt/homebrew/bin/ccache (dir /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/build/ccache)
+[1;34m[armsx2][0m ARMSX2 (PlayStation 2) libretro core build
+[1;34m[armsx2][0m   NDK:     /Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358 (darwin-x86_64)
+[1;34m[armsx2][0m   CMake:   /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/build/venv/bin/cmake (cmake version 4.4.3)
+[1;34m[armsx2][0m   Ninja:   /Users/kimhyungjun/Library/Android/sdk/cmake/3.22.1/bin/ninja
+[1;34m[armsx2][0m   Commit:  f4272b6768a2695bfda9265c319e595509cdc54c
+[1;34m[armsx2][0m   Jobs:    8
+[1;34m[armsx2][0m   Output:  /Users/kimhyungjun/Desktop/AI개발/OneEmu/app/src/main/jniLibs/arm64-v8a/libarmsx2_libretro.so
+[1;34m[armsx2][0m Syncing submodules (shallow)
+[1;34m[armsx2][0m Patch already applied: 0001-android-cmake-can-build-the-libretro-core.patch
+-- CMake Version: 4.4.3
+-- CMake System Name: Android
+-- Building for Android.
+-- Building with Clang/LLVM.
+-- Building for Android (ARM64).
+-- ZSTD VERSION: 1.6.0
+-- CMAKE_INSTALL_PREFIX: /opt/ARMSX2Android
+-- CMAKE_INSTALL_LIBDIR: lib
+-- ZSTD_LEGACY_SUPPORT disabled
+-- Multi-threading support disabled
+-- Could NOT find LibUSB (missing: LibUSB_LIBRARY LibUSB_INCLUDE_PATH) (found version "LibUSB_VERSION-NOTFOUND")
+-- 
+-- SDL3 was configured with the following options:
+-- 
+-- Platform: Android-1
+-- 64-bit:   TRUE
+-- Compiler: /Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang
+-- Revision: SDL-3.5.0-HEAD-HASH-NOTFOUND
+-- Vendor:   
+-- 
+-- Subsystems:
+--   Audio:    ON
+--   Video:    ON
+--   GPU:      ON
+--   Render:   ON
+--   Camera:   ON
+--   Joystick: ON
+--   Haptic:   ON
+--   Hidapi:   ON
+--   Power:    ON
+--   Sensor:   ON
+--   Dialog:   ON
+--   Tray:     ON
+-- 
+-- Options:
+--   SDL_ALSA                    (Wanted: OFF): OFF
+--   SDL_ALSA_SHARED             (Wanted: OFF): OFF
+--   SDL_ALTIVEC                 (Wanted: OFF): OFF
+--   SDL_ARMNEON                 (Wanted: ON): ON
+--   SDL_ASAN                    (Wanted: OFF): OFF
+--   SDL_ASSEMBLY                (Wanted: ON): ON
+--   SDL_ASSERTIONS              (Wanted: auto): auto
+--   SDL_AVX                     (Wanted: OFF): OFF
+--   SDL_AVX2                    (Wanted: OFF): OFF
+--   SDL_AVX512F                 (Wanted: OFF): OFF
+--   SDL_BACKGROUNDING_SIGNAL    (Wanted: OFF): OFF
+--   SDL_CCACHE                  (Wanted: OFF): OFF
+--   SDL_CLANG_TIDY              (Wanted: OFF): OFF
+--   SDL_CLOCK_GETTIME           (Wanted: ON): ON
+--   SDL_COCOA                   (Wanted: OFF): OFF
+--   SDL_DBUS                    (Wanted: OFF): OFF
+--   SDL_DEPS_SHARED             (Wanted: ON): OFF
+--   SDL_DIRECTX                 (Wanted: OFF): OFF
+--   SDL_DISKAUDIO               (Wanted: ON): ON
+--   SDL_DLOPEN_NOTES            (Wanted: OFF): OFF
+--   SDL_DUMMYAUDIO              (Wanted: ON): ON
+--   SDL_DUMMYCAMERA             (Wanted: ON): ON
+--   SDL_DUMMYVIDEO              (Wanted: ON): ON
+--   SDL_EXAMPLES                (Wanted: OFF): OFF
+--   SDL_EXAMPLES_LINK_SHARED    (Wanted: OFF): OFF
+--   SDL_FOREGROUNDING_SIGNAL    (Wanted: OFF): OFF
+--   SDL_FRIBIDI                 (Wanted: OFF): OFF
+--   SDL_FRIBIDI_SHARED          (Wanted: OFF): OFF
+--   SDL_GCC_ATOMICS             (Wanted: ON): ON
+--   SDL_GPU_OPENXR              (Wanted: ON): ON
+--   SDL_HIDAPI                  (Wanted: ON): ON
+--   SDL_HIDAPI_JOYSTICK         (Wanted: ON): ON
+--   SDL_HIDAPI_LIBUSB           (Wanted: ON): OFF
+--   SDL_HIDAPI_LIBUSB_SHARED    (Wanted: ON): OFF
+--   SDL_IBUS                    (Wanted: OFF): OFF
+--   SDL_INSTALL                 (Wanted: OFF): OFF
+--   SDL_INSTALL_TESTS           (Wanted: OFF): OFF
+--   SDL_JACK                    (Wanted: OFF): OFF
+--   SDL_JACK_SHARED             (Wanted: OFF): OFF
+--   SDL_KMSDRM                  (Wanted: OFF): OFF
+--   SDL_KMSDRM_SHARED           (Wanted: OFF): OFF
+--   SDL_LASX                    (Wanted: OFF): OFF
+--   SDL_LIBC                    (Wanted: ON): ON
+--   SDL_LIBICONV                (Wanted: OFF): OFF
+--   SDL_LIBTHAI                 (Wanted: OFF): OFF
+--   SDL_LIBTHAI_SHARED          (Wanted: OFF): OFF
+--   SDL_LIBUDEV                 (Wanted: ON): OFF
+--   SDL_LIBURING                (Wanted: OFF): OFF
+--   SDL_LSX                     (Wanted: OFF): OFF
+--   SDL_METAL                   (Wanted: OFF): OFF
+--   SDL_MMX                     (Wanted: OFF): OFF
+--   SDL_OFFSCREEN               (Wanted: ON): ON
+--   SDL_OPENGL                  (Wanted: ON): OFF
+--   SDL_OPENGLES                (Wanted: ON): ON
+--   SDL_OPENVR                  (Wanted: OFF): OFF
+--   SDL_OSS                     (Wanted: OFF): OFF
+--   SDL_PIPEWIRE                (Wanted: OFF): OFF
+--   SDL_PIPEWIRE_SHARED         (Wanted: OFF): OFF
+--   SDL_PTHREADS                (Wanted: ON): ON
+--   SDL_PTHREADS_SEM            (Wanted: ON): ON
+--   SDL_PULSEAUDIO              (Wanted: OFF): OFF
+--   SDL_PULSEAUDIO_SHARED       (Wanted: OFF): OFF
+--   SDL_RENDER_D3D              (Wanted: OFF): OFF
+--   SDL_RENDER_D3D11            (Wanted: OFF): OFF
+--   SDL_RENDER_D3D12            (Wanted: OFF): OFF
+--   SDL_RENDER_GPU              (Wanted: ON): ON
+--   SDL_RENDER_METAL            (Wanted: OFF): OFF
+--   SDL_RENDER_VULKAN           (Wanted: ON): ON
+--   SDL_ROCKCHIP                (Wanted: OFF): OFF
+--   SDL_RPATH                   (Wanted: OFF): OFF
+--   SDL_RPI                     (Wanted: OFF): OFF
+--   SDL_SNDIO                   (Wanted: OFF): OFF
+--   SDL_SNDIO_SHARED            (Wanted: OFF): OFF
+--   SDL_SSE                     (Wanted: OFF): OFF
+--   SDL_SSE2                    (Wanted: OFF): OFF
+--   SDL_SSE3                    (Wanted: OFF): OFF
+--   SDL_SSE4_1                  (Wanted: OFF): OFF
+--   SDL_SSE4_2                  (Wanted: OFF): OFF
+--   SDL_SYSTEM_ICONV            (Wanted: ON): OFF
+--   SDL_TESTS                   (Wanted: OFF): OFF
+--   SDL_TESTS_LINK_SHARED       (Wanted: OFF): OFF
+--   SDL_UNINSTALL               (Wanted: OFF): OFF
+--   SDL_VIRTUAL_JOYSTICK        (Wanted: ON): ON
+--   SDL_VIVANTE                 (Wanted: OFF): OFF
+--   SDL_VULKAN                  (Wanted: ON): ON
+--   SDL_WASAPI                  (Wanted: OFF): OFF
+--   SDL_WAYLAND                 (Wanted: OFF): OFF
+--   SDL_WAYLAND_LIBDECOR        (Wanted: OFF): OFF
+--   SDL_WAYLAND_LIBDECOR_SHARED (Wanted: OFF): OFF
+--   SDL_WAYLAND_SHARED          (Wanted: OFF): OFF
+--   SDL_X11                     (Wanted: OFF): OFF
+--   SDL_X11_SHARED              (Wanted: OFF): OFF
+--   SDL_X11_XCURSOR             (Wanted: OFF): OFF
+--   SDL_X11_XDBE                (Wanted: OFF): OFF
+--   SDL_X11_XFIXES              (Wanted: OFF): OFF
+--   SDL_X11_XINPUT              (Wanted: OFF): OFF
+--   SDL_X11_XRANDR              (Wanted: OFF): OFF
+--   SDL_X11_XSCRNSAVER          (Wanted: OFF): OFF
+--   SDL_X11_XSHAPE              (Wanted: OFF): OFF
+--   SDL_X11_XSYNC               (Wanted: OFF): OFF
+--   SDL_X11_XTEST               (Wanted: OFF): OFF
+--   SDL_XINPUT                  (Wanted: OFF): OFF
+-- 
+--  Build Shared Library: OFF
+--  Build Static Library: ON
+-- 
+-- Enabled backends:
+--   Video drivers: android dummy offscreen
+--   Render drivers: gpu ogl_es2 vulkan
+--   GPU drivers: openxr vulkan
+--   Audio drivers: aaudio disk dummy opensles
+--   Joystick drivers: android hidapi virtual
+--   Camera drivers: android dummy
+-- 
+-- If something was not detected, although the libraries
+-- were installed, then make sure you have set the
+-- CMAKE_C_FLAGS and CMAKE_PREFIX_PATH CMake variables correctly.
+-- 
+-- CMAKE_BUILD_TYPE = Release
+-- VERSION = 3.1.90, BUILD = 20260918
+-- 64-bit build (arm64)
+-- CMAKE_INSTALL_PREFIX = /opt/ARMSX2Android
+-- CMAKE_INSTALL_BINDIR = bin (/opt/ARMSX2Android/bin)
+-- CMAKE_INSTALL_DATAROOTDIR = share (/opt/ARMSX2Android/share)
+-- CMAKE_INSTALL_DOCDIR = share/doc/ARMSX2Android (/opt/ARMSX2Android/share/doc/ARMSX2Android)
+-- CMAKE_INSTALL_INCLUDEDIR = include (/opt/ARMSX2Android/include)
+-- CMAKE_INSTALL_LIBDIR = lib (/opt/ARMSX2Android/lib)
+-- CMAKE_INSTALL_MANDIR = share/man (/opt/ARMSX2Android/share/man)
+-- Shared libraries disabled (ENABLE_SHARED = 0)
+-- Static libraries enabled (ENABLE_STATIC = 1)
+-- Arithmetic decoding support enabled (WITH_ARITH_DEC = 1)
+-- Arithmetic encoding support enabled (WITH_ARITH_ENC = 1)
+-- TurboJPEG API library disabled (WITH_TURBOJPEG = 0)
+-- TurboJPEG Java Native Access interfaces (TurboJPEG/JNA) disabled
+   (WITH_JNA = )
+-- Command-line tools enabled (WITH_TOOLS = 1)
+-- Regression tests enabled (WITH_TESTS = 1)
+-- Emulating libjpeg API/ABI v6.2 (WITH_JPEG7 = 0, WITH_JPEG8 = 0)
+-- libjpeg API shared library version = 62.4.0
+-- Compiler flags = -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -O3 -DNDEBUG 
+-- Linker flags = -static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments   -Wl,--gc-sections 
+-- HIDDEN = __attribute__((visibility("hidden")))
+-- INLINE = __inline__ __attribute__((always_inline)) (FORCE_INLINE = 1)
+-- THREAD_LOCAL = __thread
+-- Linker supports GNU-style version scripts
+-- CMAKE_EXECUTABLE_SUFFIX = 
+-- SIMD extensions: ARM64 (WITH_SIMD = 1)
+-- System-supplied libspng disabled (WITH_SYSTEM_SPNG = 0)
+-- System-supplied zlib disabled (WITH_SYSTEM_ZLIB = 0)
+-- FLOATTEST8 = fp-contract
+-- FLOATTEST12 = fp-contract
+-- Building for target architecture: aarch64
+-- Using standard libconf header: /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/platforms/android/app/src/main/cpp/3rdparty/libpng/pnglibconf.h.prebuilt
+-- Could NOT find OpenGL (missing: OPENGL_opengl_LIBRARY OPENGL_glx_LIBRARY OPENGL_INCLUDE_DIR) 
+-- Performing Test WEBP_HAVE_FLAG_AVX2
+-- Performing Test WEBP_HAVE_FLAG_AVX2 - Failed
+-- Performing Test WEBP_HAVE_FLAG_AVX2
+-- Performing Test WEBP_HAVE_FLAG_AVX2 - Failed
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Performing Test WEBP_HAVE_FLAG_SSE41
+-- Performing Test WEBP_HAVE_FLAG_SSE41 - Failed
+-- Performing Test WEBP_HAVE_FLAG_SSE41
+-- Performing Test WEBP_HAVE_FLAG_SSE41 - Failed
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Performing Test WEBP_HAVE_FLAG_SSE2
+-- Performing Test WEBP_HAVE_FLAG_SSE2 - Failed
+-- Performing Test WEBP_HAVE_FLAG_SSE2
+-- Performing Test WEBP_HAVE_FLAG_SSE2 - Failed
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Performing Test WEBP_HAVE_FLAG_MIPS32
+-- Performing Test WEBP_HAVE_FLAG_MIPS32 - Failed
+-- Performing Test WEBP_HAVE_FLAG_MIPS32
+-- Performing Test WEBP_HAVE_FLAG_MIPS32 - Failed
+-- Performing Test WEBP_HAVE_FLAG_MIPS_DSP_R2
+-- Performing Test WEBP_HAVE_FLAG_MIPS_DSP_R2 - Failed
+-- Performing Test WEBP_HAVE_FLAG_MIPS_DSP_R2
+-- Performing Test WEBP_HAVE_FLAG_MIPS_DSP_R2 - Failed
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Performing Test WEBP_HAVE_FLAG_NEON
+-- Performing Test WEBP_HAVE_FLAG_NEON - Success
+-- Performing Test WEBP_HAVE_FLAG_MSA
+-- Performing Test WEBP_HAVE_FLAG_MSA - Failed
+-- Performing Test WEBP_HAVE_FLAG_MSA
+-- Performing Test WEBP_HAVE_FLAG_MSA - Failed
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Creating build script for LZ4 version: 1.10.0
+-- Oboe: Data conversion is ENABLED.
+-- Shaderc: build type is "Release".
+-- Configuring Shaderc to avoid building tests.
+-- Configuring Shaderc to avoid building examples.
+-- Configuring Shaderc to avoid building executables.
+-- Configuring Shaderc to avoid checking copyrights.
+-- asciidoctor was not found - no documentation will be generated
+CMake Warning (policy) at 3rdparty/shaderc/cmake/setup_build.cmake:17 (find_package):
+  Policy CMP0148 is not set: The FindPythonInterp and FindPythonLibs modules
+  are removed.  Run "cmake --help-policy CMP0148" for policy details.  Use
+  the cmake_policy command to set the policy and suppress this warning.
+Call Stack (most recent call first):
+  3rdparty/shaderc/cmake/setup_build.cmake:49 (find_host_package)
+  3rdparty/shaderc/CMakeLists.txt:79 (include)
+This warning is for project developers.  Use -Wno-author or -Wno-policy to
+suppress it.
+
+CMake Error at 3rdparty/shaderc/third_party/CMakeLists.txt:80 (message):
+  SPIRV-Tools was not found - required for compilation
+
+
+-- Configuring incomplete, errors occurred!

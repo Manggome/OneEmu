@@ -172,6 +172,40 @@ for p in ${PATCHES[@]+"${PATCHES[@]}"}; do
   fi
 done
 
+# ---------------------------------------------------------------- OpenAL Soft (audio)
+# nCine renders the game's audio into the libretro buffer through OpenAL Soft's loopback device
+# (Sources/nCine/Audio/Backends/AL), and imports it on Android as a prebuilt at
+# ${EXTERNAL_ANDROID_DIR}/${ANDROID_ABI}/libopenal.so. The NDK has no such library, so it is built here;
+# without it the core runs silent (libretro.cpp fills the frontend's buffer with zeroes).
+OPENAL_REPO="https://github.com/kcat/openal-soft"
+OPENAL_TAG="1.24.3"
+OPENAL_SRC="$BUILD_DIR/openal-soft"
+EXT_DIR="$BUILD_DIR/external"
+if [ ! -f "$EXT_DIR/$ABI/libopenal.so" ]; then
+  log "Building OpenAL Soft $OPENAL_TAG"
+  [ -d "$OPENAL_SRC/.git" ] || git clone --depth 1 --branch "$OPENAL_TAG" "$OPENAL_REPO" "$OPENAL_SRC"
+  "$CMAKE" -S "$OPENAL_SRC" -B "$BUILD_DIR/openal-build" -G Ninja \
+    -DCMAKE_MAKE_PROGRAM="$NINJA" \
+    -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+    -DANDROID_ABI="$ABI" \
+    -DANDROID_PLATFORM="android-$API_LEVEL" \
+    -DANDROID_STL=c++_static \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLIBTYPE=SHARED \
+    -DALSOFT_UTILS=OFF \
+    -DALSOFT_EXAMPLES=OFF \
+    -DALSOFT_TESTS=OFF \
+    -DALSOFT_INSTALL=OFF \
+    ${LAUNCHER_ARGS[@]+"${LAUNCHER_ARGS[@]}"}
+  "$CMAKE" --build "$BUILD_DIR/openal-build" -j "$JOBS"
+  BUILT_AL="$(find "$BUILD_DIR/openal-build" -name 'libopenal.so' -type f -print -quit)"
+  [ -n "$BUILT_AL" ] || die "libopenal.so not produced"
+  mkdir -p "$EXT_DIR/$ABI" "$EXT_DIR/include/AL"
+  cp "$BUILT_AL" "$EXT_DIR/$ABI/libopenal.so"
+  cp "$OPENAL_SRC"/include/AL/*.h "$EXT_DIR/include/AL/"
+fi
+log "OpenAL: $EXT_DIR/$ABI/libopenal.so ($(du -h "$EXT_DIR/$ABI/libopenal.so" | cut -f1))"
+
 # ---------------------------------------------------------------- configure
 mkdir -p "$CMAKE_BUILD_DIR" "$OUT_DIR"
 "$CMAKE" -S "$SRC_DIR" -B "$CMAKE_BUILD_DIR" -G Ninja \
@@ -191,7 +225,9 @@ mkdir -p "$CMAKE_BUILD_DIR" "$OUT_DIR"
   -DNCINE_WITH_IMGUI=OFF \
   -DWITH_MULTIPLAYER=OFF \
   -DCMAKE_C_FLAGS="-I$NDK/sources/android/native_app_glue" \
-  -DCMAKE_CXX_FLAGS="-I$NDK/sources/android/native_app_glue" \
+  -DCMAKE_CXX_FLAGS="-I$NDK/sources/android/native_app_glue -I$EXT_DIR/include" \
+  -DEXTERNAL_ANDROID_DIR="$EXT_DIR" \
+  -DEXTERNAL_INCLUDES_DIR="$EXT_DIR/include" \
   -DCMAKE_SHARED_LINKER_FLAGS="-landroid -llog -lGLESv3 -lGLESv2 -lEGL" \
   -DNCINE_BUILD_TESTS=OFF \
   ${LAUNCHER_ARGS[@]+"${LAUNCHER_ARGS[@]}"}
@@ -210,6 +246,10 @@ log "built: $BUILT_SO ($(du -h "$BUILT_SO" | cut -f1) unstripped)"
 # ---------------------------------------------------------------- strip + install
 log "Stripping"
 "$STRIP" --strip-unneeded -o "$OUT_SO" "$BUILT_SO"
+
+# libopenal.so is a NEEDED library of the core, so it has to sit in jniLibs next to it
+cp "$EXT_DIR/$ABI/libopenal.so" "$OUT_DIR/libopenal.so"
+log "installed $OUT_DIR/libopenal.so"
 
 # ---------------------------------------------------------------- engine content -> cores/jazz2/assets
 # Installed by the app as <system dir>/jazz2/Content (core.json assetsInstallDir). This is the engine's own
@@ -237,7 +277,7 @@ fi
 NEEDED="$("$READELF" -d "$OUT_SO" | awk '/NEEDED/ {gsub(/[\[\]]/,"",$NF); print $NF}')"
 for lib in $NEEDED; do
   case "$lib" in
-    libc.so|libm.so|libdl.so|libz.so|liblog.so|libandroid.so|libGLESv3.so|libGLESv2.so|libEGL.so|libOpenSLES.so|libOpenMAXAL.so) ;;
+    libc.so|libm.so|libdl.so|libz.so|liblog.so|libandroid.so|libGLESv3.so|libGLESv2.so|libEGL.so|libOpenSLES.so|libOpenMAXAL.so|libopenal.so) ;;
     *) die "unexpected NEEDED library: $lib" ;;
   esac
 done

@@ -1,0 +1,1396 @@
+[1;34m[armsx2][0m ccache: /opt/homebrew/bin/ccache (dir /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/build/ccache)
+[1;34m[armsx2][0m ARMSX2 (PlayStation 2) libretro core build
+[1;34m[armsx2][0m   NDK:     /Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358 (darwin-x86_64)
+[1;34m[armsx2][0m   CMake:   /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/build/venv/bin/cmake (cmake version 4.4.3)
+[1;34m[armsx2][0m   Ninja:   /Users/kimhyungjun/Library/Android/sdk/cmake/3.22.1/bin/ninja
+[1;34m[armsx2][0m   Commit:  f4272b6768a2695bfda9265c319e595509cdc54c
+[1;34m[armsx2][0m   Jobs:    8
+[1;34m[armsx2][0m   Output:  /Users/kimhyungjun/Desktop/AI개발/OneEmu/app/src/main/jniLibs/arm64-v8a/libarmsx2_libretro.so
+[1;34m[armsx2][0m Syncing submodules (shallow)
+[1;34m[armsx2][0m Patch already applied: 0001-android-cmake-can-build-the-libretro-core.patch
+-- CMake Version: 4.4.3
+-- CMake System Name: Android
+-- Building for Android.
+-- Building with Clang/LLVM.
+-- Building for Android (ARM64).
+-- ZSTD VERSION: 1.6.0
+-- CMAKE_INSTALL_PREFIX: /opt/ARMSX2Android
+-- CMAKE_INSTALL_LIBDIR: lib
+-- ZSTD_LEGACY_SUPPORT disabled
+-- Multi-threading support disabled
+-- Could NOT find LibUSB (missing: LibUSB_LIBRARY LibUSB_INCLUDE_PATH) (found version "LibUSB_VERSION-NOTFOUND")
+-- 
+-- SDL3 was configured with the following options:
+-- 
+-- Platform: Android-1
+-- 64-bit:   TRUE
+-- Compiler: /Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang
+-- Revision: SDL-3.5.0-HEAD-HASH-NOTFOUND
+-- Vendor:   
+-- 
+-- Subsystems:
+--   Audio:    ON
+--   Video:    ON
+--   GPU:      ON
+--   Render:   ON
+--   Camera:   ON
+--   Joystick: ON
+--   Haptic:   ON
+--   Hidapi:   ON
+--   Power:    ON
+--   Sensor:   ON
+--   Dialog:   ON
+--   Tray:     ON
+-- 
+-- Options:
+--   SDL_ALSA                    (Wanted: OFF): OFF
+--   SDL_ALSA_SHARED             (Wanted: OFF): OFF
+--   SDL_ALTIVEC                 (Wanted: OFF): OFF
+--   SDL_ARMNEON                 (Wanted: ON): ON
+--   SDL_ASAN                    (Wanted: OFF): OFF
+--   SDL_ASSEMBLY                (Wanted: ON): ON
+--   SDL_ASSERTIONS              (Wanted: auto): auto
+--   SDL_AVX                     (Wanted: OFF): OFF
+--   SDL_AVX2                    (Wanted: OFF): OFF
+--   SDL_AVX512F                 (Wanted: OFF): OFF
+--   SDL_BACKGROUNDING_SIGNAL    (Wanted: OFF): OFF
+--   SDL_CCACHE                  (Wanted: OFF): OFF
+--   SDL_CLANG_TIDY              (Wanted: OFF): OFF
+--   SDL_CLOCK_GETTIME           (Wanted: ON): ON
+--   SDL_COCOA                   (Wanted: OFF): OFF
+--   SDL_DBUS                    (Wanted: OFF): OFF
+--   SDL_DEPS_SHARED             (Wanted: ON): OFF
+--   SDL_DIRECTX                 (Wanted: OFF): OFF
+--   SDL_DISKAUDIO               (Wanted: ON): ON
+--   SDL_DLOPEN_NOTES            (Wanted: OFF): OFF
+--   SDL_DUMMYAUDIO              (Wanted: ON): ON
+--   SDL_DUMMYCAMERA             (Wanted: ON): ON
+--   SDL_DUMMYVIDEO              (Wanted: ON): ON
+--   SDL_EXAMPLES                (Wanted: OFF): OFF
+--   SDL_EXAMPLES_LINK_SHARED    (Wanted: OFF): OFF
+--   SDL_FOREGROUNDING_SIGNAL    (Wanted: OFF): OFF
+--   SDL_FRIBIDI                 (Wanted: OFF): OFF
+--   SDL_FRIBIDI_SHARED          (Wanted: OFF): OFF
+--   SDL_GCC_ATOMICS             (Wanted: ON): ON
+--   SDL_GPU_OPENXR              (Wanted: ON): ON
+--   SDL_HIDAPI                  (Wanted: ON): ON
+--   SDL_HIDAPI_JOYSTICK         (Wanted: ON): ON
+--   SDL_HIDAPI_LIBUSB           (Wanted: ON): OFF
+--   SDL_HIDAPI_LIBUSB_SHARED    (Wanted: ON): OFF
+--   SDL_IBUS                    (Wanted: OFF): OFF
+--   SDL_INSTALL                 (Wanted: OFF): OFF
+--   SDL_INSTALL_TESTS           (Wanted: OFF): OFF
+--   SDL_JACK                    (Wanted: OFF): OFF
+--   SDL_JACK_SHARED             (Wanted: OFF): OFF
+--   SDL_KMSDRM                  (Wanted: OFF): OFF
+--   SDL_KMSDRM_SHARED           (Wanted: OFF): OFF
+--   SDL_LASX                    (Wanted: OFF): OFF
+--   SDL_LIBC                    (Wanted: ON): ON
+--   SDL_LIBICONV                (Wanted: OFF): OFF
+--   SDL_LIBTHAI                 (Wanted: OFF): OFF
+--   SDL_LIBTHAI_SHARED          (Wanted: OFF): OFF
+--   SDL_LIBUDEV                 (Wanted: ON): OFF
+--   SDL_LIBURING                (Wanted: OFF): OFF
+--   SDL_LSX                     (Wanted: OFF): OFF
+--   SDL_METAL                   (Wanted: OFF): OFF
+--   SDL_MMX                     (Wanted: OFF): OFF
+--   SDL_OFFSCREEN               (Wanted: ON): ON
+--   SDL_OPENGL                  (Wanted: ON): OFF
+--   SDL_OPENGLES                (Wanted: ON): ON
+--   SDL_OPENVR                  (Wanted: OFF): OFF
+--   SDL_OSS                     (Wanted: OFF): OFF
+--   SDL_PIPEWIRE                (Wanted: OFF): OFF
+--   SDL_PIPEWIRE_SHARED         (Wanted: OFF): OFF
+--   SDL_PTHREADS                (Wanted: ON): ON
+--   SDL_PTHREADS_SEM            (Wanted: ON): ON
+--   SDL_PULSEAUDIO              (Wanted: OFF): OFF
+--   SDL_PULSEAUDIO_SHARED       (Wanted: OFF): OFF
+--   SDL_RENDER_D3D              (Wanted: OFF): OFF
+--   SDL_RENDER_D3D11            (Wanted: OFF): OFF
+--   SDL_RENDER_D3D12            (Wanted: OFF): OFF
+--   SDL_RENDER_GPU              (Wanted: ON): ON
+--   SDL_RENDER_METAL            (Wanted: OFF): OFF
+--   SDL_RENDER_VULKAN           (Wanted: ON): ON
+--   SDL_ROCKCHIP                (Wanted: OFF): OFF
+--   SDL_RPATH                   (Wanted: OFF): OFF
+--   SDL_RPI                     (Wanted: OFF): OFF
+--   SDL_SNDIO                   (Wanted: OFF): OFF
+--   SDL_SNDIO_SHARED            (Wanted: OFF): OFF
+--   SDL_SSE                     (Wanted: OFF): OFF
+--   SDL_SSE2                    (Wanted: OFF): OFF
+--   SDL_SSE3                    (Wanted: OFF): OFF
+--   SDL_SSE4_1                  (Wanted: OFF): OFF
+--   SDL_SSE4_2                  (Wanted: OFF): OFF
+--   SDL_SYSTEM_ICONV            (Wanted: ON): OFF
+--   SDL_TESTS                   (Wanted: OFF): OFF
+--   SDL_TESTS_LINK_SHARED       (Wanted: OFF): OFF
+--   SDL_UNINSTALL               (Wanted: OFF): OFF
+--   SDL_VIRTUAL_JOYSTICK        (Wanted: ON): ON
+--   SDL_VIVANTE                 (Wanted: OFF): OFF
+--   SDL_VULKAN                  (Wanted: ON): ON
+--   SDL_WASAPI                  (Wanted: OFF): OFF
+--   SDL_WAYLAND                 (Wanted: OFF): OFF
+--   SDL_WAYLAND_LIBDECOR        (Wanted: OFF): OFF
+--   SDL_WAYLAND_LIBDECOR_SHARED (Wanted: OFF): OFF
+--   SDL_WAYLAND_SHARED          (Wanted: OFF): OFF
+--   SDL_X11                     (Wanted: OFF): OFF
+--   SDL_X11_SHARED              (Wanted: OFF): OFF
+--   SDL_X11_XCURSOR             (Wanted: OFF): OFF
+--   SDL_X11_XDBE                (Wanted: OFF): OFF
+--   SDL_X11_XFIXES              (Wanted: OFF): OFF
+--   SDL_X11_XINPUT              (Wanted: OFF): OFF
+--   SDL_X11_XRANDR              (Wanted: OFF): OFF
+--   SDL_X11_XSCRNSAVER          (Wanted: OFF): OFF
+--   SDL_X11_XSHAPE              (Wanted: OFF): OFF
+--   SDL_X11_XSYNC               (Wanted: OFF): OFF
+--   SDL_X11_XTEST               (Wanted: OFF): OFF
+--   SDL_XINPUT                  (Wanted: OFF): OFF
+-- 
+--  Build Shared Library: OFF
+--  Build Static Library: ON
+-- 
+-- Enabled backends:
+--   Video drivers: android dummy offscreen
+--   Render drivers: gpu ogl_es2 vulkan
+--   GPU drivers: openxr vulkan
+--   Audio drivers: aaudio disk dummy opensles
+--   Joystick drivers: android hidapi virtual
+--   Camera drivers: android dummy
+-- 
+-- If something was not detected, although the libraries
+-- were installed, then make sure you have set the
+-- CMAKE_C_FLAGS and CMAKE_PREFIX_PATH CMake variables correctly.
+-- 
+-- CMAKE_BUILD_TYPE = Release
+-- VERSION = 3.1.90, BUILD = 20260918
+-- 64-bit build (arm64)
+-- CMAKE_INSTALL_PREFIX = /opt/ARMSX2Android
+-- CMAKE_INSTALL_BINDIR = bin (/opt/ARMSX2Android/bin)
+-- CMAKE_INSTALL_DATAROOTDIR = share (/opt/ARMSX2Android/share)
+-- CMAKE_INSTALL_DOCDIR = share/doc/ARMSX2Android (/opt/ARMSX2Android/share/doc/ARMSX2Android)
+-- CMAKE_INSTALL_INCLUDEDIR = include (/opt/ARMSX2Android/include)
+-- CMAKE_INSTALL_LIBDIR = lib (/opt/ARMSX2Android/lib)
+-- CMAKE_INSTALL_MANDIR = share/man (/opt/ARMSX2Android/share/man)
+-- Shared libraries disabled (ENABLE_SHARED = 0)
+-- Static libraries enabled (ENABLE_STATIC = 1)
+-- Arithmetic decoding support enabled (WITH_ARITH_DEC = 1)
+-- Arithmetic encoding support enabled (WITH_ARITH_ENC = 1)
+-- TurboJPEG API library disabled (WITH_TURBOJPEG = 0)
+-- TurboJPEG Java Native Access interfaces (TurboJPEG/JNA) disabled
+   (WITH_JNA = )
+-- Command-line tools enabled (WITH_TOOLS = 1)
+-- Regression tests enabled (WITH_TESTS = 1)
+-- Emulating libjpeg API/ABI v6.2 (WITH_JPEG7 = 0, WITH_JPEG8 = 0)
+-- libjpeg API shared library version = 62.4.0
+-- Compiler flags = -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -O3 -DNDEBUG 
+-- Linker flags = -static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments   -Wl,--gc-sections 
+-- HIDDEN = __attribute__((visibility("hidden")))
+-- INLINE = __inline__ __attribute__((always_inline)) (FORCE_INLINE = 1)
+-- THREAD_LOCAL = __thread
+-- Linker supports GNU-style version scripts
+-- CMAKE_EXECUTABLE_SUFFIX = 
+-- SIMD extensions: ARM64 (WITH_SIMD = 1)
+-- System-supplied libspng disabled (WITH_SYSTEM_SPNG = 0)
+-- System-supplied zlib disabled (WITH_SYSTEM_ZLIB = 0)
+-- FLOATTEST8 = fp-contract
+-- FLOATTEST12 = fp-contract
+-- Building for target architecture: aarch64
+-- Using standard libconf header: /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/platforms/android/app/src/main/cpp/3rdparty/libpng/pnglibconf.h.prebuilt
+-- Could NOT find OpenGL (missing: OPENGL_opengl_LIBRARY OPENGL_glx_LIBRARY OPENGL_INCLUDE_DIR) 
+-- Performing Test WEBP_HAVE_FLAG_AVX2
+-- Performing Test WEBP_HAVE_FLAG_AVX2 - Failed
+-- Performing Test WEBP_HAVE_FLAG_AVX2
+-- Performing Test WEBP_HAVE_FLAG_AVX2 - Failed
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Performing Test WEBP_HAVE_FLAG_SSE41
+-- Performing Test WEBP_HAVE_FLAG_SSE41 - Failed
+-- Performing Test WEBP_HAVE_FLAG_SSE41
+-- Performing Test WEBP_HAVE_FLAG_SSE41 - Failed
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Performing Test WEBP_HAVE_FLAG_SSE2
+-- Performing Test WEBP_HAVE_FLAG_SSE2 - Failed
+-- Performing Test WEBP_HAVE_FLAG_SSE2
+-- Performing Test WEBP_HAVE_FLAG_SSE2 - Failed
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Performing Test WEBP_HAVE_FLAG_MIPS32
+-- Performing Test WEBP_HAVE_FLAG_MIPS32 - Failed
+-- Performing Test WEBP_HAVE_FLAG_MIPS32
+-- Performing Test WEBP_HAVE_FLAG_MIPS32 - Failed
+-- Performing Test WEBP_HAVE_FLAG_MIPS_DSP_R2
+-- Performing Test WEBP_HAVE_FLAG_MIPS_DSP_R2 - Failed
+-- Performing Test WEBP_HAVE_FLAG_MIPS_DSP_R2
+-- Performing Test WEBP_HAVE_FLAG_MIPS_DSP_R2 - Failed
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Performing Test WEBP_HAVE_FLAG_NEON
+-- Performing Test WEBP_HAVE_FLAG_NEON - Success
+-- Performing Test WEBP_HAVE_FLAG_MSA
+-- Performing Test WEBP_HAVE_FLAG_MSA - Failed
+-- Performing Test WEBP_HAVE_FLAG_MSA
+-- Performing Test WEBP_HAVE_FLAG_MSA - Failed
+-- Performing Test HAS_COMPILE_FLAG
+-- Performing Test HAS_COMPILE_FLAG - Failed
+-- Creating build script for LZ4 version: 1.10.0
+-- Oboe: Data conversion is ENABLED.
+-- Shaderc: build type is "Release".
+-- Configuring Shaderc to avoid building tests.
+-- Configuring Shaderc to avoid building examples.
+-- Configuring Shaderc to avoid building executables.
+-- Configuring Shaderc to avoid checking copyrights.
+-- asciidoctor was not found - no documentation will be generated
+CMake Warning (policy) at 3rdparty/shaderc/cmake/setup_build.cmake:17 (find_package):
+  Policy CMP0148 is not set: The FindPythonInterp and FindPythonLibs modules
+  are removed.  Run "cmake --help-policy CMP0148" for policy details.  Use
+  the cmake_policy command to set the policy and suppress this warning.
+Call Stack (most recent call first):
+  3rdparty/shaderc/cmake/setup_build.cmake:49 (find_host_package)
+  3rdparty/shaderc/CMakeLists.txt:79 (include)
+This warning is for project developers.  Use -Wno-author or -Wno-policy to
+suppress it.
+
+-- optimizer enabled
+CMake Warning (deprecated) at 3rdparty/libzip/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+This warning is for project developers.  Use -Wno-author or -Wno-deprecated
+to suppress it.
+
+-- {fmt} version: 12.1.0
+-- Build type: Release
+Using precompiled headers.
+-- librashader: cargo not found -> RetroArch shader support DISABLED. Install Rust (https://rustup.rs) to enable it.
+-- Discord Social SDK not supplied (DISCORD_SDK_DIR unset) — presence/friends compiled out
+-- Configuring done (9.0s)
+-- Generating done (2.9s)
+-- Build files have been written to: /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/build/android-arm64-v8a
+[1;34m[armsx2][0m Building pcsx2-libretro (-j8)
+[0/2] Re-checking globbed directories...
+[1/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jpeg_nbits.c.o
+[2/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jmemnobs.c.o
+[3/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jidctred-8.c.o
+[4/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jidctred-12.c.o
+[5/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jfdctfst-12.c.o
+[6/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jmemmgr.c.o
+[7/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/imKStoUCS.c.o
+[8/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jfdctint-8.c.o
+[9/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/e_exp.c.o
+[10/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jfdctint-12.c.o
+[11/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_windowevents.c.o
+[12/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jidctflt-8.c.o
+[13/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jidctflt-12.c.o
+[14/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jidctfst-8.c.o
+[15/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jidctfst-12.c.o
+[16/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jutils-8.c.o
+[17/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jutils-12.c.o
+[18/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jquant1-8.c.o
+[19/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jquant1-12.c.o
+[20/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jaricom.c.o
+[21/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jutils-16.c.o
+[22/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jquant2-8.c.o
+[23/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jcarith.c.o
+[24/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jdarith.c.o
+[25/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jidctint-8.c.o
+[26/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jidctint-12.c.o
+[27/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jquant2-12.c.o
+[28/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jcgray-neon.c.o
+[29/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jcsample-neon.c.o
+[30/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jcphuff-neon.c.o
+[31/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jfdctfst-neon.c.o
+[32/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/aarch64/jchuff-neon.c.o
+[33/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jdsample-neon.c.o
+[34/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jccolor-neon.c.o
+[35/1690] Generate language specific header for DebugInfo.
+[36/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jdcolor-neon.c.o
+[37/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jfdctint-neon.c.o
+[38/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jidctfst-neon.c.o
+[39/1690] Generate language specific header for OpenCLDebugInfo100.
+[40/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jidctint-neon.c.o
+[41/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/consoleinfo.c.o
+[42/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jidctred-neon.c.o
+[43/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/format.c.o
+[44/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/XzIn.c.o
+[45/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jdmerge-neon.c.o
+[46/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/condset.c.o
+[47/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/logic-aarch64.cc.o
+[48/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/XzEnc.c.o
+[49/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/pointer-auth-aarch64.cc.o
+[50/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/runtime.c.o
+[51/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/richpresence.c.o
+[52/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/rc_validate.c.o
+[53/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/code-buffer-vixl.cc.o
+[54/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/common/debug.c.o
+[55/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/compiler-intrinsics-vixl.cc.o
+[56/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/common/error_private.c.o
+[57/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/utils-vixl.cc.o
+[58/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/common/entropy_common.c.o
+[59/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/common/threading.c.o
+[60/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/registers-aarch64.cc.o
+[61/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/operands-aarch64.cc.o
+[62/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/common/pool.c.o
+[63/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/common/fse_decompress.c.o
+[64/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/common/xxhash.c.o
+[65/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/common/zstd_common.c.o
+[66/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/cpu-features.cc.o
+[67/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/hist.c.o
+[68/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/fse_compress.c.o
+[69/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/zstd_compress_literals.c.o
+[70/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/zstd_compress_sequences.c.o
+[71/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/zstd_compress_superblock.c.o
+[72/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/huf_compress.c.o
+[73/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/zstd_ldm.c.o
+[74/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/zstd_preSplit.c.o
+[75/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/zstd_double_fast.c.o
+[76/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/macro-assembler-aarch64.cc.o
+[77/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/macro-assembler-sve-aarch64.cc.o
+[78/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/zstdmt_compress.c.o
+[79/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/decompress/zstd_ddict.c.o
+[80/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/zstd_fast.c.o
+[81/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/zstd_compress.c.o
+[82/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/zstd_opt.c.o
+[83/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/dictBuilder/cover.c.o
+[84/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/dictBuilder/fastcover.c.o
+[85/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/decompress/zstd_decompress.c.o
+[86/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftbbox.c.o
+[87/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/decompress/huf_decompress.c.o
+[88/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftbdf.c.o
+[89/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftcid.c.o
+[90/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftfstype.c.o
+[91/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/decompress/zstd_decompress_block.c.o
+[92/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/dictBuilder/zdict.c.o
+[93/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/dictBuilder/divsufsort.c.o
+[94/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftbitmap.c.o
+[95/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftgasp.c.o
+[96/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftglyph.c.o
+[97/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftgxval.c.o
+[98/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftinit.c.o
+[99/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftotval.c.o
+[100/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftmm.c.o
+[101/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftpatent.c.o
+[102/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftpfr.c.o
+[103/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftsynth.c.o
+[104/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftwinfnt.c.o
+[105/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/fttype1.c.o
+[106/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/bzip2/ftbzip2.c.o
+[107/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftstroke.c.o
+[108/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/gzip/ftgzip.c.o
+[109/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/bdf/bdf.c.o
+[110/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/cid/type1cid.c.o
+[111/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/cache/ftcache.c.o
+[112/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/hvf/hvf.c.o
+[113/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/lzw/ftlzw.c.o
+[114/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftbase.c.o
+[115/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/autofit/autofit.c.o
+[116/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/pcf/pcf.c.o
+[117/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/psnames/psnames.c.o
+[118/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/cff/cff.c.o
+[119/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/raster/raster.c.o
+[120/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/pfr/pfr.c.o
+[121/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/svg/svg.c.o
+[122/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/pshinter/pshinter.c.o
+[123/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/smooth/smooth.c.o
+[124/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/sdf/sdf.c.o
+[125/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/winfonts/winfnt.c.o
+[126/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/type42/type42.c.o
+[127/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/base/ftdebug.c.o
+[128/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/builds/unix/ftsystem.c.o
+[129/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/type1/type1.c.o
+[130/1690] Building C object 3rdparty/plutovg/CMakeFiles/plutovg.dir/source/plutovg-canvas.c.o
+[131/1690] Building C object 3rdparty/zstd/build/cmake/lib/CMakeFiles/libzstd_static.dir/__/__/__/lib/compress/zstd_lazy.c.o
+[132/1690] Building C object 3rdparty/plutovg/CMakeFiles/plutovg.dir/source/plutovg-matrix.c.o
+[133/1690] Building C object 3rdparty/plutovg/CMakeFiles/plutovg.dir/source/plutovg-paint.c.o
+[134/1690] Building C object 3rdparty/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.o
+[135/1690] Linking C static library 3rdparty/zstd/build/cmake/lib/libzstd.a
+[136/1690] Building C object 3rdparty/plutovg/CMakeFiles/plutovg.dir/source/plutovg-rasterize.c.o
+[137/1690] Building C object 3rdparty/plutovg/CMakeFiles/plutovg.dir/source/plutovg-font.c.o
+[138/1690] Building C object 3rdparty/plutovg/CMakeFiles/plutovg.dir/source/plutovg-ft-math.c.o
+[139/1690] Building C object 3rdparty/plutovg/CMakeFiles/plutovg.dir/source/plutovg-path.c.o
+[140/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/psaux/psaux.c.o
+[141/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/sfnt/sfnt.c.o
+[142/1690] Building C object 3rdparty/plutovg/CMakeFiles/plutovg.dir/source/plutovg-ft-raster.c.o
+[143/1690] Building C object 3rdparty/plutovg/CMakeFiles/plutovg.dir/source/plutovg-ft-stroker.c.o
+[144/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/SDL_assert.c.o
+[145/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/SDL_error.c.o
+[146/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/SDL.c.o
+[147/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/SDL_guid.c.o
+[148/1690] Building C object 3rdparty/freetype/CMakeFiles/freetype.dir/src/truetype/truetype.c.o
+[149/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/SDL_hints.c.o
+[150/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/SDL_hashtable.c.o
+[151/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/SDL_list.c.o
+[152/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/SDL_log.c.o
+[153/1690] Linking C static library 3rdparty/freetype/libfreetype.a
+[154/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/atomic/SDL_atomic.c.o
+[155/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/SDL_utils.c.o
+[156/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/SDL_properties.c.o
+[157/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/atomic/SDL_spinlock.c.o
+[158/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/SDL_audiodev.c.o
+[159/1690] Building C object 3rdparty/plutosvg/CMakeFiles/plutosvg.dir/source/plutosvg.c.o
+[160/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/SDL_audioqueue.c.o
+[161/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/SDL_audioresample.c.o
+[162/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/SDL_audiotypecvt.c.o
+[163/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/SDL_mixer.c.o
+[164/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/core/SDL_core_unsupported.c.o
+[165/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/SDL_audio.c.o
+[166/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/dynapi/SDL_dynapi.c.o
+[167/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/camera/SDL_camera.c.o
+[168/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/SDL_wave.c.o
+[169/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/SDL_audiocvt.c.o
+[170/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_clipboardevents.c.o
+[171/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/cpuinfo/SDL_cpuinfo.c.o
+[172/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_categories.c.o
+[173/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_displayevents.c.o
+[174/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_dropevents.c.o
+[175/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_eventwatch.c.o
+[176/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_keysym_to_keycode.c.o
+[177/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_keymap.c.o
+[178/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_keyboard.c.o
+[179/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_events.c.o
+[180/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_keysym_to_scancode.c.o
+[181/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_quit.c.o
+[182/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_scancode_tables.c.o
+[183/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_pen.c.o
+[184/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/jquanti-neon.c.o
+[185/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/e_atan2.c.o
+[186/1690] Building C object 3rdparty/libpng/CMakeFiles/png_static.dir/pngwio.c.o
+[187/1690] Building C object 3rdparty/libpng/CMakeFiles/png_static.dir/pngtrans.c.o
+[188/1690] Building C object 3rdparty/libpng/CMakeFiles/png_static.dir/pngset.c.o
+[189/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/events/SDL_mouse.c.o
+[190/1690] Building C object 3rdparty/libwebp/CMakeFiles/sharpyuv.dir/sharpyuv/sharpyuv_sse2.c.o
+[191/1690] Building C object 3rdparty/libpng/CMakeFiles/png_static.dir/pngwtran.c.o
+[192/1690] Building C object 3rdparty/libwebp/CMakeFiles/cpufeatures-webp.dir/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/sources/android/cpufeatures/cpu-features.c.o
+[193/1690] Building C object 3rdparty/libpng/CMakeFiles/png_static.dir/pngwrite.c.o
+[194/1690] Building C object 3rdparty/libpng/CMakeFiles/png_static.dir/pngsimd.c.o
+[195/1690] Building C object 3rdparty/libwebp/CMakeFiles/sharpyuv.dir/sharpyuv/sharpyuv_cpu.c.o
+[196/1690] Building C object 3rdparty/libwebp/CMakeFiles/sharpyuv.dir/sharpyuv/sharpyuv_csp.c.o
+[197/1690] Linking C static library 3rdparty/libwebp/libcpufeatures-webp.a
+[198/1690] Building C object 3rdparty/libwebp/CMakeFiles/sharpyuv.dir/sharpyuv/sharpyuv_dsp.c.o
+[199/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/LzFindOpt.c.o
+[200/1690] Building C object 3rdparty/libwebp/CMakeFiles/sharpyuv.dir/sharpyuv/sharpyuv_neon.c.o
+[201/1690] Building C object 3rdparty/libwebp/CMakeFiles/sharpyuv.dir/sharpyuv/sharpyuv_gamma.c.o
+[202/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Lzma2Dec.c.o
+[203/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Lzma86Dec.c.o
+[204/1690] Building C object 3rdparty/libpng/CMakeFiles/png_static.dir/pngwutil.c.o
+[205/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/alpha_processing_neon.c.o
+[206/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Lzma2Enc.c.o
+[207/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Lzma2DecMt.c.o
+[208/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Lzma86Enc.c.o
+[209/1690] Building C object 3rdparty/plutovg/CMakeFiles/plutovg.dir/source/plutovg-surface.c.o
+[210/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/LzmaLib.c.o
+[211/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/MtCoder.c.o
+[212/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/dec_neon.c.o
+[213/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Ppmd7Dec.c.o
+[214/1690] Linking C static library 3rdparty/plutovg/libplutovg.a
+[215/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Ppmd7.c.o
+[216/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Ppmd7Enc.c.o
+[217/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/MtDec.c.o
+[218/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Sha256.c.o
+[219/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/LzmaDec.c.o
+[220/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Sha256Opt.c.o
+[221/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Sort.c.o
+[222/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/XzCrc64.c.o
+[223/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Xz.c.o
+[224/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Threads.c.o
+[225/1690] Building C object 3rdparty/libchdr/CMakeFiles/libchdr.dir/src/libchdr_bitstream.c.o
+[226/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/XzCrc64Opt.c.o
+[227/1690] Linking C static library 3rdparty/plutosvg/libplutosvg.a
+[228/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/SwapBytes.c.o
+[229/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/lboard.c.o
+[230/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/operand.c.o
+[231/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/memref.c.o
+[232/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/LzmaEnc.c.o
+[233/1690] Building C object 3rdparty/libchdr/CMakeFiles/libchdr.dir/src/libchdr_cdrom.c.o
+[234/1690] Building C object 3rdparty/libchdr/CMakeFiles/libchdr.dir/src/libchdr_huffman.c.o
+[235/1690] Building CXX object 3rdparty/discord-rpc/CMakeFiles/discord-rpc.dir/src/connection_unix.cpp.o
+[236/1690] Building CXX object 3rdparty/discord-rpc/CMakeFiles/discord-rpc.dir/src/discord_register_linux.cpp.o
+[237/1690] Building C object 3rdparty/libchdr/CMakeFiles/libchdr.dir/src/libchdr_chd.c.o
+[238/1690] Building C object 3rdparty/cubeb/CMakeFiles/cubeb.dir/src/cubeb_strings.c.o
+[239/1690] Building CXX object 3rdparty/discord-rpc/CMakeFiles/discord-rpc.dir/src/serialization.cpp.o
+[240/1690] Building CXX object 3rdparty/discord-rpc/CMakeFiles/discord-rpc.dir/src/rpc_connection.cpp.o
+[241/1690] Building C object 3rdparty/cubeb/CMakeFiles/speex.dir/subprojects/speex/resample.c.o
+[242/1690] Building C object 3rdparty/demangler/CMakeFiles/demanglegnu.dir/src/alloca.c.o
+[243/1690] Building CXX object 3rdparty/cubeb/CMakeFiles/cubeb.dir/src/cubeb_utils.cpp.o
+[244/1690] Building C object 3rdparty/demangler/CMakeFiles/demanglegnu.dir/src/dyn-string.c.o
+[245/1690] Building CXX object 3rdparty/cubeb/CMakeFiles/cubeb.dir/src/cubeb_resampler.cpp.o
+[246/1690] Building C object 3rdparty/demangler/CMakeFiles/demanglegnu.dir/src/safe-ctype.c.o
+[247/1690] Building CXX object 3rdparty/cubeb/CMakeFiles/cubeb.dir/src/cubeb_log.cpp.o
+[248/1690] Building CXX object 3rdparty/discord-rpc/CMakeFiles/discord-rpc.dir/src/discord_rpc.cpp.o
+[249/1690] Building C object 3rdparty/demangler/CMakeFiles/demanglegnu.dir/src/xexit.c.o
+[250/1690] Building C object 3rdparty/demangler/CMakeFiles/demanglegnu.dir/src/xmalloc.c.o
+[251/1690] Building C object 3rdparty/demangler/CMakeFiles/demanglegnu.dir/src/xmemdup.c.o
+[252/1690] Building C object 3rdparty/demangler/CMakeFiles/demanglegnu.dir/src/xstrdup.c.o
+[253/1690] Building C object 3rdparty/demangler/CMakeFiles/demanglegnu.dir/src/d-demangle.c.o
+[254/1690] Building C object 3rdparty/demangler/CMakeFiles/demanglegnu.dir/src/rust-demangle.c.o
+[255/1690] Building C object 3rdparty/demangler/CMakeFiles/demanglegnu.dir/src/cp-demangle.c.o
+[256/1690] Building C object 3rdparty/demangler/CMakeFiles/demanglegnu.dir/src/cplus-dem.c.o
+[257/1690] Building C object 3rdparty/libchdr/CMakeFiles/libchdr.dir/src/libchdr_flac.c.o
+[258/1690] Linking C static library 3rdparty/demangler/libdemanglegnu.a
+[259/1690] Building CXX object 3rdparty/ccc/CMakeFiles/ccc.dir/src/ccc/importer_flags.cpp.o
+[260/1690] Building CXX object 3rdparty/ccc/CMakeFiles/ccc.dir/src/ccc/elf_symtab.cpp.o
+[261/1690] Building CXX object 3rdparty/ccc/CMakeFiles/ccc.dir/src/ccc/ast.cpp.o
+[262/1690] Building CXX object 3rdparty/ccc/CMakeFiles/ccc.dir/src/ccc/elf.cpp.o
+[263/1690] Building CXX object 3rdparty/ccc/CMakeFiles/ccc.dir/src/ccc/mdebug_analysis.cpp.o
+[264/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/cpu-aarch64.cc.o
+[265/1690] Building CXX object 3rdparty/ccc/CMakeFiles/ccc.dir/src/ccc/mdebug_importer.cpp.o
+[266/1690] Building CXX object common/CMakeFiles/common.dir/FastJmp.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/FastJmp.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/FastJmp.h:5:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[267/1690] Building CXX object common/CMakeFiles/common.dir/Console.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Console.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Console.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[268/1690] Building CXX object common/CMakeFiles/common.dir/DynamicLibrary.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/DynamicLibrary.cpp:5:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Assertions.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[269/1690] Building CXX object common/CMakeFiles/common.dir/CrashHandler.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/CrashHandler.cpp:4:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[270/1690] Building CXX object common/CMakeFiles/common.dir/Error.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Error.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Error.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[271/1690] Building CXX object common/CMakeFiles/common.dir/HostVFS.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/HostVFS.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/HostVFS.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[272/1690] Building CXX object common/CMakeFiles/common.dir/MemoryInterface.cpp.o
+[273/1690] Building CXX object common/CMakeFiles/common.dir/HostSys.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/HostSys.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/HostSys.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[274/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/assembler-sve-aarch64.cc.o
+[275/1690] Building CXX object common/CMakeFiles/common.dir/MD5Digest.cpp.o
+[276/1690] Building CXX object common/CMakeFiles/common.dir/Image.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Image.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Image.h:5:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[277/1690] Building CXX object common/CMakeFiles/common.dir/HTTPDownloader.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/HTTPDownloader.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/HTTPDownloader.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[278/1690] Building CXX object common/CMakeFiles/common.dir/FileSystem.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/FileSystem.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/FileSystem.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[279/1690] Building CXX object common/CMakeFiles/common.dir/PmuCounters.cpp.o
+[280/1690] Building CXX object common/CMakeFiles/common.dir/Perf.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Perf.cpp:5:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[281/1690] Building CXX object common/CMakeFiles/common.dir/ReadbackSpinManager.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/ReadbackSpinManager.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/ReadbackSpinManager.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[282/1690] Building CXX object common/CMakeFiles/common.dir/ProgressCallback.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/ProgressCallback.cpp:6:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Assertions.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[283/1690] Building CXX object common/CMakeFiles/common.dir/SmallString.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/SmallString.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/SmallString.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[284/1690] Building CXX object common/CMakeFiles/common.dir/Semaphore.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Semaphore.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Threading.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[285/1690] Building CXX object common/CMakeFiles/common.dir/Timer.cpp.o
+[286/1690] Building CXX object common/CMakeFiles/common.dir/TextureDecompress.cpp.o
+[287/1690] Building CXX object common/CMakeFiles/common.dir/WindowInfo.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/WindowInfo.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/WindowInfo.h:5:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[288/1690] Building CXX object common/CMakeFiles/common.dir/SettingsWrapper.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/SettingsWrapper.cpp:6:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/SettingsWrapper.h:6:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/MemorySettingsInterface.h:5:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/HeterogeneousContainers.h:10:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[289/1690] Building CXX object common/CMakeFiles/common.dir/MemorySettingsInterface.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/MemorySettingsInterface.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/MemorySettingsInterface.h:5:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/HeterogeneousContainers.h:10:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[290/1690] Building CXX object common/CMakeFiles/common.dir/WAVWriter.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/WAVWriter.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/WAVWriter.h:5:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[291/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/filesystem/SDL_filesystem.c.o
+[292/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/gpu/xr/SDL_openxrdyn.c.o
+[293/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/gpu/xr/SDL_gpu_openxr.c.o
+[294/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/gpu/SDL_gpu.c.o
+[295/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/haptic/SDL_haptic.c.o
+[296/1690] Building CXX object common/CMakeFiles/common.dir/StringUtil.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/StringUtil.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Assertions.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[297/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/io/SDL_asyncio.c.o
+[298/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/hidapi/SDL_hidapi.c.o
+[299/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/io/generic/SDL_asyncio_generic.c.o
+[300/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/SDL_steam_virtual_gamepad.c.o
+[301/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/io/SDL_iostream.c.o
+[302/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/controller_type.c.o
+[303/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/locale/SDL_locale.c.o
+[304/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/main/SDL_main_callbacks.c.o
+[305/1690] Building CXX object common/CMakeFiles/common.dir/YAML.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/YAML.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/YAML.h:6:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Error.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[306/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/main/SDL_runapp.c.o
+[307/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/SDL_gamepad.c.o
+[308/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/misc/SDL_libusb.c.o
+[309/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/misc/SDL_url.c.o
+[310/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/power/SDL_power.c.o
+[311/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/SDL_joystick.c.o
+[312/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/SDL_render_unsupported.c.o
+[313/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/SDL_yuv_sw.c.o
+[314/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/direct3d/SDL_render_d3d.c.o
+[315/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/direct3d/SDL_shaders_d3d.c.o
+[316/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/direct3d11/SDL_render_d3d11.c.o
+[317/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/direct3d11/SDL_shaders_d3d11.c.o
+[318/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/direct3d12/SDL_render_d3d12.c.o
+[319/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/direct3d12/SDL_shaders_d3d12.c.o
+[320/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/gpu/SDL_pipeline_gpu.c.o
+[321/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/gpu/SDL_shaders_gpu.c.o
+[322/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/ngage/SDL_render_ngage.c.o
+[323/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/opengl/SDL_render_gl.c.o
+[324/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/gpu/SDL_render_gpu.c.o
+[325/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/opengl/SDL_shaders_gl.c.o
+[326/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/SDL_render.c.o
+[327/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/ps2/SDL_render_ps2.c.o
+[328/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/psp/SDL_render_psp.c.o
+[329/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/opengles2/SDL_shaders_gles2.c.o
+[330/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/opengles2/SDL_render_gles2.c.o
+[331/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/software/SDL_drawpoint.c.o
+[332/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/software/SDL_blendpoint.c.o
+[333/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/software/SDL_drawline.c.o
+[334/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/software/SDL_blendfillrect.c.o
+[335/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/vitagxm/SDL_render_vita_gxm_memory.c.o
+[336/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/software/SDL_render_sw.c.o
+[337/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/vitagxm/SDL_render_vita_gxm.c.o
+[338/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/vitagxm/SDL_render_vita_gxm_tools.c.o
+[339/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/vulkan/SDL_shaders_vulkan.c.o
+[340/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/software/SDL_triangle.c.o
+[341/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/sensor/SDL_sensor.c.o
+[342/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_crc16.c.o
+[343/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_crc32.c.o
+[344/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_getenv.c.o
+[345/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/software/SDL_blendline.c.o
+[346/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_memcpy.c.o
+[347/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_memmove.c.o
+[348/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_malloc.c.o
+[349/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_memset.c.o
+[350/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_iconv.c.o
+[351/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/render/vulkan/SDL_render_vulkan.c.o
+[352/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_mslibc.c.o
+[353/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_murmur3.c.o
+[354/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_random.c.o
+[355/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_stdlib.c.o
+[356/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_qsort.c.o
+[357/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_strtokr.c.o
+[358/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/stdlib/SDL_string.c.o
+[359/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/storage/SDL_storage.c.o
+[360/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/thread/SDL_thread.c.o
+[361/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/time/SDL_time.c.o
+[362/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_blit.c.o
+[363/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/timer/SDL_timer.c.o
+[364/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_1.c.o
+[365/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_0.c.o
+[366/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_copy.c.o
+[367/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_RLEaccel.c.o
+[368/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_A.c.o
+[369/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_N.c.o
+[370/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_clipboard.c.o
+[371/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_bmp.c.o
+[372/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_fillrect.c.o
+[373/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_slow.c.o
+[374/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_egl.c.o
+[375/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_rotate.c.o
+[376/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_rect.c.o
+[377/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_pixels.c.o
+[378/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_stretch.c.o
+[379/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_video_unsupported.c.o
+[380/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_vulkan_utils.c.o
+[381/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/yuv2rgb/yuv_rgb_lsx.c.o
+[382/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_surface.c.o
+[383/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/yuv2rgb/yuv_rgb_sse.c.o
+[384/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_video.c.o
+[385/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_yuv.c.o
+[386/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/e_fmod.c.o
+[387/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/e_log.c.o
+[388/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_blit_auto.c.o
+[389/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/e_log10.c.o
+[390/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/e_pow.c.o
+[391/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/e_rem_pio2.c.o
+[392/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/yuv2rgb/yuv_rgb_std.c.o
+[393/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdecode.dir/src/dec/alpha_dec.c.o
+[394/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/rescaler.c.o
+[395/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/7zCrcOpt.c.o
+[396/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/k_cos.c.o
+[397/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/e_sqrt.c.o
+[398/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/7zFile.c.o
+[399/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/7zStream.c.o
+[400/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/7zDec.c.o
+[401/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Aes.c.o
+[402/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Alloc.c.o
+[403/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Bcj2.c.o
+[404/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Bcj2Enc.c.o
+[405/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/AesOpt.c.o
+[406/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/BraIA64.c.o
+[407/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/CpuArch.c.o
+[408/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Bra86.c.o
+[409/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/DllSecur.c.o
+[410/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Bra.c.o
+[411/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/SDL_stb.c.o
+[412/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/cpu_detect_x86.cpp.o
+[413/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/Delta.c.o
+[414/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/AAFilter.cpp.o
+[415/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/FIFOSampleBuffer.cpp.o
+[416/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/LzFindMt.c.o
+[417/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/FIRFilter.cpp.o
+[418/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/InterpolateLinear.cpp.o
+[419/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/InterpolateCubic.cpp.o
+[420/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/InterpolateShannon.cpp.o
+[421/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/mmx_optimized.cpp.o
+[422/1690] Building C object 3rdparty/lzma/CMakeFiles/pcsx2-lzma.dir/src/LzFind.c.o
+[423/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/RateTransposer.cpp.o
+[424/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/sse_optimized.cpp.o
+[425/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/PeakFinder.cpp.o
+[426/1690] Generating zip_err_str.c
+[427/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/SoundTouch.cpp.o
+[428/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/TDStretch.cpp.o
+[429/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_add_dir.c.o
+[430/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_add.c.o
+[431/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_add_entry.c.o
+[432/1690] Building CXX object 3rdparty/soundtouch/CMakeFiles/pcsx2-soundtouch.dir/source/SoundTouch/BPMDetect.cpp.o
+[433/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_algorithm_deflate.c.o
+[434/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_buffer.c.o
+[435/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_file_common.c.o
+[436/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_file_stdio.c.o
+[437/1690] Building CXX object 3rdparty/imgui/CMakeFiles/imgui.dir/src/imgui_stdlib.cpp.o
+[438/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_delete.c.o
+[439/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_free.c.o
+[440/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_dir_add.c.o
+[441/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_close.c.o
+[442/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_discard.c.o
+[443/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_dirent.c.o
+[444/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_set_name.c.o
+[445/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_entry.c.o
+[446/1690] Linking CXX static library 3rdparty/soundtouch/libpcsx2-soundtouch.a
+[447/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_error.c.o
+[448/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_error_clear.c.o
+[449/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_error_get.c.o
+[450/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_error_get_sys_type.c.o
+[451/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_error_to_str.c.o
+[452/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_error_strerror.c.o
+[453/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_extra_field.c.o
+[454/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_fclose.c.o
+[455/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_extra_field_api.c.o
+[456/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_add.c.o
+[457/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_fdopen.c.o
+[458/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_error_get.c.o
+[459/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_error_clear.c.o
+[460/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_get_comment.c.o
+[461/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_get_external_attributes.c.o
+[462/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_get_offset.c.o
+[463/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_set_comment.c.o
+[464/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_replace.c.o
+[465/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_rename.c.o
+[466/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_set_encryption.c.o
+[467/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_set_external_attributes.c.o
+[468/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_set_mtime.c.o
+[469/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_file_strerror.c.o
+[470/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_fopen.c.o
+[471/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_fopen_index.c.o
+[472/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_fopen_encrypted.c.o
+[473/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_fread.c.o
+[474/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_fopen_index_encrypted.c.o
+[475/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_fseek.c.o
+[476/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_ftell.c.o
+[477/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_get_archive_comment.c.o
+[478/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_get_encryption_implementation.c.o
+[479/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_get_archive_flag.c.o
+[480/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_get_file_comment.c.o
+[481/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_get_name.c.o
+[482/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_get_num_entries.c.o
+[483/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_get_num_files.c.o
+[484/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_io_util.c.o
+[485/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_hash.c.o
+[486/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_libzip_version.c.o
+[487/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_name_locate.c.o
+[488/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_new.c.o
+[489/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_memdup.c.o
+[490/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_realloc.c.o
+[491/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_pkware.c.o
+[492/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_rename.c.o
+[493/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_progress.c.o
+[494/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_replace.c.o
+[495/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_open.c.o
+[496/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_set_archive_flag.c.o
+[497/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_set_default_password.c.o
+[498/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_set_archive_comment.c.o
+[499/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_error.c.o
+[500/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_set_file_compression.c.o
+[501/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_set_file_comment.c.o
+[502/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_function.c.o
+[503/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_crc.c.o
+[504/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_get_file_attributes.c.o
+[505/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_is_deleted.c.o
+[506/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_layered.c.o
+[507/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_open.c.o
+[508/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_pass_to_lower_layer.c.o
+[509/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_pkware_decode.c.o
+[510/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_pkware_encode.c.o
+[511/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_read.c.o
+[512/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_remove.c.o
+[513/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_rollback_write.c.o
+[514/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_seek.c.o
+[515/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_seek_write.c.o
+[516/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_tell.c.o
+[517/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_tell_write.c.o
+[518/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_stat.c.o
+[519/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_supports.c.o
+[520/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_write.c.o
+[521/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_stat.c.o
+[522/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_zip.c.o
+[523/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_zip_new.c.o
+[524/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_window.c.o
+[525/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_stat_index.c.o
+[526/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_stat_init.c.o
+[527/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_strerror.c.o
+[528/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_string.c.o
+[529/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_unchange.c.o
+[530/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_unchange_all.c.o
+[531/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_unchange_archive.c.o
+[532/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_unchange_data.c.o
+[533/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_utf-8.c.o
+[534/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_get_dostime.c.o
+[535/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/zip_err_str.c.o
+[536/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_source_file_stdio_named.c.o
+[537/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_algorithm_zstd.c.o
+[538/1690] Building C object 3rdparty/libzip/CMakeFiles/zip.dir/lib/zip_random_unix.c.o
+[539/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rapi/rc_api_user.c.o
+[540/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rapi/rc_api_info.c.o
+[541/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rapi/rc_api_runtime.c.o
+[542/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rapi/rc_api_editor.c.o
+[543/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/alloc.c.o
+[544/1690] Building CXX object 3rdparty/imgui/CMakeFiles/imgui.dir/src/imgui_widgets.cpp.o
+[545/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/trigger.c.o
+[546/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/condition.c.o
+[547/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rapi/rc_api_common.c.o
+[548/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/value.c.o
+[549/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rc_compat.c.o
+[550/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rc_util.c.o
+[551/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rcheevos/runtime_progress.c.o
+[552/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rhash/md5.c.o
+[553/1690] Building C object 3rdparty/cubeb/CMakeFiles/cubeb.dir/src/cubeb.c.o
+[554/1690] Linking CXX static library 3rdparty/discord-rpc/libdiscord-rpc.a
+[555/1690] Building CXX object 3rdparty/cubeb/CMakeFiles/cubeb.dir/src/cubeb_mixer.cpp.o
+[556/1690] Building C object 3rdparty/rcheevos/CMakeFiles/rcheevos.dir/src/rc_client.c.o
+[557/1690] Linking CXX static library 3rdparty/cubeb/libcubeb.a
+[558/1690] Linking C static library 3rdparty/rcheevos/librcheevos.a
+[559/1690] Building CXX object 3rdparty/ccc/CMakeFiles/ccc.dir/src/ccc/stabs_to_ast.cpp.o
+[560/1690] Building CXX object 3rdparty/ccc/CMakeFiles/ccc.dir/src/ccc/stabs.cpp.o
+[561/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/instructions-aarch64.cc.o
+[562/1690] Building CXX object 3rdparty/fmt/CMakeFiles/fmt.dir/src/os.cc.o
+[563/1690] Building CXX object common/CMakeFiles/common.dir/AlignedMalloc.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/AlignedMalloc.cpp:9:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/AlignedMalloc.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[564/1690] Building CXX object common/CMakeFiles/common.dir/Assertions.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Assertions.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Assertions.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[565/1690] Building CXX object common/CMakeFiles/common.dir/Linux/LnxHostSys.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Linux/LnxHostSys.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Assertions.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[566/1690] Building CXX object common/CMakeFiles/common.dir/Linux/LnxThreads.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Linux/LnxThreads.cpp:8:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Threading.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[567/1690] Building CXX object 3rdparty/fmt/CMakeFiles/fmt.dir/src/format.cc.o
+[568/1690] Linking CXX static library 3rdparty/fmt/libfmt.a
+[569/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/k_rem_pio2.c.o
+[570/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/k_sin.c.o
+[571/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/k_tan.c.o
+[572/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_atan.c.o
+[573/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_copysign.c.o
+[574/1690] Building CXX object common/CMakeFiles/common.dir/HTTPDownloaderAndroid.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/HTTPDownloaderAndroid.cpp:4:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/HTTPDownloaderAndroid.h:6:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/HTTPDownloader.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[575/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_cos.c.o
+[576/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_fabs.c.o
+[577/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_floor.c.o
+[578/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_isinf.c.o
+[579/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_isinff.c.o
+[580/1690] Building CXX object common/CMakeFiles/common.dir/Linux/LnxMisc.cpp.o
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/Linux/LnxMisc.cpp:5:
+In file included from /Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Console.h:6:
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/common/../common/Pcsx2Defs.h:95:9: warning: '__noreturn' macro redefined [-Wmacro-redefined]
+   95 | #define __noreturn __attribute__((noreturn))
+      |         ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/sys/cdefs.h:101:9: note: previous definition is here
+  101 | #define __noreturn __attribute__((__noreturn__))
+      |         ^
+1 warning generated.
+[581/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_isnan.c.o
+[582/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_isnanf.c.o
+[583/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_modf.c.o
+[584/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_scalbn.c.o
+[585/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_tan.c.o
+[586/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/dummy/SDL_dummyaudio.c.o
+[587/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/libm/s_sin.c.o
+[588/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/disk/SDL_diskaudio.c.o
+[589/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/camera/dummy/SDL_camera_dummy.c.o
+[590/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/dummy/SDL_nullevents.c.o
+[591/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/loadso/dlopen/SDL_sysloadso.c.o
+[592/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/virtual/SDL_virtualjoystick.c.o
+[593/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/dummy/SDL_nullframebuffer.c.o
+[594/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/dummy/SDL_nullvideo.c.o
+[595/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/misc/android/SDL_sysurl.c.o
+[596/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/openslES/SDL_openslES.c.o
+[597/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/audio/aaudio/SDL_aaudio.c.o
+[598/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/core/android/SDL_android.c.o
+[599/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/filesystem/android/SDL_sysfilesystem.c.o
+[600/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/filesystem/posix/SDL_sysfsops.c.o
+[601/1690] Building CXX object 3rdparty/ccc/CMakeFiles/ccc.dir/src/ccc/symbol_database.cpp.o
+[602/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/haptic/android/SDL_syshaptic.c.o
+[603/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_8bitdo.c.o
+[604/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_combined.c.o
+[605/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_flydigi.c.o
+[606/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_gamecube.c.o
+[607/1690] Building CXX object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/hidapi/android/hid.cpp.o
+[608/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_gamesir.c.o
+[609/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_luna.c.o
+[610/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_lg4ff.c.o
+[611/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_ps3.c.o
+[612/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_ps4.c.o
+[613/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_rumble.c.o
+[614/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_gip.c.o
+[615/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_shield.c.o
+[616/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_ps5.c.o
+[617/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_sinput.c.o
+[618/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_stadia.c.o
+[619/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_steam_hori.c.o
+[620/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_steam_triton.c.o
+[621/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_steam.c.o
+[622/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_steamdeck.c.o
+[623/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_switch2.c.o
+[624/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_xbox360.c.o
+[625/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/cpu-features-auditor-aarch64.cc.o
+[626/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_wii.c.o
+[627/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_switch.c.o
+[628/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_xbox360w.c.o
+[629/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_xboxone.c.o
+[630/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapi_zuiki.c.o
+[631/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_report_descriptor.c.o
+[632/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/haptic/hidapi/SDL_hidapihaptic.c.o
+[633/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/hidapi/SDL_hidapijoystick.c.o
+[634/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/power/android/SDL_syspower.c.o
+[635/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/haptic/hidapi/SDL_hidapihaptic_lg4ff.c.o
+[636/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/joystick/android/SDL_sysjoystick.c.o
+[637/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/locale/android/SDL_syslocale.c.o
+[638/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/time/unix/SDL_systime.c.o
+[639/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/timer/unix/SDL_systimer.c.o
+[640/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/android/SDL_androidclipboard.c.o
+[641/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/sensor/android/SDL_androidsensor.c.o
+/Users/kimhyungjun/Desktop/AI개발/OneEmu/cores/armsx2/src/platforms/android/app/src/main/cpp/3rdparty/sdl3/src/sensor/android/SDL_androidsensor.c:140:26: warning: 'ASensorManager_getInstance' is deprecated: first deprecated in Android 26 - Use ASensorManager_getInstanceForPackage instead [-Wdeprecated-declarations]
+  140 |     SDL_sensor_manager = ASensorManager_getInstance();
+      |                          ^
+/Users/kimhyungjun/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/android/sensor.h:751:17: note: 'ASensorManager_getInstance' has been explicitly marked deprecated here
+  751 | ASensorManager* ASensorManager_getInstance()
+      |                 ^
+1 warning generated.
+[642/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/android/SDL_androidgl.c.o
+[643/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/android/SDL_androidevents.c.o
+[644/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/camera/android/SDL_camera_android.c.o
+[645/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/android/SDL_androidkeyboard.c.o
+[646/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/android/SDL_androidmessagebox.c.o
+[647/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/android/SDL_androidpen.c.o
+[648/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/android/SDL_androidtouch.c.o
+[649/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/android/SDL_androidmouse.c.o
+[650/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/android/SDL_androidvideo.c.o
+[651/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/android/SDL_androidvulkan.c.o
+[652/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_sysmutex.c.o
+[653/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_systhread.c.o
+[654/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_syscond.c.o
+[655/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/android/SDL_androidwindow.c.o
+[656/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/arm/aarch64/jsimdcpu.c.o
+[657/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_systls.c.o
+[658/1690] Building C object 3rdparty/libjpeg-turbo/simd/CMakeFiles/simd.dir/jsimd.c.o
+[659/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_syssem.c.o
+[660/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/thread/pthread/SDL_sysrwlock.c.o
+[661/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/dialog/SDL_dialog.c.o
+[662/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/lossless_avx2.c.o
+[663/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/alpha_processing_sse41.c.o
+[664/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/dec_sse41.c.o
+[665/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/upsampling.c.o
+[666/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/lossless_sse41.c.o
+[667/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/upsampling_sse41.c.o
+[668/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/yuv_sse41.c.o
+[669/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/filters_sse2.c.o
+[670/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/dec_sse2.c.o
+[671/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/alpha_processing_sse2.c.o
+[672/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/lossless_sse2.c.o
+[673/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/rescaler_sse2.c.o
+[674/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdecode.dir/src/dec/buffer_dec.c.o
+[675/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdecode.dir/src/dec/quant_dec.c.o
+[676/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/yuv.c.o
+[677/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdecode.dir/src/dec/idec_dec.c.o
+[678/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdecode.dir/src/dec/frame_dec.c.o
+[679/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdecode.dir/src/dec/io_dec.c.o
+[680/1690] Generate language specific header for NonSemanticShaderDebugInfo100.
+[681/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdecode.dir/src/dec/tree_dec.c.o
+[682/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdecode.dir/src/dec/vp8_dec.c.o
+[683/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdecode.dir/src/dec/webp_dec.c.o
+[684/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/dialog/SDL_dialog_utils.c.o
+[685/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/dialog/android/SDL_androiddialog.c.o
+[686/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/dialog/unix/SDL_zenitymessagebox.c.o
+[687/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/process/SDL_process.c.o
+[688/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenevents.c.o
+[689/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdecode.dir/src/dec/vp8l_dec.c.o
+[690/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenframebuffer.c.o
+[691/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenopengles.c.o
+[692/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenvulkan.c.o
+[693/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenvideo.c.o
+[694/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/video/offscreen/SDL_offscreenwindow.c.o
+[695/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/tray/SDL_tray_utils.c.o
+[696/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jcapimin.c.o
+[697/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/process/dummy/SDL_dummyprocess.c.o
+[698/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/tray/dummy/SDL_tray.c.o
+[699/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/storage/generic/SDL_genericstorage.c.o
+[700/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jcapistd-8.c.o
+[701/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jcapistd-16.c.o
+[702/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/main/generic/SDL_sysmain_callbacks.c.o
+[703/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jcapistd-12.c.o
+[704/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jccoefct-8.c.o
+[705/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/yuv_mips32.c.o
+[706/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/alpha_processing_mips_dsp_r2.c.o
+[707/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/upsampling_mips_dsp_r2.c.o
+[708/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jccoefct-12.c.o
+[709/1690] Building C object 3rdparty/libwebp/CMakeFiles/webpdspdecode.dir/src/dsp/yuv_mips_dsp_r2.c.o
+[710/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jccolor-8.c.o
+[711/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jccolor-16.c.o
+[712/1690] Generate grammar tables
+[713/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jcdctmgr-8.c.o
+[714/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jcdctmgr-12.c.o
+[715/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jccolor-12.c.o
+[716/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jcdiffct-8.c.o
+[717/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jcdiffct-16.c.o
+[718/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jcdiffct-12.c.o
+[719/1690] Generate tables based on the SPIR-V XML registry.
+[720/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jcinit.c.o
+[721/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jcicc.c.o
+[722/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jclhuff.c.o
+[723/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jclossls-8.c.o
+[724/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jclossls-12.c.o
+[725/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jclossls-16.c.o
+[726/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jcmainct-8.c.o
+[727/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jcmainct-12.c.o
+[728/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/wrapper/jcmainct-16.c.o
+[729/1690] Update build-version.inc in the SPIRV-Tools build directory (if necessary).
+[730/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jcomapi.c.o
+[731/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jcmarker.c.o
+[732/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jcmaster.c.o
+[733/1690] Building C object 3rdparty/sdl3/CMakeFiles/SDL3-static.dir/src/gpu/vulkan/SDL_gpu_vulkan.c.o
+[734/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/__/SPIRV/InReadableOrder.cpp.o
+[735/1690] Building C object 3rdparty/libjpeg-turbo/CMakeFiles/jpeg-static.dir/src/jchuff.c.o
+[736/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/__/SPIRV/Logger.cpp.o
+[737/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/preprocessor/Pp.cpp.o
+[738/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/reflection.cpp.o
+[739/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/__/SPIRV/doc.cpp.o
+[740/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/__/SPIRV/SpvPostProcess.cpp.o
+[741/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/__/SPIRV/CInterface/spirv_c_interface.cpp.o
+[742/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/__/SPIRV/disassemble.cpp.o
+[743/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/__/SPIRV/SpvTools.cpp.o
+[744/1690] Building CXX object 3rdparty/shaderc/libshaderc_util/CMakeFiles/shaderc_util.dir/src/args.cc.o
+[745/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/decoder-aarch64.cc.o
+[746/1690] Building CXX object 3rdparty/shaderc/libshaderc_util/CMakeFiles/shaderc_util.dir/src/resources.cc.o
+[747/1690] Building CXX object 3rdparty/shaderc/libshaderc_util/CMakeFiles/shaderc_util.dir/src/io_shaderc.cc.o
+[748/1690] Building CXX object 3rdparty/shaderc/libshaderc_util/CMakeFiles/shaderc_util.dir/src/file_finder.cc.o
+[749/1690] Building CXX object 3rdparty/shaderc/libshaderc_util/CMakeFiles/shaderc_util.dir/src/shader_stage.cc.o
+[750/1690] Building CXX object 3rdparty/shaderc/libshaderc_util/CMakeFiles/shaderc_util.dir/src/message.cc.o
+[751/1690] Building CXX object 3rdparty/shaderc/libshaderc_util/CMakeFiles/shaderc_util.dir/src/compiler.cc.o
+[752/1690] Building CXX object 3rdparty/shaderc/libshaderc_util/CMakeFiles/shaderc_util.dir/src/version_profile.cc.o
+[753/1690] Building CXX object 3rdparty/shaderc/libshaderc_util/CMakeFiles/shaderc_util.dir/src/spirv_tools_wrapper.cc.o
+[754/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/__/SPIRV/SpvBuilder.cpp.o
+[755/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/preprocessor/PpContext.cpp.o
+[756/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/preprocessor/PpAtom.cpp.o
+[757/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/preprocessor/PpTokens.cpp.o
+[758/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/preprocessor/PpScanner.cpp.o
+[759/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/propagateNoContraction.cpp.o
+[760/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/HLSL/hlslAttributes.cpp.o
+[761/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/assembly_grammar.cpp.o
+[762/1690] Building CXX object 3rdparty/shaderc/libshaderc/CMakeFiles/shaderc.dir/src/shaderc.cc.o
+[763/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/__/SPIRV/GlslangToSpv.cpp.o
+[764/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/util/bit_vector.cpp.o
+[765/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/util/string_utils.cpp.o
+[766/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/ext_inst.cpp.o
+[767/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/util/parse_number.cpp.o
+[768/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/diagnostic.cpp.o
+[769/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/extensions.cpp.o
+[770/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/binary.cpp.o
+[771/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/libspirv.cpp.o
+[772/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/opcode.cpp.o
+[773/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/software_version.cpp.o
+[774/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/disassemble.cpp.o
+[775/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/spirv_endian.cpp.o
+[776/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/spirv_optimizer_options.cpp.o
+[777/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/parsed_operand.cpp.o
+[778/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/name_mapper.cpp.o
+[779/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/print.cpp.o
+[780/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/spirv_fuzzer_options.cpp.o
+[781/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/spirv_reducer_options.cpp.o
+[782/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/spirv_validator_options.cpp.o
+[783/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/table.cpp.o
+[784/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/spirv_target_env.cpp.o
+[785/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/operand.cpp.o
+[786/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/table2.cpp.o
+[787/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/to_string.cpp.o
+[788/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/text.cpp.o
+[789/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/text_handler.cpp.o
+[790/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_adjacency.cpp.o
+[791/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_arithmetics.cpp.o
+[792/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_atomics.cpp.o
+[793/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate.cpp.o
+[794/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_annotation.cpp.o
+[795/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_barriers.cpp.o
+[796/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_bitwise.cpp.o
+[797/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/HLSL/hlslParseHelper.cpp.o
+[798/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_capability.cpp.o
+[799/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_composites.cpp.o
+[800/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_constants.cpp.o
+[801/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_conversion.cpp.o
+[802/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_debug.cpp.o
+[803/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_dot_product.cpp.o
+[804/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_derivatives.cpp.o
+[805/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_cfg.cpp.o
+[806/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_execution_limitations.cpp.o
+[807/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_function.cpp.o
+[808/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_extensions.cpp.o
+[809/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_decorations.cpp.o
+[810/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/fix_func_call_arguments.cpp.o
+[811/1690] Building CXX object 3rdparty/vixl/CMakeFiles/vixl.dir/src/aarch64/disasm-aarch64.cc.o
+[812/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/control_dependence.cpp.o
+[813/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/amd_ext_to_khr.cpp.o
+[814/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/constants.cpp.o
+[815/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/aggressive_dead_code_elim_pass.cpp.o
+[816/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/convert_to_sampled_image_pass.cpp.o
+[817/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_builtins.cpp.o
+[818/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/feature_manager.cpp.o
+[819/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/OSDependent/Unix/ossource.cpp.o
+[820/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/convert_to_half_pass.cpp.o
+[821/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/copy_prop_arrays.cpp.o
+[822/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/flatten_decoration_pass.cpp.o
+[823/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/fix_storage_class.cpp.o
+[824/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/attribute.cpp.o
+[825/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/const_folding_rules.cpp.o
+[826/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/fold.cpp.o
+[827/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/InfoSink.cpp.o
+[828/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/Constant.cpp.o
+[829/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/glslang_tab.cpp.o
+[830/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/IntermTraverse.cpp.o
+[831/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/PoolAlloc.cpp.o
+[832/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/RemoveTree.cpp.o
+[833/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/ParseContextBase.cpp.o
+[834/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/Intermediate.cpp.o
+[835/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/Scan.cpp.o
+[836/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/iomapper.cpp.o
+[837/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/SpirvIntrinsics.cpp.o
+[838/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/SymbolTable.cpp.o
+[839/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/Initialize.cpp.o
+[840/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/ShaderLang.cpp.o
+[841/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/intermOut.cpp.o
+[842/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/Versions.cpp.o
+[843/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/limits.cpp.o
+[844/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/parseConst.cpp.o
+[845/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/folding_rules.cpp.o
+[846/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_non_uniform.cpp.o
+[847/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_pipe.cpp.o
+[848/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_primitives.cpp.o
+[849/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/ParseHelper.cpp.o
+[850/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_mode_setting.cpp.o
+[851/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_ray_query.cpp.o
+[852/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_ray_tracing.cpp.o
+[853/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_small_type_uses.cpp.o
+[854/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_tensor_layout.cpp.o
+[855/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_tensor.cpp.o
+[856/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_scopes.cpp.o
+[857/1690] Building CXX object 3rdparty/shaderc/third_party/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/linkValidate.cpp.o
+[858/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_ray_tracing_reorder.cpp.o
+[859/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/instruction.cpp.o
+[860/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_invalid_type.cpp.o
+[861/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/basic_block.cpp.o
+[862/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/construct.cpp.o
+[863/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/validate_type.cpp.o
+[864/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/util/timer.cpp.o
+[865/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/CMakeFiles/SPIRV-Tools-static.dir/val/function.cpp.o
+[866/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/analyze_live_input_pass.cpp.o
+[867/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/block_merge_pass.cpp.o
+[868/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/build_module.cpp.o
+[869/1690] Building CXX object 3rdparty/shaderc/third_party/spirv-tools/source/opt/CMakeFiles/SPIRV-Tools-opt.dir/block_merge_util.cpp.o

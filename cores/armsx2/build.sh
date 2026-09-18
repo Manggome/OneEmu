@@ -176,9 +176,38 @@ for p in ${PATCHES[@]+"${PATCHES[@]}"}; do
   fi
 done
 
+# ---------------------------------------------------------------- shaderc dependencies
+# PCSX2's Vulkan renderer compiles its shaders with shaderc, whose own dependencies (SPIRV-Tools,
+# SPIRV-Headers, glslang) are not submodules but fetched by the script shaderc ships. The Android app
+# build runs it through Gradle; here it has to be run explicitly or configure stops at
+# "SPIRV-Tools was not found".
+SHADERC_DIR="$SRC_DIR/platforms/android/app/src/main/cpp/3rdparty/shaderc"
+if [ -f "$SHADERC_DIR/utils/git-sync-deps" ] && [ ! -d "$SHADERC_DIR/third_party/spirv-tools" ]; then
+  log "Fetching shaderc dependencies (SPIRV-Tools, SPIRV-Headers, glslang)"
+  PY="$(command -v python3 || command -v python)" || die "python needed for shaderc's git-sync-deps"
+  (cd "$SHADERC_DIR" && "$PY" ./utils/git-sync-deps) || die "git-sync-deps failed"
+fi
+
+# PCSX2 embeds resources (GameIndex.yaml, shaders) with paths relative to the CMake source dir, which
+# here is the Android cpp/ folder; the files themselves live in the repository's bin/. Gradle stages them,
+# so outside Gradle the link has to be made by hand.
+ANDROID_CPP_DIR="$SRC_DIR/platforms/android/app/src/main/cpp"
+if [ ! -e "$ANDROID_CPP_DIR/bin" ]; then
+  ln -s "$SRC_DIR/bin" "$ANDROID_CPP_DIR/bin"
+  log "linked $ANDROID_CPP_DIR/bin -> $SRC_DIR/bin"
+fi
+# Same for the CMake modules: the Android CMakeLists points CMAKE_MODULE_PATH at its own cmake/ folder,
+# which carries the Android variants but not every module the shared subdirectories include
+# (EmbedResources.cmake lives only in the repository's cmake/).
+for m in "$SRC_DIR"/cmake/*.cmake; do
+  [ -e "$ANDROID_CPP_DIR/cmake/$(basename "$m")" ] || ln -s "$m" "$ANDROID_CPP_DIR/cmake/$(basename "$m")"
+done
+
 # ---------------------------------------------------------------- configure
 mkdir -p "$CMAKE_BUILD_DIR" "$OUT_DIR"
-"$CMAKE" -S "$SRC_DIR" -B "$CMAKE_BUILD_DIR" -G Ninja \
+# The Android app's CMakeLists, not the root one: it resolves every dependency from the vendored
+# 3rdparty tree instead of desktop find_package (which would look for PNG/SDL3/Zstd in the NDK sysroot).
+"$CMAKE" -S "$SRC_DIR/platforms/android/app/src/main/cpp" -B "$CMAKE_BUILD_DIR" -G Ninja \
   -DCMAKE_MAKE_PROGRAM="$NINJA" \
   -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
   -DANDROID_NDK="$NDK" \
@@ -187,16 +216,12 @@ mkdir -p "$CMAKE_BUILD_DIR" "$OUT_DIR"
   -DANDROID_STL=c++_static \
   -DANDROID=true \
   -DCMAKE_BUILD_TYPE=Release \
+  -DARMSX2_BUILD_LIBRETRO=ON \
+  -DARMSX2_EMUCORE_LIBRARY_NAME=emucore \
   -DENABLE_LIBRETRO=ON \
-  -DENABLE_QT_UI=OFF \
-  -DENABLE_SDL_FRONTEND=OFF \
-  -DENABLE_GSRUNNER=OFF \
   -DENABLE_TESTS=OFF \
   -DENABLE_RECOMPILER_TEST_HOOKS=OFF \
-  -DENABLE_SETCAP=OFF \
   -DUSE_BACKTRACE=OFF \
-  -DX11_API=OFF \
-  -DWAYLAND_API=OFF \
   -DENABLE_VULKAN=ON \
   -DDISABLE_ADVANCE_SIMD=TRUE \
   -DLTO_PCSX2_CORE=OFF \
