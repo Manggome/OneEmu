@@ -344,7 +344,8 @@ class ArcadeRomCheckTest {
         ).joinToString("\n").byteInputStream())
         val dbs = listOf("mame2003plus" to both2003, "mame2010" to both2010)
         assertTrue(ArcadeRomCheck.UNSTABLE_DRIVERS.getValue("mame2003plus").contains("stv"))
-        assertEquals(setOf("stv"), ArcadeRomCheck.UNSTABLE_DRIVERS["mame2010"])
+        // Pinning the whole set breaks whenever another crashing driver is found; the driver under test is what matters.
+        assertTrue(ArcadeRomCheck.UNSTABLE_DRIVERS.getValue("mame2010").contains("stv"))
 
         val rt = ArcadeRomCheck.routeByName(dbs, "stvboth")!!
         assertEquals("mame2010", rt.coreId); assertEquals(ArcadeRomCheck.RouteReason.PREFERRED_UNSTABLE, rt.reason); assertEquals("mame2003plus", rt.skippedCoreId)
