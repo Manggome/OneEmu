@@ -12,9 +12,13 @@
 # Notes / deviations from the generic convention, all deliberate:
 #  * Requires a real PS2 BIOS dump (no HLE): the app looks for it under <system dir>/pcsx2/bios,
 #    which is where the core reads it (pcsx2-libretro/Main.cpp: EmuFolders::AppRoot = <system>/pcsx2).
-#  * HOST_PAGE_SIZE: PCSX2's vtlb/fastmem maps memory at host page granularity. Android 15+ devices use
-#    16 KB pages, older ones 4 KB; a 16 KB assumption is also valid on a 4 KB kernel (it is a multiple),
-#    so one core serves both instead of the two variants the ARMSX2 app ships.
+#  * HOST_PAGE_SIZE: PCSX2's vtlb/fastmem maps memory at host page granularity, and the size is baked in
+#    (common/Pcsx2Defs.h __pagesize). It is NOT a "safe multiple": VMManager::PerformEarlyHardwareChecks
+#    compares it against the running kernel's page size and refuses to boot on a mismatch, which is why
+#    the ARMSX2 app ships two variants. Almost every Android phone in the field is 4 KB (Galaxy Z Fold 7,
+#    Snapdragon 8 Elite: getconf PAGE_SIZE = 4096); 16 KB is opt-in on a few Pixels. So this core is the
+#    4 KB one. A 16 KB device needs a second .so and a runtime pick on sysconf(_SC_PAGESIZE).
+#    (This is separate from the 16 KB ELF segment alignment Android 15 wants; the NDK linker does that.)
 #  * DISABLE_ADVANCE_SIMD / OVERRIDE_HOST_PAGE_SIZE / no precompiled headers mirror the flags ARMSX2's
 #    own libretro CI uses (.github/workflows/linux_build_libretro.yml).
 #  * Runtime resources (fonts, GS shaders, per-game compatibility fixes) are copied to cores/armsx2/assets
@@ -24,7 +28,7 @@ set -euo pipefail
 CORE_ID="armsx2"
 REPO_URL="https://github.com/ARMSX2/ARMSX2"
 COMMIT="f4272b6768a2695bfda9265c319e595509cdc54c"      # 2026-09-17 master "Common: one Darwin clock and sleep path for iOS and macOS"
-HOST_PAGE_SIZE=16384                                   # see the header note
+HOST_PAGE_SIZE=4096                                    # see the header note
 NDK_VERSION="28.2.13676358"
 API_LEVEL=26
 ABI="arm64-v8a"
