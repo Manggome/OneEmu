@@ -277,6 +277,17 @@ class LibraryViewModel : ViewModel() {
 
     /** Manually added games are deleted outright; scanned ones are hidden so a rescan doesn't resurrect them. */
     /** Removes several games at once (multi-selection in the library). */
+    /**
+     * Brings back everything "removed from library". A removal only hides an entry that came from a scanned
+     * folder, because deleting the row would let the next scan add it straight back; the flip side is that
+     * nothing else can bring it back, and a scan skips the file for ever since the row still exists.
+     */
+    fun unhideAll() = launchIo {
+        val hidden = db.games().allOnce().filter { it.hidden }
+        for (g in hidden) db.games().setHidden(g.id, false)
+        post(LibraryMessage(R.string.lib_msg_unhidden, listOf(hidden.size)))
+    }
+
     fun removeAll(ids: Set<Long>) = launchIo {
         if (ids.isEmpty()) return@launchIo
         var n = 0

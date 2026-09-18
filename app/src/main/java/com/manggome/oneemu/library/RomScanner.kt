@@ -93,7 +93,7 @@ class RomScanner(
             val system = core.systems.firstOrNull()?.let { SystemId.fromId(it) } ?: continue
             val path = EmulatorSession.NO_CONTENT_PREFIX + core.id
             val placeholder = all.firstOrNull { it.path == path }
-            val scanned = all.any { it.system == system.id && !it.path.startsWith(EmulatorSession.NO_CONTENT_PREFIX) }
+            val scanned = all.any { it.system == system.id && !it.hidden && !it.path.startsWith(EmulatorSession.NO_CONTENT_PREFIX) }
             if (scanned) {
                 placeholder?.let { db.games().deleteIds(listOf(it.id)) }
                 continue

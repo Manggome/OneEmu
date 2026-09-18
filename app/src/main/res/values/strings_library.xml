@@ -14,6 +14,7 @@
     <string name="lib_view_grid">그리드로 보기</string>
     <string name="lib_menu_folders">폴더 관리</string>
     <string name="lib_menu_rescan">다시 스캔</string>
+    <string name="lib_menu_unhide">숨긴 게임 되살리기</string>
     <string name="lib_menu_group_by_system">기종별로 묶기</string>
     <string name="lib_menu_show_file_name">파일 이름 표시</string>
     <string name="lib_menu_grid_columns">그리드 열 수: %1$d</string>
@@ -243,4 +244,5 @@
     <string name="lib_arcade_owner_absent">%1$s.zip: 없음 (%2$s)</string>
     <string name="lib_arcade_owner_files">%1$s.zip: %2$s</string>
     <string name="lib_arcade_owner_more">… +%1$d</string>
+    <string name="lib_msg_unhidden">숨겨 둔 게임 %1$d개를 되살렸습니다</string>
 </resources>
