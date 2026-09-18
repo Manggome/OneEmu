@@ -641,7 +641,9 @@ void VideoVK::present(const VideoConfig& cfg, float coreAspect, bool haveFrame) 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1, &descSets_[i], 0, nullptr);
         // Vulkan images are top-down like the screen: no flip. Rotation as in the GL path (clockwise quarter turns).
-        float c = std::cos(-(float)cfg.rotation * (float)M_PI_2), s = std::sin(-(float)cfg.rotation * (float)M_PI_2);
+        // SET_ROTATION counts counter-clockwise (libretro.h), and clip space is y-up, so the angle is
+        // positive. Turning it the other way left vertical arcade boards (Strikers 1945 II) upside down.
+        float c = std::cos((float)cfg.rotation * (float)M_PI_2), s = std::sin((float)cfg.rotation * (float)M_PI_2);
         float pc[8] = { 0.f, 0.f, 1.f, 1.f, c, s, 0.f, 0.f };
         vkCmdPushConstants(cmd, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof pc, pc);
         vkCmdDraw(cmd, 4, 1, 0, 0);

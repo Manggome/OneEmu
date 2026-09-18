@@ -175,7 +175,10 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
 
             val sessionError = state as? EmulatorSession.State.Error
             val error = ui.error ?: sessionError?.message
-            if (error != null) ErrorDialog(error, sessionError?.detail) { host.closeAndFinish() }
+            if (error != null) {
+                val alts = otherCoresFor(host)
+                ErrorDialog(error, sessionError?.detail, alts, { relaunchWith(host, it) }) { host.closeAndFinish() }
+            }
 
             val ffLabel = (if (ffSpeed <= 0) stringResource(R.string.ff_unlimited) else stringResource(R.string.ff_speed_x, ffSpeed)) +
                 " · " + stringResource(if (ui.fastForward) R.string.ff_on else R.string.ff_off)
@@ -257,7 +260,10 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
             }
         } else {
             LoadingOverlay(ui.title)
-            ui.error?.let { ErrorDialog(it, null) { host.closeAndFinish() } }
+            ui.error?.let {
+                val alts = otherCoresFor(host)
+                ErrorDialog(it, null, alts, { core -> relaunchWith(host, core) }) { host.closeAndFinish() }
+            }
             // Downloadable core missing: "이 게임은 … 코어가 필요합니다 (약 N MB). 지금 내려받을까요?" → install → start.
             ui.downloadCore?.let { core -> CoreDownloadDialog(core, onDismiss = { host.closeAndFinish() }, onInstalled = { host.retryStart() }) }
         }
@@ -329,8 +335,15 @@ private fun LoadingOverlay(title: String) {
  * copied to the clipboard so users can paste it into a bug report.
  */
 @Composable
-private fun ErrorDialog(message: String, detail: String?, onClose: () -> Unit) {
+private fun ErrorDialog(
+    message: String,
+    detail: String?,
+    otherCores: List<com.manggome.oneemu.core.CoreInfo> = emptyList(),
+    onPickCore: ((com.manggome.oneemu.core.CoreInfo) -> Unit)? = null,
+    onClose: () -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
     AlertDialog(
@@ -339,6 +352,14 @@ private fun ErrorDialog(message: String, detail: String?, onClose: () -> Unit) {
         text = {
             Column {
                 Text(message)
+                // Arcade romsets belong to one MAME version and the routed core is a guess, so the way out of
+                // this dialog is usually another core rather than another file.
+                if (picking) {
+                    Spacer(Modifier.height(10.dp))
+                    otherCores.forEach { core ->
+                        TextButton(onClick = { onPickCore?.invoke(core) }) { Text(core.displayName) }
+                    }
+                }
                 if (detail != null && expanded) {
                     Spacer(Modifier.height(10.dp))
                     Text(
@@ -361,17 +382,44 @@ private fun ErrorDialog(message: String, detail: String?, onClose: () -> Unit) {
             }
         },
         confirmButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.close)) } },
-        dismissButton = if (detail == null) null else {
+        dismissButton = if (detail == null && otherCores.isEmpty()) null else {
             {
                 Row {
-                    TextButton(onClick = { expanded = !expanded }) {
-                        Text(stringResource(if (expanded) R.string.emu_error_details_hide else R.string.emu_error_details))
+                    if (otherCores.isNotEmpty() && !picking) {
+                        TextButton(onClick = { picking = true }) { Text(stringResource(R.string.emu_error_other_core)) }
                     }
-                    TextButton(onClick = { clipboard.setText(AnnotatedString("$message\n\n$detail")); copied = true; expanded = true }) {
-                        Text(stringResource(R.string.emu_error_copy))
+                    if (detail != null) {
+                        TextButton(onClick = { expanded = !expanded }) {
+                            Text(stringResource(if (expanded) R.string.emu_error_details_hide else R.string.emu_error_details))
+                        }
+                        TextButton(onClick = { clipboard.setText(AnnotatedString("$message\n\n$detail")); copied = true; expanded = true }) {
+                            Text(stringResource(R.string.emu_error_copy))
+                        }
                     }
                 }
             }
         },
     )
+}
+
+/** Cores that could take over this game, for the "다른 코어로 실행" way out of a load failure. */
+@Composable
+private fun otherCoresFor(host: EmulatorActivity): List<com.manggome.oneemu.core.CoreInfo> {
+    val session = host.ui.session ?: return emptyList()
+    val app = OneEmuApp.get()
+    val system = com.manggome.oneemu.model.SystemId.fromId(session.game.system) ?: return emptyList()
+    return remember(session.game.id, session.core.id) {
+        app.cores.coresFor(system).filter { it.id != session.core.id && app.cores.isAvailable(it) }
+    }
+}
+
+/** Pins [core] to the game and starts it again, so the choice survives the next launch too. */
+private fun relaunchWith(host: EmulatorActivity, core: com.manggome.oneemu.core.CoreInfo) {
+    val session = host.ui.session ?: return
+    val app = OneEmuApp.get()
+    val gameId = session.game.id
+    app.appScope.launch { runCatching { app.db.games().setCore(gameId, core.id) } }
+    val next = EmulatorActivity.intent(host, gameId).putExtra(EmulatorActivity.EXTRA_CORE_ID, core.id)
+    host.closeAndFinish()
+    host.startActivity(next)
 }

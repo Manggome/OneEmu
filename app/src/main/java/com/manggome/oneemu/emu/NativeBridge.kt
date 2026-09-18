@@ -68,8 +68,9 @@ object NativeBridge {
     // ---- runtime config ----
     /** 0 = normal speed, N = N× fast forward, -1 = unlimited. */
     external fun setFastForward(speed: Int)
-    /** aspect: 0 core, 1 stretch, 2 integer, 3 square pixels. */
-    external fun setVideoConfig(linearFilter: Boolean, aspect: Int)
+    /** aspect: 0 core, 1 stretch, 2 integer, 3 square pixels. rotation: extra quarter turns (0..3) on top
+     *  of what the core asked for, counter-clockwise. */
+    external fun setVideoConfig(linearFilter: Boolean, aspect: Int, rotation: Int)
     /**
      * Rectangle the game image is aspect-fitted into, normalized 0..1 of the surface with a top-left origin.
      * 0,0,1,1 = whole surface. Applies to the next presented frame, also while paused (live editor preview).

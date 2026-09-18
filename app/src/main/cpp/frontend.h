@@ -89,7 +89,7 @@ public:
     void setPointer(int16_t x, int16_t y, bool pressed);
     void setFastForward(int speed);
     void setControllerPortDevice(unsigned port, unsigned device); // 0 = off, 1..N = N×, -1 = unlimited
-    void setVideoConfig(bool linear, int aspectMode);
+    void setVideoConfig(bool linear, int aspectMode, int userRotation);
     // Rectangle (normalized 0..1 of the surface, top-left origin) the game image is letterboxed into.
     // Default 0,0,1,1 = whole surface. Takes effect on the next presented frame, also while paused.
     void setViewport(float x, float y, float w, float h);
@@ -203,6 +203,7 @@ private:
     std::atomic<bool> videoCfgDirty_{false};
     bool linearFilterPending_ = false;
     int aspectModePending_ = 0;
+    int userRotationPending_ = 0;
     std::atomic<bool> viewportDirty_{false};
     std::atomic<float> viewportPending_[4]{0.f, 0.f, 1.f, 1.f};
 
@@ -236,5 +237,6 @@ private:
     retro_frame_time_callback frameTimeCb_{};
     int64_t lastFrameTimeNs_ = 0;
     retro_disk_control_ext_callback diskCb_{};
-    unsigned rotation_ = 0;
+    unsigned rotation_ = 0;          // what the core asked for (SET_ROTATION), counter-clockwise
+    unsigned userRotation_ = 0;      // extra turns the user picked, added on top
 };

@@ -163,4 +163,10 @@
     <string name="vp_full">전체 화면</string>
     <string name="vp_default">기본 위치</string>
     <string name="vp_size_readout">화면 크기 %1$d%% × %2$d%%</string>
+    <string name="qs_rotation">화면 회전</string>
+    <string name="qs_rotation_0">기본</string>
+    <string name="qs_rotation_90">90°</string>
+    <string name="qs_rotation_180">180°</string>
+    <string name="qs_rotation_270">270°</string>
+    <string name="emu_error_other_core">다른 코어로 실행</string>
 </resources>
