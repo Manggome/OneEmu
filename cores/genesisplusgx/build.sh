@@ -114,8 +114,12 @@ mkdir -p "$BUILD_DIR" "$OUT_DIR"
 # builds its own libchdr, so nothing has to be provided here.
 COMMON_FLAGS="-O2 -DNDEBUG -fPIC -ffunction-sections -fdata-sections -fno-strict-aliasing -D__ANDROID__ -DANDROID -D_FILE_OFFSET_BITS=64"
 echo "== Building (make -j$JOBS)"
+# HAVE_CDROM=0: with platform=unix the Makefile turns real CD drive access on when the *host* is Linux,
+# which compiles libretro-common's cdrom.c and fails on the NDK. It also makes no sense on a phone. Without
+# this the build worked on macOS and broke only in CI.
 make -C "$SRC_DIR" -f Makefile.libretro -j"$JOBS" \
   platform=unix \
+  HAVE_CDROM=0 \
   CC="$CC $COMMON_FLAGS" \
   LD="$CC" \
   AR="$AR" \
