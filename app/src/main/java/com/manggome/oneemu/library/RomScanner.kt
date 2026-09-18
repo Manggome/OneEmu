@@ -110,8 +110,13 @@ class RomScanner(
      */
     suspend fun pruneUnsupportedEntries(): Int = withContext(Dispatchers.IO) {
         val stale = db.games().allOnce().filter { g ->
-            !g.path.startsWith(EmulatorSession.NO_CONTENT_PREFIX) &&
-                g.path.substringAfterLast('.', "").lowercase().let { it.isNotEmpty() && it !in extMap }
+            if (g.path.startsWith(EmulatorSession.NO_CONTENT_PREFIX)) return@filter false
+            val ext = g.path.substringAfterLast('.', "").lowercase()
+            // Jazz² levels (.j2l, .j2e) were listed one by one before the scanner settled on the Anims.j2a
+            // anchor. The core still names them as loadable extensions, so the extension test below keeps
+            // them; they are not games and there are hundreds of them per install.
+            if (g.system == SystemId.JAZZ2.id && ext != JAZZ2_ANCHOR_EXT) return@filter true
+            ext.isNotEmpty() && ext !in extMap
         }
         if (stale.isNotEmpty()) db.games().deleteIds(stale.map { it.id })
         stale.size
@@ -175,6 +180,9 @@ class RomScanner(
             arcadeTitles.cleanTitle(f.nameWithoutExtension)?.let { title = it }
         }
         if (system == SystemId.JAZZ2) {
+            // One entry per game, never per file. The core opens any file in the game directory, so the whole
+            // Source/ folder would otherwise land in the library as a couple of hundred unplayable levels.
+            if (ext != JAZZ2_ANCHOR_EXT) return null
             // The anchor file is Anims.j2a inside the game directory (often .../<game>/Source/); the entry is
             // named after that directory so the library shows the game, not the file.
             val dir = f.parentFile
@@ -219,6 +227,8 @@ class RomScanner(
 
     companion object {
         private const val DVD_SIZED_BYTES = 2_000_000_000L
+        /** The one Jazz² file that stands for a game: Anims.j2a, which every install has exactly one of. */
+        private const val JAZZ2_ANCHOR_EXT = "j2a"
         /** Extensions shared by several systems whose detection reads the file (re-checked on every rescan). */
         private val AMBIGUOUS_EXTS = setOf("iso", "img", "bin", "cue", "chd", "pbp", "m3u", "cso")
 
