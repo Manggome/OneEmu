@@ -21,6 +21,11 @@ enum class SystemId(
     GBA("gba", "게임보이 어드밴스", "GBA", Color(0xFF5B6CF0), setOf("gba", "agb")),
     NDS("nds", "닌텐도 DS", "NDS", Color(0xFF7FD1C8), setOf("nds", "dsi", "ids"), hasTouchScreen = true),
     N3DS("3ds", "닌텐도 3DS", "3DS", Color(0xFFE8A04A), setOf("3ds", "3dsx", "cci", "cxi", "app", "cia"), hasTouchScreen = true, hasAnalog = true),
+    // Sega 8/16-bit, all three on one core. ".bin" is deliberately absent here too: a Mega Drive dump under
+    // that name is rare next to how often it is a PS1 track, and .md/.gen/.smd cover the usual ones.
+    MD("md", "메가드라이브", "MD", Color(0xFF3B82C4), setOf("md", "gen", "smd", "mdx", "68k")),
+    SMS("sms", "마스터 시스템", "SMS", Color(0xFF2E8B57), setOf("sms", "sg")),
+    GG("gg", "게임 기어", "GG", Color(0xFF7A5FD3), setOf("gg")),
     // .bin is deliberately absent: it is reached through its .cue (RomScanner skips companion .bin files).
     PSX("psx", "플레이스테이션", "PS1", Color(0xFF9CA3AF), setOf("cue", "img", "pbp", "chd", "iso", "m3u", "mdf", "toc"), hasAnalog = true),
     PSP("psp", "플레이스테이션 포터블", "PSP", Color(0xFF3F8EE0), setOf("iso", "cso", "pbp", "chd", "elf", "prx"), hasAnalog = true),
