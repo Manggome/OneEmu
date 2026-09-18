@@ -822,8 +822,11 @@ bool Frontend::environment(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: return true;
         case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK: return false;
         case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: {
-            auto* d = (const retro_disk_control_callback*)data;
+            // A core may pass null to take the interface back down (Genesis Plus GX does it for a cartridge,
+            // which has no disks); dereferencing that killed the load before the game ever started.
             diskCb_ = {};
+            if (!data) return true;
+            auto* d = (const retro_disk_control_callback*)data;
             diskCb_.set_eject_state = d->set_eject_state; diskCb_.get_eject_state = d->get_eject_state;
             diskCb_.get_image_index = d->get_image_index; diskCb_.set_image_index = d->set_image_index;
             diskCb_.get_num_images = d->get_num_images; diskCb_.replace_image_index = d->replace_image_index;
@@ -831,7 +834,7 @@ bool Frontend::environment(unsigned cmd, void* data) {
             return true;
         }
         case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: *(unsigned*)data = 1; return true;
-        case RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE: diskCb_ = *(const retro_disk_control_ext_callback*)data; return true;
+        case RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE: diskCb_ = data ? *(const retro_disk_control_ext_callback*)data : retro_disk_control_ext_callback{}; return true;
         case RETRO_ENVIRONMENT_SET_HW_RENDER: {
             auto* hw = (retro_hw_render_callback*)data;
             bool gles = hw->context_type == RETRO_HW_CONTEXT_OPENGLES3 || hw->context_type == RETRO_HW_CONTEXT_OPENGLES_VERSION ||
