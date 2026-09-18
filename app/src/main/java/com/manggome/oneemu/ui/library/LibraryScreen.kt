@@ -189,6 +189,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
                     onToggleSection = vm::toggleSection,
                     onClick = { if (selectionMode) toggle(it) else tryLaunch(it) },
                     onLongClick = { if (selectionMode) toggle(it) else selectedIds = setOf(it.id) },
+                    onMore = { if (selectionMode) toggle(it) else selected = it },
                     selectedIds = selectedIds,
                 )
                 else -> GameGrid(
@@ -196,6 +197,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
                     onToggleSection = vm::toggleSection,
                     onClick = { if (selectionMode) toggle(it) else tryLaunch(it) },
                     onLongClick = { if (selectionMode) toggle(it) else selectedIds = setOf(it.id) },
+                    onMore = { if (selectionMode) toggle(it) else selected = it },
                     selectedIds = selectedIds,
                 )
             }
@@ -416,6 +418,9 @@ private fun GameList(
     onToggleSection: (LibrarySection) -> Unit,
     onClick: (GameEntity) -> Unit,
     onLongClick: (GameEntity) -> Unit,
+    // Long press starts a multi-selection, so the row's "⋮" is the only way left to one game's own menu
+    // (rename, thumbnail, 코어 선택). Sharing one callback made it start a selection instead.
+    onMore: (GameEntity) -> Unit,
     selectedIds: Set<Long> = emptySet(),
 ) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = BottomPadding)) {
@@ -436,7 +441,7 @@ private fun GameList(
                         showSystemChip = !state.groupBySystem,
                         onClick = { onClick(game) },
                         onLongClick = { onLongClick(game) },
-                        onMore = { onLongClick(game) },
+                        onMore = { onMore(game) },
                         selected = game.id in selectedIds,
                     )
                 }
@@ -451,6 +456,7 @@ private fun GameGrid(
     onToggleSection: (LibrarySection) -> Unit,
     onClick: (GameEntity) -> Unit,
     onLongClick: (GameEntity) -> Unit,
+    onMore: (GameEntity) -> Unit,
     selectedIds: Set<Long> = emptySet(),
 ) {
     LazyVerticalGrid(
