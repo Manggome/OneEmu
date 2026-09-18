@@ -112,6 +112,7 @@
     <!-- 패드 레이아웃 편집기 -->
     <string name="le_title">패드 레이아웃</string>
     <string name="le_reset">기본값으로 되돌리기</string>
+    <string name="le_preset_arcade">오락실 배치</string>
     <string name="le_save">저장</string>
     <string name="le_cancel">취소</string>
     <string name="le_opacity">투명도</string>

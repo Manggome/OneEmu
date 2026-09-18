@@ -61,6 +61,7 @@ import com.manggome.oneemu.emu.skin.LoadedSkin
 import com.manggome.oneemu.emu.skin.Overlay
 import com.manggome.oneemu.emu.skin.PlacedDesc
 import com.manggome.oneemu.emu.skin.SkinInfo
+import com.manggome.oneemu.emu.pad.DefaultLayouts
 import com.manggome.oneemu.emu.pad.PadElementId
 import com.manggome.oneemu.emu.pad.PadLayout
 import com.manggome.oneemu.emu.pad.PadLayoutStore
@@ -511,6 +512,14 @@ fun SkinEditor(
                     dirty = true
                     selection = emptyList()
                 }) { Text(stringResource(R.string.se_reset)) }
+                // An image skin cannot be rearranged into a cabinet, so this drops the skin for this system
+                // and hands the vector pad the arcade preset instead (stick left, six flat buttons right).
+                TextButton(onClick = {
+                    scope.launch {
+                        PadLayoutStore.save(system, config, DefaultLayouts.forSystem(system, config, DefaultLayouts.Preset.ARCADE))
+                        SkinStore.select(system.id, SkinStore.VECTOR)
+                    }
+                }) { Text(stringResource(R.string.le_preset_arcade), maxLines = 1) }
             }
         }
     }

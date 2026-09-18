@@ -15,9 +15,58 @@ object DefaultLayouts {
     /** Element scale applied on top of the phone default for the *_WIDE configurations. */
     const val WIDE_SCALE = 0.85f
 
-    fun forSystem(system: SystemId, config: ScreenConfig): PadLayout {
-        val base = forSystem(system, config.landscape)
+    /** Arrangements the layout editor can drop onto any system. */
+    enum class Preset { DEFAULT, ARCADE }
+
+    fun forSystem(system: SystemId, config: ScreenConfig): PadLayout = forSystem(system, config, Preset.DEFAULT)
+
+    fun forSystem(system: SystemId, config: ScreenConfig, preset: Preset): PadLayout {
+        val base = when (preset) {
+            Preset.DEFAULT -> forSystem(system, config.landscape)
+            Preset.ARCADE -> arcadeStyle(system, config.landscape)
+        }
         return if (config.wide) PadLayout(base.elements.map { it.copy(scale = it.scale * WIDE_SCALE) }) else base
+    }
+
+    /**
+     * The cabinet arrangement (stick left, two arched rows of round buttons right) applied to any system,
+     * using that system's own buttons rather than the arcade 1-6 wiring: a GameCube fighting game is much
+     * easier to play on six flat buttons than on the ABXY cluster it ships with.
+     */
+    fun arcadeStyle(system: SystemId, landscape: Boolean): PadLayout {
+        if (system == SystemId.ARCADE) return arcade(landscape)
+        // Only the buttons this system actually has, face buttons first and then the shoulders, up to the six
+        // a cabinet has: a Game Boy game gets B/A/L/R, a GameCube one the full six.
+        val own = forSystem(system, landscape).elements.map { it.id }.toMutableSet()
+        if (ABXY_CLUSTER in own) own += listOf(BUTTON_B, BUTTON_A, BUTTON_Y, BUTTON_X)
+        val keys = listOf(BUTTON_B, BUTTON_A, BUTTON_Y, BUTTON_X, L, R, L2, R2).filter { it in own }.take(6)
+        val hasStick = system.hasAnalog
+        val list = mutableListOf<PadElement>()
+        if (landscape) {
+            list += e(if (hasStick) LEFT_STICK else DPAD, 0.13f, 0.60f)
+            val spots = listOf(0.72f to 0.72f, 0.82f to 0.68f, 0.92f to 0.64f, 0.72f to 0.48f, 0.82f to 0.44f, 0.92f to 0.40f)
+            keys.forEachIndexed { i, id -> list += e(id, spots[i].first, spots[i].second) }
+            list += e(SELECT, 0.42f, 0.92f)
+            list += e(START, 0.58f, 0.92f)
+            list += e(MENU, 0.04f, 0.08f)
+            list += e(FAST_FORWARD, 0.96f, 0.08f)
+        } else {
+            list += e(if (hasStick) LEFT_STICK else DPAD, 0.20f, 0.76f)
+            val spots = listOf(0.60f to 0.82f, 0.76f to 0.79f, 0.91f to 0.76f, 0.60f to 0.68f, 0.76f to 0.65f, 0.91f to 0.62f)
+            keys.forEachIndexed { i, id -> list += e(id, spots[i].first, spots[i].second) }
+            list += e(SELECT, 0.40f, 0.94f)
+            list += e(START, 0.60f, 0.94f)
+            list += e(MENU, 0.44f, 0.58f)
+            list += e(FAST_FORWARD, 0.56f, 0.58f)
+        }
+        // Carry the system's remaining controls hidden rather than dropping them: PadLayoutStore.resolve()
+        // adds back any default element a saved layout does not mention, which would put the d-pad, the
+        // second stick and the triggers straight back on top of the cabinet buttons.
+        val placed = list.map { it.id }.toSet()
+        list += forSystem(system, landscape).elements
+            .filter { it.id !in placed }
+            .map { it.copy(visible = false) }
+        return PadLayout(list)
     }
 
     /** Phone / folded default for one orientation. */

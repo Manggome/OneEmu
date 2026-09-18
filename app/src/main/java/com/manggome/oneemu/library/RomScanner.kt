@@ -79,15 +79,26 @@ class RomScanner(
     }
 
     /**
-     * Cores that run without a ROM (Jazz² Resurrection) get one library entry each, so the user has something
-     * to tap. Their data lives in the system directory, not in a ROM folder, so no scan can find them.
+     * Cores that run without a ROM (Jazz² Resurrection) get one library entry, so the user has something to
+     * tap when their game data sits in the system directory where no scan can find it.
+     *
+     * Exactly one entry per such system: when a scan did find the game in a library folder, that entry is the
+     * one to tap and this placeholder is removed again. Two entries that look alike and both start the same
+     * game is the confusing case this avoids.
      */
     suspend fun ensureNoContentEntries() = withContext(Dispatchers.IO) {
+        val all = db.games().allOnce()
         for (core in registry.cores) {
             if (!core.supportsNoContent || !registry.isAvailable(core)) continue
             val system = core.systems.firstOrNull()?.let { SystemId.fromId(it) } ?: continue
             val path = EmulatorSession.NO_CONTENT_PREFIX + core.id
-            if (db.games().getByPath(path) != null) continue
+            val placeholder = all.firstOrNull { it.path == path }
+            val scanned = all.any { it.system == system.id && !it.path.startsWith(EmulatorSession.NO_CONTENT_PREFIX) }
+            if (scanned) {
+                placeholder?.let { db.games().deleteIds(listOf(it.id)) }
+                continue
+            }
+            if (placeholder != null) continue
             db.games().insert(GameEntity(path = path, title = core.displayName, system = system.id, coreId = core.id, folderId = null))
         }
     }
