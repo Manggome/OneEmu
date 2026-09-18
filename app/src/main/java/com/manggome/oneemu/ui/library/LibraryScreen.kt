@@ -328,6 +328,10 @@ private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavH
                         text = { Text(stringResource(R.string.lib_menu_rescan)) },
                         onClick = { moreMenu = false; vm.rescanAll() },
                     )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.lib_menu_unhide)) },
+                        onClick = { moreMenu = false; vm.unhideAll() },
+                    )
                     HorizontalDivider()
                     CheckItem(R.string.lib_menu_group_by_system, state.groupBySystem) { vm.setGroupBySystem(!state.groupBySystem) }
                     CheckItem(R.string.lib_menu_show_file_name, state.showFileName) { vm.setShowFileName(!state.showFileName) }
