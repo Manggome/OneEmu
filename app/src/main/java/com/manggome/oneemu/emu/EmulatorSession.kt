@@ -111,7 +111,16 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         NativeBridge.sessionLogLine("core options: " + overrides.lines().joinToString(" "))
         val strictGles = core.glesMinVersion.isNotEmpty()
         NativeBridge.sessionLogLine("graphics api offered: $hwApi")
-        if (!NativeBridge.loadCore(libPath.absolutePath, dirs.system.absolutePath, dirs.saves(system.id).absolutePath, overrides, strictGles, hwApi, core.keepLoaded)) {
+        // Jazz² Resurrection looks for the original game files in the system directory and for its own engine
+        // data in the core assets directory. Pointing the first at the folder the entry came from lets the game
+        // live anywhere, without writing anything into it (the app has no permission to, outside its own dirs).
+        val gameDir = java.io.File(game.path).takeIf { it.isFile }?.parentFile
+        val useGameDirAsSystem = core.id == "jazz2" && gameDir != null
+        val systemDirForCore = if (useGameDirAsSystem) gameDir!!.absolutePath else dirs.system.absolutePath
+        val coreAssetsDir = core.assetsInstallDir.takeIf { it.isNotEmpty() }
+            ?.let { java.io.File(dirs.system, it).parentFile?.absolutePath }
+            ?: dirs.system.absolutePath
+        if (!NativeBridge.loadCore(libPath.absolutePath, systemDirForCore, dirs.saves(system.id).absolutePath, overrides, strictGles, hwApi, core.keepLoaded, coreAssetsDir)) {
             _state.value = makeError(ErrorKind.fromCode(NativeBridge.lastErrorCode()), NativeBridge.lastError())
             return@withContext false
         }
@@ -214,6 +223,8 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         merged.putAll(user)
         return merged.entries.joinToString("\n") { "${it.key}=${it.value}" }
     }
+
+
 
     private suspend fun applyVideoSettings() {
         val s = app.settings

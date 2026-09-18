@@ -66,6 +66,7 @@
                 <data android:pathPattern=".*\\.wia" />
                 <data android:pathPattern=".*\\.dol" />
                 <data android:pathPattern=".*\\.cue" />
+                <data android:pathPattern=".*\\.j2a" />
             </intent-filter>
         </activity>
 
