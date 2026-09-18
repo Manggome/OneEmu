@@ -59,6 +59,13 @@
                 <data android:pathPattern=".*\\.cci" />
                 <data android:pathPattern=".*\\.cxi" />
                 <data android:pathPattern=".*\\.zip" />
+                <data android:pathPattern=".*\\.wbfs" />
+                <data android:pathPattern=".*\\.rvz" />
+                <data android:pathPattern=".*\\.gcm" />
+                <data android:pathPattern=".*\\.gcz" />
+                <data android:pathPattern=".*\\.wia" />
+                <data android:pathPattern=".*\\.dol" />
+                <data android:pathPattern=".*\\.cue" />
             </intent-filter>
         </activity>
 

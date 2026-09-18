@@ -217,7 +217,8 @@ log "Stripping"
 #   Shaders/       post-process shaders incl. default_pre_post_process.glsl (PostProcessing.cpp)
 #   Profiles/      bundled input profiles (InputConfig.cpp)
 #   Resources/OSD_Font.ttf   imgui OSD font (OnScreenUI.cpp)
-#   GameSettings/  per-game INIs, GameCube titles only (IDs G*/D*/P*; Wii INIs would add ~5 MB)
+#   GameSettings/  per-game INIs for GameCube (IDs G*/D*/P*) and Wii discs (R*/S*); Wii titles need theirs too,
+#                  e.g. RMG.ini turns EFB access on for Super Mario Galaxy. ~3.5 MB more, mostly text.
 #   codehandler.bin          Gecko code handler; the core logs a "core files missing" error without it
 # Skipped: totaldb.dsy (DolphinQt debugger only), wiitdb-*.txt (title database, UI only), Themes/, Load/,
 # Resources/* other than the OSD font, ApprovedInis.json (RetroAchievements, disabled).
@@ -228,7 +229,7 @@ mkdir -p "$ASSET_OUT_DIR/Resources" "$ASSET_OUT_DIR/GameSettings"
 cp -R "$SYS/GC" "$SYS/Wii" "$SYS/Shaders" "$SYS/Profiles" "$ASSET_OUT_DIR/"
 cp "$SYS/codehandler.bin" "$ASSET_OUT_DIR/"
 cp "$SYS/Resources/OSD_Font.ttf" "$ASSET_OUT_DIR/Resources/"
-find "$SYS/GameSettings" -maxdepth 1 -type f \( -name 'G*.ini' -o -name 'D*.ini' -o -name 'P*.ini' \) -exec cp {} "$ASSET_OUT_DIR/GameSettings/" \;
+find "$SYS/GameSettings" -maxdepth 1 -type f \( -name 'G*.ini' -o -name 'D*.ini' -o -name 'P*.ini' -o -name 'R*.ini' -o -name 'S*.ini' \) -exec cp {} "$ASSET_OUT_DIR/GameSettings/" \;
 find "$ASSET_OUT_DIR" -name '.DS_Store' -delete
 
 # ---------------------------------------------------------------- verify
