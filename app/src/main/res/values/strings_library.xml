@@ -110,6 +110,13 @@
     <string name="lib_msg_thumbnail_failed">이미지를 불러올 수 없습니다</string>
     <string name="lib_msg_thumbnail_set">썸네일을 변경했습니다</string>
     <string name="lib_msg_removed">라이브러리에서 제거했습니다</string>
+    <string name="lib_msg_removed_many">%1$d개를 라이브러리에서 제거했습니다</string>
+    <string name="lib_sel_count">%1$d개 선택</string>
+    <string name="lib_sel_all">전체 선택</string>
+    <string name="lib_sel_none">선택 해제</string>
+    <string name="lib_sel_exit">선택 끝내기</string>
+    <string name="lib_sel_remove_title">선택한 %1$d개를 라이브러리에서 제거할까요?</string>
+    <string name="lib_sel_remove_desc">파일은 지우지 않습니다. 폴더를 다시 스캔하면 다시 나타날 수 있습니다.</string>
     <string name="lib_msg_no_folders">추가된 폴더가 없습니다</string>
 
     <!-- 폴더 관리 -->

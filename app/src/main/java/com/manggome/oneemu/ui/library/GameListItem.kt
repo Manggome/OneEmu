@@ -1,5 +1,7 @@
 package com.manggome.oneemu.ui.library
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -41,11 +43,13 @@ fun GameListItem(
     onLongClick: () -> Unit,
     onMore: () -> Unit,
     modifier: Modifier = Modifier,
+    selected: Boolean = false,
 ) {
     val system = SystemId.fromId(game.system)
     Row(
         modifier
             .fillMaxWidth()
+            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
