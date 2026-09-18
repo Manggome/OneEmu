@@ -68,7 +68,7 @@ public:
     // strictGlesVersion: fail with GlesUnsupported when the device context is older than what the core
     // requests in SET_HW_RENDER (cores whose shaders need it, e.g. Azahar); otherwise only warn and proceed.
     // hwApi: graphics API offered to the core in GET_PREFERRED_HW_RENDER: "vulkan" or anything else = OpenGL ES 3.
-    bool loadCore(const std::string& corePath, const std::string& systemDir, const std::string& saveDir,
+    bool loadCore(const std::string& corePath, const std::string& systemDir, const std::string& coreAssetsDir, const std::string& saveDir,
                   const std::string& optionOverrides, bool strictGlesVersion, const std::string& hwApi, bool keepLoaded,
                   std::string* error);
     bool loadGame(const std::string& romPath, std::string* error);
@@ -154,6 +154,7 @@ private:
     LibretroCore core_;
     FrontendListener* listener_ = nullptr;
     std::string corePath_, systemDir_, saveDir_, romPath_, romBase_;
+    std::string coreAssetsDir_;   // GET_CORE_ASSETS_DIRECTORY; systemDir_ when empty
     std::vector<uint8_t> romData_;
     retro_system_info sysInfo_{};
     retro_system_av_info avInfo_{};

@@ -63,7 +63,9 @@ object ArcadeRomCheck {
      */
     val UNSTABLE_DRIVERS: Map<String, Set<String>> = mapOf(
         ArcadeCoreRouter.MAME2003PLUS to setOf("stv", "stvinit", "stvhacks"),
-        ArcadeCoreRouter.MAME2010 to setOf("stv"),
+        // namcos12: MAME 0.139 aborts while loading Tekken Tag Tournament (SIGABRT in __strcat_chk inside the
+        // core, reported from a Galaxy Z Fold 7 on v0.1.67). Current MAME runs System 12, so route there.
+        ArcadeCoreRouter.MAME2010 to setOf("stv", "namcos12"),
         // Current MAME (ArcadeCoreRouter.MAME) has no entry: its ST-V driver runs, so every ST-V game it lists goes there.
     )
 

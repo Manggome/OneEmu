@@ -345,7 +345,7 @@ bool Frontend::rumble(unsigned port, unsigned strength) {
 }
 
 // ---------------------------------------------------------------- load / unload
-bool Frontend::loadCore(const std::string& corePath, const std::string& systemDir, const std::string& saveDir,
+bool Frontend::loadCore(const std::string& corePath, const std::string& systemDir, const std::string& coreAssetsDir, const std::string& saveDir,
                         const std::string& optionOverrides, bool strictGlesVersion, const std::string& hwApi, bool keepLoaded,
                         std::string* error) {
     unload();
@@ -355,6 +355,7 @@ bool Frontend::loadCore(const std::string& corePath, const std::string& systemDi
     bool ok = false;
     run([&] {
         corePath_ = corePath; systemDir_ = systemDir; saveDir_ = saveDir;
+        coreAssetsDir_ = coreAssetsDir.empty() ? systemDir : coreAssetsDir;
         mkdir(systemDir_.c_str(), 0755);
         mkdir(saveDir_.c_str(), 0755);
         { std::lock_guard<std::mutex> lock(optionsMutex_); options_.clear(); optionOverrides_.clear(); }
@@ -805,7 +806,10 @@ bool Frontend::environment(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL: return true;
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: *(const char**)data = systemDir_.c_str(); return true;
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: *(const char**)data = saveDir_.c_str(); return true;
-        case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY: *(const char**)data = systemDir_.c_str(); return true;
+        // Kept separate from the system directory: Jazz² Resurrection is pointed at the game's own folder as
+        // its system directory so it finds the original files there, while the engine data it ships with us
+        // stays here.
+        case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY: *(const char**)data = coreAssetsDir_.c_str(); return true;
         case RETRO_ENVIRONMENT_GET_LIBRETRO_PATH: *(const char**)data = corePath_.c_str(); return true;
         case RETRO_ENVIRONMENT_GET_USERNAME: *(const char**)data = "OneEmu"; return true;
         case RETRO_ENVIRONMENT_GET_LANGUAGE: *(unsigned*)data = RETRO_LANGUAGE_KOREAN; return true;
