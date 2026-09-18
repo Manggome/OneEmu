@@ -74,6 +74,22 @@ object CrashMarker {
      * Android's own record of why our recent processes ended (Android 11+): a kill by the low-memory killer, an
      * ANR, a native signal etc. leave no trace inside the app otherwise.
      */
+    /**
+     * True when Android says the process that ran this session was ended by the user - swiped out of recents
+     * or force stopped - rather than by a crash. Without this the next launch calls that "비정상 종료" and
+     * suggests trying another core, which is alarming and wrong: closing a game that way is normal.
+     * Unknown (below API 30, no record, or a record older than the session) counts as not user requested,
+     * so a real crash is still reported.
+     */
+    fun lastExitWasUserRequested(context: Context, sessionStartedAt: Long): Boolean = runCatching {
+        if (android.os.Build.VERSION.SDK_INT < 30) return@runCatching false
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val info = am.getHistoricalProcessExitReasons(context.packageName, 0, 1).firstOrNull() ?: return@runCatching false
+        if (info.timestamp < sessionStartedAt) return@runCatching false
+        info.reason == android.app.ApplicationExitInfo.REASON_USER_REQUESTED ||
+            info.reason == android.app.ApplicationExitInfo.REASON_USER_STOPPED
+    }.getOrDefault(false)
+
     fun exitReasons(context: Context, max: Int = 3): String = runCatching {
         if (android.os.Build.VERSION.SDK_INT < 30) return@runCatching ""
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
@@ -186,8 +202,10 @@ fun CrashReportPrompt() {
     var marker by remember { mutableStateOf<CrashMarker.Marker?>(null) }
     LaunchedEffect(Unit) {
         val m = CrashMarker.read(context)
-        // Ignore stale markers (e.g. the process was killed by the system days ago).
-        if (m != null && System.currentTimeMillis() - m.at < 24 * 60 * 60 * 1000L) marker = m
+        val stale = m != null && System.currentTimeMillis() - m.at >= 24 * 60 * 60 * 1000L
+        val byUser = m != null && CrashMarker.lastExitWasUserRequested(context, m.at)
+        // Ignore stale markers (the process was killed by the system days ago) and sessions the user ended.
+        if (m != null && !stale && !byUser) marker = m
         else if (m != null) CrashMarker.clear(context)
     }
     val m = marker ?: return
