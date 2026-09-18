@@ -1,0 +1,30 @@
+{
+  "id": "armsx2",
+  "displayName": "ARMSX2 (플레이스테이션 2)",
+  "libFile": "libarmsx2_libretro.so",
+  "distribution": "download",
+  "systems": ["ps2"],
+  "extensions": ["iso", "bin", "img", "mdf", "nrg", "dump", "cso", "zso", "chd", "gz", "m3u"],
+  "needFullPath": true,
+  "hwRender": "vulkan",
+  "bios": [
+    {
+      "system": "ps2",
+      "file": "pcsx2/bios/",
+      "required": true,
+      "description": "PS2 BIOS 덤프를 이 폴더에 넣어 주세요 (본인 PS2에서 추출한 4 MB .bin, 예: scph39001.bin). PCSX2 계열은 BIOS 없이는 실행되지 않습니다. 게임과 같은 지역의 BIOS를 권장합니다 (일본판 게임 → 일본 BIOS). .NVM/.MEC/.EROM/.ROM1/.ROM2 동반 파일이 있으면 같이 넣으세요."
+    }
+  ],
+  "sourceRepo": "https://github.com/ARMSX2/ARMSX2",
+  "sourceCommit": "f4272b6768a2695bfda9265c319e595509cdc54c",
+  "license": "GPL-3.0-or-later",
+  "assets": {
+    "sourceDir": "cores/armsx2/assets",
+    "installAs": "pcsx2/resources",
+    "description": "PCSX2 런타임 리소스 부분집합 (fonts/Roboto-Regular.ttf, shaders/ GS 셰이더, GameIndex.yaml 게임별 호환성 패치). 모두 PCSX2 배포판에 포함된 자유 라이선스 파일이며 소니 BIOS 는 포함되지 않습니다.",
+    "sizeNote": "약 1.5 MB"
+  },
+  "assetsInstallDir": "pcsx2/resources",
+  "defaultOptions": {},
+  "notes": "ARMSX2 (PCSX2 의 ARM64 포크) PS2 코어, 내려받기형. 업스트림 PCSX2 는 x86-64 리컴파일러만 있고 ARM 에서는 인터프리터로 떨어져서 사실상 못 쓰지만, ARMSX2 는 EE/IOP/VU0/VU1 네이티브 AArch64 JIT 를 갖고 있어 모바일에서 실사용 가능한 속도가 나온다. 기존 play 코어(HLE, BIOS 불필요)는 그대로 두고 병행한다 - BIOS 가 없는 사용자는 play 를, 있는 사용자는 이 코어를 쓴다.\n\n빌드: CMake + NDK 28.2 (ARMSX2 안드로이드 앱과 동일한 NDK/minSdk 26), 타깃 pcsx2-libretro (OUTPUT_NAME armsx2_libretro, PREFIX 없음). 플래그는 ARMSX2 자체 libretro CI (.github/workflows/linux_build_libretro.yml) 를 안드로이드로 옮긴 것: ENABLE_LIBRETRO=ON, Qt/SDL/GSRunner/테스트 OFF, DISABLE_ADVANCE_SIMD, 프리컴파일 헤더 OFF. LTO 는 첫 통과를 위해 OFF (CI 시간/메모리) - 안정화 후 LTO_PCSX2_CORE=ON 로 올릴 것.\n\n페이지 크기: PCSX2 의 vtlb/fastmem 은 호스트 페이지 크기에 맞춰 메모리를 매핑한다. ARMSX2 앱은 4K/16K 두 변형을 APK 하나에 넣지만, 여기서는 16384 하나로 빌드한다 (16K 는 4K 커널에서도 배수라 유효, 우리 앱은 어차피 16KB 정렬 요구).\n\n경로: 코어가 <system dir>/pcsx2 를 자기 루트로 쓴다 (pcsx2-libretro/Main.cpp InitializeConfig). BIOS 는 <system dir>/pcsx2/bios, 리소스는 <system dir>/pcsx2/resources (assetsInstallDir), INI/메모리카드/캐시도 그 아래에 생성된다.\n\nHW 렌더: Vulkan (retro_hw_render_context_negotiation_interface_vulkan) 을 쓰며 프론트엔드의 Vulkan 백엔드(video_vk.*)와 맞물린다. GL 경로도 있지만 Adreno 에서는 Vulkan 이 정석.\n\n미검증: 실기 실행 (에뮬레이터에는 PS2 게임/BIOS 가 없다). 첫 CI 빌드가 통과하면 사용자 기기에서 확인할 것."
+}
