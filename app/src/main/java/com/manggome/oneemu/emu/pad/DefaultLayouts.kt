@@ -79,6 +79,10 @@ object DefaultLayouts {
         SystemId.PSP -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = false, triggers = false, lowPortrait = false)
         SystemId.PS2 -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = true, triggers = true, lowPortrait = false)
         SystemId.GC -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = true, triggers = true, lowPortrait = false)
+        // Mega Drive's six-button pad: the core wires Y/B/A to A/B/C and L/X/R to X/Y/Z, so the four face
+        // buttons plus the shoulders are exactly it. Master System and Game Gear use two of them.
+        SystemId.MD -> fourButton(landscape, shoulders = true, leftStick = false, rightStick = false, triggers = false, lowPortrait = false)
+        SystemId.SMS, SystemId.GG -> twoButton(landscape, shoulders = false)
         SystemId.ARCADE -> arcade(landscape)
         // Jazz Jackrabbit 2: run/jump/shoot on the face buttons, weapon switching on the shoulders.
         SystemId.JAZZ2 -> fourButton(landscape, shoulders = true, leftStick = false, rightStick = false, triggers = false, lowPortrait = false)

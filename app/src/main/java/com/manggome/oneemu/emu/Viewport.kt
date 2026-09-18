@@ -65,6 +65,9 @@ object ViewportStore {
      * (NDS/3DS: both screens stacked, which is how the cores hand us the frame).
      */
     fun nominalAspect(system: SystemId): Float = when (system) {
+        // Sega's 8/16-bit machines all output 4:3 on a TV; the Game Gear's LCD is its own 10:9.
+        SystemId.MD, SystemId.SMS -> 4f / 3f
+        SystemId.GG -> 10f / 9f
         SystemId.JAZZ2 -> 16f / 9f
         SystemId.NES -> 4f / 3f
         SystemId.GB, SystemId.GBC -> 160f / 144f

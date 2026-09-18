@@ -67,6 +67,11 @@
                 <data android:pathPattern=".*\\.dol" />
                 <data android:pathPattern=".*\\.cue" />
                 <data android:pathPattern=".*\\.j2a" />
+                <data android:pathPattern=".*\\.md" />
+                <data android:pathPattern=".*\\.gen" />
+                <data android:pathPattern=".*\\.smd" />
+                <data android:pathPattern=".*\\.sms" />
+                <data android:pathPattern=".*\\.gg" />
             </intent-filter>
         </activity>
 
