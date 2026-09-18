@@ -245,4 +245,8 @@
     <string name="lib_arcade_owner_files">%1$s.zip: %2$s</string>
     <string name="lib_arcade_owner_more">… +%1$d</string>
     <string name="lib_msg_unhidden">숨겨 둔 게임 %1$d개를 되살렸습니다</string>
+    <string name="lib_hidden_title">숨긴 게임</string>
+    <string name="lib_hidden_loading">불러오는 중…</string>
+    <string name="lib_hidden_empty">숨긴 게임이 없습니다</string>
+    <string name="lib_hidden_restore">되살리기</string>
 </resources>
