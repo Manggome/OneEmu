@@ -92,6 +92,20 @@ class RomScanner(
         }
     }
 
+    /**
+     * Drops entries whose extension no longer belongs to any system. Detection rules change between versions
+     * (Jazz² first listed every .j2l level, now only the game's Anims.j2a), and those old rows would otherwise
+     * sit in the library for ever: a scan only removes entries whose file has vanished.
+     */
+    suspend fun pruneUnsupportedEntries(): Int = withContext(Dispatchers.IO) {
+        val stale = db.games().allOnce().filter { g ->
+            !g.path.startsWith(EmulatorSession.NO_CONTENT_PREFIX) &&
+                g.path.substringAfterLast('.', "").lowercase().let { it.isNotEmpty() && it !in extMap }
+        }
+        if (stale.isNotEmpty()) db.games().deleteIds(stale.map { it.id })
+        stale.size
+    }
+
     /** Adds a single file the user picked manually. */
     suspend fun addFile(file: File): GameEntity? = withContext(Dispatchers.IO) {
         val ext = file.extension.lowercase()

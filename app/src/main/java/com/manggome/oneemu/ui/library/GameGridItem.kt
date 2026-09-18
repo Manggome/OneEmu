@@ -34,6 +34,7 @@ fun GameGridItem(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
     columns: Int = 3,
+    selected: Boolean = false,
 ) {
     val system = SystemId.fromId(game.system)
     val initialsSize = when {

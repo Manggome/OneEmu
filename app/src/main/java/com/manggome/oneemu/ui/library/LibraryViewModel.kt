@@ -276,6 +276,19 @@ class LibraryViewModel : ViewModel() {
     fun setCore(game: GameEntity, coreId: String?) = launchIo { db.games().setCore(game.id, coreId) }
 
     /** Manually added games are deleted outright; scanned ones are hidden so a rescan doesn't resurrect them. */
+    /** Removes several games at once (multi-selection in the library). */
+    fun removeAll(ids: Set<Long>) = launchIo {
+        if (ids.isEmpty()) return@launchIo
+        var n = 0
+        for (id in ids) {
+            val game = db.games().get(id) ?: continue
+            if (game.folderId == null) db.games().delete(game) else db.games().setHidden(game.id, true)
+            deleteOwnedThumbnail(game)
+            n++
+        }
+        post(LibraryMessage(R.string.lib_msg_removed_many, listOf(n)))
+    }
+
     fun remove(game: GameEntity) = launchIo {
         if (game.folderId == null) db.games().delete(game) else db.games().setHidden(game.id, true)
         deleteOwnedThumbnail(game)

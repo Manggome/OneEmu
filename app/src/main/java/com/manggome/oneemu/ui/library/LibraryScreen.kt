@@ -31,6 +31,8 @@ import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -44,6 +46,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -93,6 +98,14 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
     val snackbar = remember { SnackbarHostState() }
 
     var selected by remember { mutableStateOf<GameEntity?>(null) }
+    // Multi-selection: a long press starts it, taps then toggle. Empty = normal browsing.
+    var selectedIds by rememberSaveable { mutableStateOf(setOf<Long>()) }
+    var confirmRemoveMany by remember { mutableStateOf(false) }
+    val selectionMode = selectedIds.isNotEmpty()
+    val allIds = remember(state.sections) { state.sections.flatMap { s -> s.games.map { it.id } }.toSet() }
+    fun toggle(game: GameEntity) {
+        selectedIds = if (game.id in selectedIds) selectedIds - game.id else selectedIds + game.id
+    }
     var launchBlock by remember { mutableStateOf<LaunchCheck?>(null) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
     var fabExpanded by rememberSaveable { mutableStateOf(false) }
@@ -122,15 +135,26 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
     }
 
     BackHandler(enabled = state.searching) { vm.setSearching(false) }
+    BackHandler(enabled = selectionMode) { selectedIds = emptySet() }
 
     Scaffold(
         topBar = {
             Column {
-                LibraryTopBar(state, vm, nav)
+                if (selectionMode) {
+                    SelectionTopBar(
+                        count = selectedIds.size,
+                        allSelected = selectedIds.size >= allIds.size && allIds.isNotEmpty(),
+                        onClose = { selectedIds = emptySet() },
+                        onSelectAll = { selectedIds = if (selectedIds.size >= allIds.size) emptySet() else allIds },
+                        onRemove = { confirmRemoveMany = true },
+                    )
+                } else {
+                    LibraryTopBar(state, vm, nav)
+                }
                 ScanProgressBar(progress)
             }
         },
-        floatingActionButton = {
+        floatingActionButton = if (selectionMode) ({}) else ({
             AddMenu(
                 expanded = fabExpanded,
                 onExpandedChange = { fabExpanded = it },
@@ -138,7 +162,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
                 onAddFolder = { pickFolder.launch(null) },
                 onHelp = { showHelp = true },
             )
-        },
+        }),
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -158,14 +182,16 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
                 state.viewMode == ViewMode.LIST -> GameList(
                     state = state,
                     onToggleSection = vm::toggleSection,
-                    onClick = ::tryLaunch,
-                    onLongClick = { selected = it },
+                    onClick = { if (selectionMode) toggle(it) else tryLaunch(it) },
+                    onLongClick = { if (selectionMode) toggle(it) else selectedIds = setOf(it.id) },
+                    selectedIds = selectedIds,
                 )
                 else -> GameGrid(
                     state = state,
                     onToggleSection = vm::toggleSection,
-                    onClick = ::tryLaunch,
-                    onLongClick = { selected = it },
+                    onClick = { if (selectionMode) toggle(it) else tryLaunch(it) },
+                    onLongClick = { if (selectionMode) toggle(it) else selectedIds = setOf(it.id) },
+                    selectedIds = selectedIds,
                 )
             }
         }
@@ -185,6 +211,22 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
             },
             onOpenCoreOptions = { nav.navigate(Routes.coreOptions(it)) },
             onOpenDetails = { nav.navigate(Routes.game(it.id)) },
+        )
+    }
+    if (confirmRemoveMany) {
+        val n = selectedIds.size
+        AlertDialog(
+            onDismissRequest = { confirmRemoveMany = false },
+            title = { Text(stringResource(R.string.lib_sel_remove_title, n)) },
+            text = { Text(stringResource(R.string.lib_sel_remove_desc)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.removeAll(selectedIds)
+                    selectedIds = emptySet()
+                    confirmRemoveMany = false
+                }) { Text(stringResource(R.string.lib_remove_confirm), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmRemoveMany = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     launchBlock?.let { LaunchCheckDialog(it) { launchBlock = null } }
@@ -309,6 +351,35 @@ private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavH
     )
 }
 
+/** Replaces the normal top bar while games are selected: count, select-all, remove. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectionTopBar(
+    count: Int,
+    allSelected: Boolean,
+    onClose: () -> Unit,
+    onSelectAll: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    TopAppBar(
+        title = { Text(stringResource(R.string.lib_sel_count, count)) },
+        navigationIcon = {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.lib_sel_exit))
+            }
+        },
+        actions = {
+            TextButton(onClick = onSelectAll) {
+                Text(stringResource(if (allSelected) R.string.lib_sel_none else R.string.lib_sel_all))
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.lib_action_remove), tint = MaterialTheme.colorScheme.error)
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    )
+}
+
 @Composable
 private fun SortItem(labelRes: Int, checked: Boolean, onClick: () -> Unit) = CheckItem(labelRes, checked, onClick)
 
@@ -335,6 +406,7 @@ private fun GameList(
     onToggleSection: (LibrarySection) -> Unit,
     onClick: (GameEntity) -> Unit,
     onLongClick: (GameEntity) -> Unit,
+    selectedIds: Set<Long> = emptySet(),
 ) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = BottomPadding)) {
         if (state.recent.isNotEmpty() && !state.searching) {
@@ -355,6 +427,7 @@ private fun GameList(
                         onClick = { onClick(game) },
                         onLongClick = { onLongClick(game) },
                         onMore = { onLongClick(game) },
+                        selected = game.id in selectedIds,
                     )
                 }
             }
@@ -368,6 +441,7 @@ private fun GameGrid(
     onToggleSection: (LibrarySection) -> Unit,
     onClick: (GameEntity) -> Unit,
     onLongClick: (GameEntity) -> Unit,
+    selectedIds: Set<Long> = emptySet(),
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(state.gridColumns),
@@ -395,6 +469,7 @@ private fun GameGrid(
                         onClick = { onClick(game) },
                         onLongClick = { onLongClick(game) },
                         columns = state.gridColumns,
+                        selected = game.id in selectedIds,
                     )
                 }
             }
