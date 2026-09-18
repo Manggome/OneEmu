@@ -7,6 +7,5 @@
     </style>
     <style name="Theme.OneEmu.Emulator" parent="Theme.OneEmu">
         <item name="android:windowBackground">@android:color/black</item>
-        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>
