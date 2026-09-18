@@ -36,6 +36,8 @@ class Settings(private val context: Context) {
 
         val videoLinearFilter = booleanPreferencesKey("video_linear")
         val videoAspect = intPreferencesKey("video_aspect") // 0 core, 1 stretch, 2 integer, 3 square
+        /** Extra quarter turns for one game, on top of the core's own rotation. */
+        fun videoRotation(gameId: Long) = intPreferencesKey("video_rotation_$gameId")
         val fastForwardSpeed = intPreferencesKey("ff_speed") // 0 unlimited, else N×
         val showFps = booleanPreferencesKey("show_fps")
         val audioEnabled = booleanPreferencesKey("audio_enabled")

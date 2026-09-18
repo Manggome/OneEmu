@@ -381,7 +381,9 @@ void VideoGL::present(const VideoConfig& cfg, float coreAspect, bool hwFrame) {
     lastViewport_[2] = vw; lastViewport_[3] = vh;
     glViewport(vx, vy, vw, vh);
 
-    float c = std::cos(-(float)cfg.rotation * (float)M_PI_2), s = std::sin(-(float)cfg.rotation * (float)M_PI_2);
+    // SET_ROTATION counts counter-clockwise (libretro.h), and clip space is y-up, so the angle is
+    // positive. Turning it the other way left vertical arcade boards (Strikers 1945 II) upside down.
+    float c = std::cos((float)cfg.rotation * (float)M_PI_2), s = std::sin((float)cfg.rotation * (float)M_PI_2);
     // column-major: rotate (the letterbox is applied through glViewport)
     float mvp[16] = {
         c,  s, 0, 0,

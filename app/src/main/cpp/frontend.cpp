@@ -366,7 +366,7 @@ bool Frontend::loadCore(const std::string& corePath, const std::string& systemDi
         strictGlesVersion_ = strictGlesVersion;
         pixelFormat_ = RETRO_PIXEL_FORMAT_0RGB1555;
         supportsBitmasks_ = false;
-        rotation_ = 0; videoCfg_.rotation = 0;
+        rotation_ = 0; videoCfg_.rotation = userRotation_ & 3u;
         logMemoryInfo();
         noteLog('I', "loading core " + corePath);
         if (access(corePath.c_str(), R_OK) != 0) {
@@ -741,8 +741,9 @@ void Frontend::setControllerPortDevice(unsigned port, unsigned device) {
 
 void Frontend::setFastForward(int speed) { fastForward_ = speed; nextFrameNs_ = 0; }
 
-void Frontend::setVideoConfig(bool linear, int aspectMode) {
-    linearFilterPending_ = linear; aspectModePending_ = aspectMode; videoCfgDirty_ = true;
+void Frontend::setVideoConfig(bool linear, int aspectMode, int userRotation) {
+    linearFilterPending_ = linear; aspectModePending_ = aspectMode;
+    userRotationPending_ = userRotation & 3; videoCfgDirty_ = true;
     queueCv_.notify_all();
 }
 
@@ -756,6 +757,8 @@ void Frontend::applyPendingVideoConfig() {
     if (videoCfgDirty_.exchange(false)) {
         videoCfg_.linearFilter = linearFilterPending_;
         videoCfg_.aspect = (AspectMode)aspectModePending_;
+        userRotation_ = (unsigned)userRotationPending_ & 3u;
+        videoCfg_.rotation = (rotation_ + userRotation_) & 3u;
     }
     if (viewportDirty_.exchange(false)) {
         videoCfg_.vpX = viewportPending_[0]; videoCfg_.vpY = viewportPending_[1];
@@ -770,7 +773,7 @@ bool Frontend::environment(unsigned cmd, void* data) {
     switch (cmd) {
         case RETRO_ENVIRONMENT_SET_ROTATION:
             rotation_ = *(const unsigned*)data & 3;
-            videoCfg_.rotation = rotation_;
+            videoCfg_.rotation = (rotation_ + userRotation_) & 3u;
             return true;
         case RETRO_ENVIRONMENT_GET_OVERSCAN: *(bool*)data = false; return true;
         case RETRO_ENVIRONMENT_GET_CAN_DUPE: *(bool*)data = true; return true;

@@ -220,6 +220,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         NativeBridge.setVideoConfig(
             s.get(com.manggome.oneemu.data.Settings.Keys.videoLinearFilter, false),
             s.get(com.manggome.oneemu.data.Settings.Keys.videoAspect, 0),
+            s.get(com.manggome.oneemu.data.Settings.Keys.videoRotation(game.id), 0),
         )
         NativeBridge.setAudioMuted(!s.get(com.manggome.oneemu.data.Settings.Keys.audioEnabled, true))
     }

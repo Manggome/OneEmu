@@ -67,6 +67,8 @@ fun QuickSettingsSheet(session: EmulatorSession, onEditLayout: () -> Unit, onDis
 
     val linear by settings.observe(Settings.Keys.videoLinearFilter, false).collectAsState(false)
     val aspect by settings.observe(Settings.Keys.videoAspect, 0).collectAsState(0)
+    val rotationKey = remember(session.game.id) { Settings.Keys.videoRotation(session.game.id) }
+    val rotation by settings.observe(rotationKey, 0).collectAsState(0)
     val opacity by settings.observe(Settings.Keys.padOpacity, Settings.DEFAULT_PAD_OPACITY).collectAsState(Settings.DEFAULT_PAD_OPACITY)
     val padScale by settings.observe(Settings.Keys.padScale, Settings.DEFAULT_PAD_SCALE).collectAsState(Settings.DEFAULT_PAD_SCALE)
     val vibration by settings.observe(Settings.Keys.padVibration, true).collectAsState(true)
@@ -83,11 +85,11 @@ fun QuickSettingsSheet(session: EmulatorSession, onEditLayout: () -> Unit, onDis
                 SectionLabel(stringResource(R.string.qs_filter))
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                     SegmentedButton(
-                        selected = linear, onClick = { put(Settings.Keys.videoLinearFilter, true); NativeBridge.setVideoConfig(true, aspect) },
+                        selected = linear, onClick = { put(Settings.Keys.videoLinearFilter, true); NativeBridge.setVideoConfig(true, aspect, rotation) },
                         shape = SegmentedButtonDefaults.itemShape(0, 2),
                     ) { Text(stringResource(R.string.qs_filter_smooth)) }
                     SegmentedButton(
-                        selected = !linear, onClick = { put(Settings.Keys.videoLinearFilter, false); NativeBridge.setVideoConfig(false, aspect) },
+                        selected = !linear, onClick = { put(Settings.Keys.videoLinearFilter, false); NativeBridge.setVideoConfig(false, aspect, rotation) },
                         shape = SegmentedButtonDefaults.itemShape(1, 2),
                     ) { Text(stringResource(R.string.qs_filter_pixel)) }
                 }
@@ -97,7 +99,15 @@ fun QuickSettingsSheet(session: EmulatorSession, onEditLayout: () -> Unit, onDis
                     stringResource(R.string.qs_aspect_integer), stringResource(R.string.qs_aspect_square),
                 )
                 DropdownRow(stringResource(R.string.qs_aspect), aspectLabels.getOrElse(aspect) { aspectLabels[0] }, aspectLabels) { idx ->
-                    put(Settings.Keys.videoAspect, idx); NativeBridge.setVideoConfig(linear, idx)
+                    put(Settings.Keys.videoAspect, idx); NativeBridge.setVideoConfig(linear, idx, rotation)
+                }
+
+                val rotationLabels = listOf(
+                    stringResource(R.string.qs_rotation_0), stringResource(R.string.qs_rotation_90),
+                    stringResource(R.string.qs_rotation_180), stringResource(R.string.qs_rotation_270),
+                )
+                DropdownRow(stringResource(R.string.qs_rotation), rotationLabels.getOrElse(rotation) { rotationLabels[0] }, rotationLabels) { idx ->
+                    put(rotationKey, idx); NativeBridge.setVideoConfig(linear, aspect, idx)
                 }
 
                 SliderRow(stringResource(R.string.qs_pad_opacity), opacity, 0.15f..1f, "${(opacity * 100).toInt()}%") { put(Settings.Keys.padOpacity, it) }
