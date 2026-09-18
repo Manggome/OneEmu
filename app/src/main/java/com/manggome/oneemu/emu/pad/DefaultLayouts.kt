@@ -80,8 +80,8 @@ object DefaultLayouts {
         SystemId.PS2 -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = true, triggers = true, lowPortrait = false)
         SystemId.GC -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = true, triggers = true, lowPortrait = false)
         SystemId.ARCADE -> arcade(landscape)
-        // Jazz Jackrabbit 2: run/jump/shoot plus the weapon shoulder buttons.
-        SystemId.JAZZ2 -> twoButton(landscape, shoulders = true)
+        // Jazz Jackrabbit 2: run/jump/shoot on the face buttons, weapon switching on the shoulders.
+        SystemId.JAZZ2 -> fourButton(landscape, shoulders = true, leftStick = false, rightStick = false, triggers = false, lowPortrait = false)
     }
 
     private fun e(id: PadElementId, x: Float, y: Float, scale: Float = 1f) = PadElement(id, x, y, scale)
