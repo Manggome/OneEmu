@@ -3,6 +3,7 @@
   "displayName": "ARMSX2 (플레이스테이션 2)",
   "libFile": "libarmsx2_libretro.so",
   "distribution": "download",
+  "packageRevision": 2,
   "systems": ["ps2"],
   "extensions": ["iso", "bin", "img", "mdf", "nrg", "dump", "cso", "zso", "chd", "gz", "m3u"],
   "needFullPath": true,
