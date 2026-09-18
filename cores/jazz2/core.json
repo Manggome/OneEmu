@@ -1,0 +1,38 @@
+{
+  "id": "jazz2",
+  "displayName": "재즈 잭래빗 2 (Jazz² Resurrection)",
+  "libFile": "libjazz2_libretro.so",
+  "distribution": "bundled",
+  "systems": [
+    "jazz2"
+  ],
+  "extensions": [
+    "j2l",
+    "j2e",
+    "j2a"
+  ],
+  "needFullPath": true,
+  "supportsNoContent": true,
+  "hwRender": "gles3",
+  "bios": [
+    {
+      "system": "jazz2",
+      "file": "jazz2/Source/",
+      "required": false,
+      "description": "원본 Jazz Jackrabbit 2 (또는 The Secret Files) 폴더의 내용물을 이 폴더에 복사하세요. 게임 폴더 안에 Content/ 와 Source/ 를 두고 그 안의 파일을 직접 실행하는 방식도 지원합니다. 엔진만 오픈소스이고 게임 데이터는 포함되어 있지 않습니다."
+    }
+  ],
+  "sourceRepo": "https://github.com/deathkiller/jazz2-native",
+  "sourceCommit": "9cc77a769ca0deb82c664dce733c1fd1173b6235",
+  "license": "GPL-3.0-or-later",
+  "assets": {
+    "sourceDir": "cores/jazz2/assets",
+    "installAs": "jazz2/Content",
+    "description": "Jazz² Resurrection 엔진 데이터 (Animations, Metadata, Translations). 엔진 자체 파일이며 원본 게임 데이터는 들어 있지 않습니다."
+  },
+  "assetsInstallDir": "jazz2/Content",
+  "defaultOptions": {
+    "jazz2_frame_rate": "auto"
+  },
+  "notes": "Jazz² Resurrection (deathkiller/jazz2-native) - 1998년 윈도우 게임 Jazz Jackrabbit 2 의 오픈소스 재구현. 에뮬레이터가 아니라 원본 게임 데이터를 읽는 네이티브 엔진이며, 저장소에 libretro 백엔드(Sources/libretro.cpp, nCine/Backends/Libretro)가 있어 코어로 빌드된다. 원본은 x86 윈도우 실행 파일이라 어떤 콘솔 코어로도 못 돌리므로 이 앱에서 JJ2 를 하려면 이 경로뿐이다.\\n\\n콘텐츠 없이 실행(SET_SUPPORT_NO_GAME): <system dir>/jazz2/Content (엔진 데이터, assetsInstallDir 로 설치) 가 있으면 롬 없이 시작한다. 사용자의 원본 게임 파일은 <system dir>/jazz2/Source/ 에 넣는다. 세이브/설정은 libretro 세이브 디렉터리로 간다.\\n\\n빌드: -DNCINE_BUILD_LIBRETRO=ON. 업스트림은 libretro 코어를 리눅스로만 빌드하고 안드로이드 NDK 조합은 전례가 없어 패치 3개가 필요하다 - 0001 curl 프리빌트가 없으면 웹 요청 기능 제외, 0002 CMake 가 ANDROID 백엔드 대신 libretro 백엔드 선택, 0003 앱 계층의 DEATH_TARGET_ANDROID 분기를 libretro 빌드에서 비활성화(플랫폼 매크로 자체는 유지해야 한다 - bionic 에 pthread_cancel 등이 없어 UNIX 경로로 넘기면 깨진다). 링크에는 -landroid 가 필요하다 (AndroidAssetStream 이 여전히 컴파일됨).\\n\\n미해결: 오디오. nCine 의 오디오 장치가 OpenAL 프리빌트를 요구하는데 NDK 에 없어 지금은 무음으로 동작한다 (libretro.cpp 가 renderSamples 실패 시 무음을 채운다). OpenAL Soft 를 같이 빌드해 EXTERNAL_ANDROID_DIR 로 넘기면 해결된다."
+}

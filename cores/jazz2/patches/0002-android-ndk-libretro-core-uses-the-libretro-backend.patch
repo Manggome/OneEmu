@@ -1,0 +1,16 @@
+diff --git a/cmake/ncine_extra_sources.cmake b/cmake/ncine_extra_sources.cmake
+index df7eb14..1c167bd 100644
+--- a/cmake/ncine_extra_sources.cmake
++++ b/cmake/ncine_extra_sources.cmake
+@@ -958,7 +958,10 @@ if(NCINE_BUILD_ANDROID)
+ 	)
+ endif()
+ 
+-if(ANDROID)
++# A libretro core cross-compiled with the Android NDK still has ANDROID set, but the frontend owns the
++# window, the input devices and the game loop, so it takes the libretro backend below instead of the
++# native Android one (which would pull in the activity, the JNI helper and native_app_glue).
++if(ANDROID AND NOT NCINE_BUILD_LIBRETRO)
+ 	list(APPEND HEADERS
+ 		${NCINE_SOURCE_DIR}/nCine/Backends/Android/AndroidInputManager.h
+ 		${NCINE_SOURCE_DIR}/nCine/Backends/Android/AndroidJniHelper.h

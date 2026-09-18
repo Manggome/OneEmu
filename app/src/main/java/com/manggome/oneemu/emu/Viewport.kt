@@ -65,6 +65,7 @@ object ViewportStore {
      * (NDS/3DS: both screens stacked, which is how the cores hand us the frame).
      */
     fun nominalAspect(system: SystemId): Float = when (system) {
+        SystemId.JAZZ2 -> 16f / 9f
         SystemId.NES -> 4f / 3f
         SystemId.GB, SystemId.GBC -> 160f / 144f
         SystemId.GBA -> 3f / 2f
