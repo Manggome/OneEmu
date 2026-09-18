@@ -194,6 +194,9 @@ class RomScanner(
             // One entry per game, never per file. The core opens any file in the game directory, so the whole
             // Source/ folder would otherwise land in the library as a couple of hundred unplayable levels.
             if (ext != JAZZ2_ANCHOR_EXT) return null
+            // A real Anims.j2a is ~10 MB. Anything tiny is a stub or a damaged copy, and the engine reads a
+            // bogus length out of it and dies in operator new before drawing anything.
+            if (f.length() < JAZZ2_ANCHOR_MIN_BYTES) return null
             // The anchor file is Anims.j2a inside the game directory (often .../<game>/Source/); the entry is
             // named after that directory so the library shows the game, not the file.
             val dir = f.parentFile
@@ -240,6 +243,7 @@ class RomScanner(
         private const val DVD_SIZED_BYTES = 2_000_000_000L
         /** The one Jazz² file that stands for a game: Anims.j2a, which every install has exactly one of. */
         private const val JAZZ2_ANCHOR_EXT = "j2a"
+        private const val JAZZ2_ANCHOR_MIN_BYTES = 1_000_000L
         /** Extensions shared by several systems whose detection reads the file (re-checked on every rescan). */
         private val AMBIGUOUS_EXTS = setOf("iso", "img", "bin", "cue", "chd", "pbp", "m3u", "cso")
 
