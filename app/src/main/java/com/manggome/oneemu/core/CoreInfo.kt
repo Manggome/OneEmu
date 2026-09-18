@@ -21,7 +21,8 @@ data class CoreInfo(
     val needFullPath: Boolean = false,
     /** Core runs without any ROM (RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME); its data lives in the system dir. */
     val supportsNoContent: Boolean = false,
-    /** Never dlclose this core's library (it leaves threads / signal handlers behind; Azahar). */
+    /** Never dlclose this core's library (its global destructors or leftover threads / signal handlers
+     *  crash the process; Azahar, Dolphin). */
     val keepLoaded: Boolean = false,
     val hwRender: String = "none",
     val bios: List<BiosEntry> = emptyList(),
