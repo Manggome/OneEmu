@@ -458,15 +458,19 @@ private fun VectorLayoutEditor(
                     label = { Text(stringResource(R.string.vp_select)) },
                 )
                 TextButton(onClick = { showElementList = true }) { Text(stringResource(R.string.le_elements)) }
-                TextButton(onClick = {
+                fun applyPreset(preset: DefaultLayouts.Preset) {
                     val before = snapshot()
                     if (before != null) history.record(before)
-                    layout = DefaultLayouts.forSystem(system, config)
+                    layout = DefaultLayouts.forSystem(system, config, preset)
                     viewport = defaultViewport
                     dirty = true
                     selection = emptyList()
-                }) {
+                }
+                TextButton(onClick = { applyPreset(DefaultLayouts.Preset.DEFAULT) }) {
                     Text(stringResource(R.string.le_reset), maxLines = 1)
+                }
+                TextButton(onClick = { applyPreset(DefaultLayouts.Preset.ARCADE) }) {
+                    Text(stringResource(R.string.le_preset_arcade), maxLines = 1)
                 }
             }
         }
