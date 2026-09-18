@@ -289,7 +289,7 @@ fi
 NEEDED="$("$READELF" -d "$OUT_SO" | awk '/NEEDED/ {gsub(/[\[\]]/,"",$NF); print $NF}')"
 for lib in $NEEDED; do
   case "$lib" in
-    libc.so|libm.so|libdl.so|libz.so|liblog.so|libandroid.so|libGLESv3.so|libGLESv2.so|libEGL.so|libOpenSLES.so|libvulkan.so) ;;
+    libc.so|libm.so|libdl.so|libz.so|liblog.so|libandroid.so|libGLESv3.so|libGLESv2.so|libGLESv1_CM.so|libEGL.so|libOpenSLES.so|libvulkan.so|libaaudio.so|libnativewindow.so) ;;
     *) die "unexpected NEEDED library: $lib" ;;
   esac
 done

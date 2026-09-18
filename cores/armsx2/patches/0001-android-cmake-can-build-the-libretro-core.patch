@@ -1,8 +1,8 @@
 diff --git a/platforms/android/app/src/main/cpp/CMakeLists.txt b/platforms/android/app/src/main/cpp/CMakeLists.txt
-index cf394c6..750ade5 100644
+index cf394c6..4dc6669 100644
 --- a/platforms/android/app/src/main/cpp/CMakeLists.txt
 +++ b/platforms/android/app/src/main/cpp/CMakeLists.txt
-@@ -332,6 +332,25 @@ target_link_libraries(${ARMSX2_EMUCORE_LIBRARY_NAME} PRIVATE
+@@ -332,6 +332,31 @@ target_link_libraries(${ARMSX2_EMUCORE_LIBRARY_NAME} PRIVATE
  	log
  )
  
@@ -10,6 +10,12 @@ index cf394c6..750ade5 100644
 +# The root CMakeLists cannot produce it here - it resolves PNG/JPEG/SDL3/Zstd/LZ4/WebP with desktop
 +# find_package calls that have nothing to find in an NDK sysroot, which is exactly why this file exists.
 +if(ARMSX2_BUILD_LIBRETRO)
++	# Host.h declares SetPadVibration (and the rest of the libretro-only Host surface) behind
++	# ENABLE_LIBRETRO. The root CMakeLists turns its ENABLE_LIBRETRO option into that define; this
++	# tree never includes it, so without this the core's own Main.cpp fails with "out-of-line
++	# definition ... does not match any declaration". PCSX2_FLAGS is the INTERFACE target both PCSX2
++	# and the core link, so the define reaches the call site inside PCSX2 as well.
++	target_compile_definitions(PCSX2_FLAGS INTERFACE ENABLE_LIBRETRO=1)
 +	add_subdirectory("${ARMSX2_ROOT}/pcsx2-libretro" "${CMAKE_BINARY_DIR}/pcsx2-libretro")
 +	target_link_libraries(pcsx2-libretro PRIVATE
 +		common
