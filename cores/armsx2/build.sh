@@ -203,6 +203,16 @@ for m in "$SRC_DIR"/cmake/*.cmake; do
   [ -e "$ANDROID_CPP_DIR/cmake/$(basename "$m")" ] || ln -s "$m" "$ANDROID_CPP_DIR/cmake/$(basename "$m")"
 done
 
+# Embedded per-game patches are downloaded to an absolute path that PCSX2's resource embedder later
+# checks with EXISTS. On macOS a path holding non-ASCII characters comes back in a different Unicode
+# normalization than the one CMake stored, the check fails and the build stops; the rest of the
+# resources are relative and unaffected. Only that one feature is dropped, and only on such a checkout.
+PATCHES_ARG=""
+case "$SRC_DIR" in
+  *[!\ -~]*) PATCHES_ARG="-DARMSX2_EMBED_PATCHES=OFF"
+     log "source path has non-ASCII characters: building without the embedded game patches" ;;
+esac
+
 # ---------------------------------------------------------------- configure
 mkdir -p "$CMAKE_BUILD_DIR" "$OUT_DIR"
 # The Android app's CMakeLists, not the root one: it resolves every dependency from the vendored
@@ -217,6 +227,8 @@ mkdir -p "$CMAKE_BUILD_DIR" "$OUT_DIR"
   -DANDROID=true \
   -DCMAKE_BUILD_TYPE=Release \
   -DARMSX2_BUILD_LIBRETRO=ON \
+  -DARMSX2_DISABLE_LIBRASHADER=ON \
+  $PATCHES_ARG \
   -DARMSX2_EMUCORE_LIBRARY_NAME=emucore \
   -DENABLE_LIBRETRO=ON \
   -DENABLE_TESTS=OFF \
