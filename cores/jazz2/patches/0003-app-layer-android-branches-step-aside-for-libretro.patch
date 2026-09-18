@@ -1,5 +1,5 @@
 diff --git a/Sources/Jazz2/ContentResolver.cpp b/Sources/Jazz2/ContentResolver.cpp
-index 38e0c24..ac054fc 100644
+index 38e0c24..6ae8449 100644
 --- a/Sources/Jazz2/ContentResolver.cpp
 +++ b/Sources/Jazz2/ContentResolver.cpp
 @@ -25,7 +25,7 @@
@@ -11,16 +11,25 @@ index 38e0c24..ac054fc 100644
  #	include "../nCine/Backends/Android/AndroidJniHelper.h"
  #	include <IO/AndroidAssetStream.h>
  #elif defined(DEATH_TARGET_WINDOWS_RT)
-@@ -170,7 +170,7 @@ namespace Jazz2
+@@ -168,9 +168,15 @@ namespace Jazz2
+ 
+ 	StringView ContentResolver::GetContentPath() const
  	{
- #if defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_IOS) || defined(DEATH_TARGET_WINDOWS_RT)
+-#if defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_IOS) || defined(DEATH_TARGET_WINDOWS_RT)
++		// The libretro frontend hands the engine its directories through OverridePaths(), on every platform.
++		// Android is not DEATH_TARGET_UNIX, so without this the build fell through to the generic relative
++		// "Content/" and never found Metadata/UI/MainMenu.res: the menu's metadata came back null and the
++		// first frame that drew the menu dereferenced it.
++#if defined(WITH_LIBRETRO)
++		return _contentPath;
++#elif defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_IOS) || defined(DEATH_TARGET_WINDOWS_RT)
  		return _contentPath;
 -#elif defined(DEATH_TARGET_ANDROID)
 +#elif defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
  		return "assets:/"_s;
  #elif defined(DEATH_TARGET_SWITCH)
  		return "romfs:/"_s;
-@@ -319,7 +319,7 @@ namespace Jazz2
+@@ -319,7 +325,7 @@ namespace Jazz2
  
  	void ContentResolver::InitializePaths()
  	{
