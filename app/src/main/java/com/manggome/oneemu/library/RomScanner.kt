@@ -149,6 +149,13 @@ class RomScanner(
         if (system == SystemId.ARCADE) {
             arcadeTitles.cleanTitle(f.nameWithoutExtension)?.let { title = it }
         }
+        if (system == SystemId.JAZZ2) {
+            // The anchor file is Anims.j2a inside the game directory (often .../<game>/Source/); the entry is
+            // named after that directory so the library shows the game, not the file.
+            val dir = f.parentFile
+            val gameDir = if (dir?.name.equals("Source", ignoreCase = true)) dir?.parentFile else dir
+            title = gameDir?.name?.takeIf { it.isNotBlank() } ?: SystemId.JAZZ2.displayName
+        }
         if (system == SystemId.NDS) {
             RomInfo.ndsBanner(f)?.let { b ->
                 autoIcon = saveIcon(b.icon, f)

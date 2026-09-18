@@ -29,7 +29,7 @@ enum class SystemId(
     ARCADE("arcade", "아케이드 (MAME)", "MAME", Color(0xFFF0C24B), setOf("zip")),
 
     /** Not an emulated console: an open-source remake that reads the original PC game's data files. */
-    JAZZ2("jazz2", "재즈 잭래빗 2", "JJ2", Color(0xFF4CAF50), setOf("j2l", "j2e", "j2a"));
+    JAZZ2("jazz2", "재즈 잭래빗 2", "JJ2", Color(0xFF4CAF50), setOf("j2a"));
 
     companion object {
         fun fromId(id: String?): SystemId? = entries.firstOrNull { it.id == id }
