@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        core: [mgba, fceumm, melondsds, ppsspp, mame2003plus, play, azaharplus, pcsx_rearmed]
+        core: [mgba, fceumm, melondsds, ppsspp, mame2003plus, play, azaharplus, pcsx_rearmed, jazz2]
     steps:
       - uses: actions/checkout@v4
         with:
