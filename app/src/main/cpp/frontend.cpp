@@ -495,11 +495,15 @@ void Frontend::unload() {
         if (core_.loaded()) {
             core_.retro_deinit();
             reinstallCrashHandler();
-            core_.unload(keepCoreLoaded_);
         }
+        // Tear the graphics down while the core's library is still mapped. vk_.destroy() calls the core's
+        // destroy_device() through the negotiation interface, and that struct lives inside the core: reading
+        // it after dlclose is a read into an unmapped page, which is how every ARMSX2 session ended (SIGSEGV
+        // in VideoVK::destroy, fault address in the core's old mapping). Cores kept loaded never showed it.
         video_.destroyHwFramebuffer();
         video_.destroy();
         vk_.destroy();
+        if (core_.loaded()) core_.unload(keepCoreLoaded_);
         hwApi_ = HwApi::None; vkNego_ = nullptr;
         { std::lock_guard<std::mutex> lock(optionsMutex_); options_.clear(); }
     });

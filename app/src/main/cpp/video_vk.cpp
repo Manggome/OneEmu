@@ -379,7 +379,9 @@ bool VideoVK::createSwapchain() {
     VK_CHECK(vkAllocateCommandBuffers(device_, &ca, cmdBufs_.data()), "vkAllocateCommandBuffers");
 
     syncIndex_ = 0; frameSlot_ = 0; acquired_ = false; swapchainDirty_ = false;
-    LOGI("vulkan: swapchain %ux%u x%u (format %d, %s)", extent_.width, extent_.height, n, (int)swapFormat_, mode == VK_PRESENT_MODE_FIFO_KHR ? "fifo" : "mailbox");
+    LOGI("vulkan: swapchain %ux%u x%u (format %d, %s, transform %u/%u)", extent_.width, extent_.height, n,
+         (int)swapFormat_, mode == VK_PRESENT_MODE_FIFO_KHR ? "fifo" : "mailbox",
+         (unsigned)sc.preTransform, (unsigned)caps.currentTransform);
     return true;
 }
 
@@ -691,8 +693,12 @@ void VideoVK::present(const VideoConfig& cfg, float coreAspect, bool haveFrame) 
         pi.waitSemaphoreCount = 1; pi.pWaitSemaphores = &renderDoneSems_[i];
         pi.swapchainCount = 1; pi.pSwapchains = &swapchain_; pi.pImageIndices = &i;
         r = vkQueuePresentKHR(presentQueue_, &pi);
-        if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) swapchainDirty_ = true;
-        else if (r != VK_SUCCESS) LOGE("vulkan: vkQueuePresentKHR failed: %s", vkResultName(r));
+        // SUBOPTIMAL is not a reason to rebuild: the image is presented correctly, the surface just would
+        // prefer other parameters. Adreno returns it on every present when the swapchain's preTransform is
+        // IDENTITY and the display is rotated, and rebuilding does not change that - ARMSX2 on a Fold 7 spent
+        // every frame recreating the swapchain under the core's feet until the process died.
+        if (r == VK_ERROR_OUT_OF_DATE_KHR) swapchainDirty_ = true;
+        else if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) LOGE("vulkan: vkQueuePresentKHR failed: %s", vkResultName(r));
     }
     acquired_ = false;
 }
