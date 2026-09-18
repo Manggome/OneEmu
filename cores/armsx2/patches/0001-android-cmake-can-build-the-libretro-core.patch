@@ -1,0 +1,30 @@
+diff --git a/platforms/android/app/src/main/cpp/CMakeLists.txt b/platforms/android/app/src/main/cpp/CMakeLists.txt
+index cf394c6..750ade5 100644
+--- a/platforms/android/app/src/main/cpp/CMakeLists.txt
++++ b/platforms/android/app/src/main/cpp/CMakeLists.txt
+@@ -332,6 +332,25 @@ target_link_libraries(${ARMSX2_EMUCORE_LIBRARY_NAME} PRIVATE
+ 	log
+ )
+ 
++# OneEmu: the libretro core, built from the same Android-vendored dependency set as the app's emucore.
++# The root CMakeLists cannot produce it here - it resolves PNG/JPEG/SDL3/Zstd/LZ4/WebP with desktop
++# find_package calls that have nothing to find in an NDK sysroot, which is exactly why this file exists.
++if(ARMSX2_BUILD_LIBRETRO)
++	add_subdirectory("${ARMSX2_ROOT}/pcsx2-libretro" "${CMAKE_BINARY_DIR}/pcsx2-libretro")
++	target_link_libraries(pcsx2-libretro PRIVATE
++		common
++		imgui
++		libzip::zip
++		SDL3::SDL3
++		shaderc
++		vixl
++		adrenotools
++		Zstd::Zstd
++		android
++		log
++	)
++endif()
++
+ # ★ AFTER the emucore target exists — add_dependencies needs a target that has already been
+ # created, and stating this next to the flurry target itself (which is defined earlier in this
+ # file) fails configure outright with "Cannot add target-level dependencies to non-existent

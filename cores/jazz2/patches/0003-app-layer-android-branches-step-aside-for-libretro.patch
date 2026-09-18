@@ -1,0 +1,609 @@
+diff --git a/Sources/Jazz2/ContentResolver.cpp b/Sources/Jazz2/ContentResolver.cpp
+index 38e0c24..ac054fc 100644
+--- a/Sources/Jazz2/ContentResolver.cpp
++++ b/Sources/Jazz2/ContentResolver.cpp
+@@ -25,7 +25,7 @@
+ #	include "../nCine/Backends/Ps2/Ps2Storage.h"
+ #endif
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ #	include "../nCine/Backends/Android/AndroidJniHelper.h"
+ #	include <IO/AndroidAssetStream.h>
+ #elif defined(DEATH_TARGET_WINDOWS_RT)
+@@ -170,7 +170,7 @@ namespace Jazz2
+ 	{
+ #if defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_IOS) || defined(DEATH_TARGET_WINDOWS_RT)
+ 		return _contentPath;
+-#elif defined(DEATH_TARGET_ANDROID)
++#elif defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		return "assets:/"_s;
+ #elif defined(DEATH_TARGET_SWITCH)
+ 		return "romfs:/"_s;
+@@ -319,7 +319,7 @@ namespace Jazz2
+ 
+ 	void ContentResolver::InitializePaths()
+ 	{
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		// If `MANAGE_EXTERNAL_STORAGE` permission is granted, try to use also alternative paths
+ 		if (Backends::AndroidJniWrap_Activity::hasExternalStoragePermission()) {
+ 			constexpr StringView ExternalPaths[] = {
+diff --git a/Sources/Jazz2/ContentResolver.h b/Sources/Jazz2/ContentResolver.h
+index 9f8212d..93a023d 100644
+--- a/Sources/Jazz2/ContentResolver.h
++++ b/Sources/Jazz2/ContentResolver.h
+@@ -498,7 +498,7 @@ namespace Jazz2
+ 		/** @brief Drops the cached fonts whose atlas baked the palette, leaving the palette-indexed ones alone */
+ 		void DropBakedFonts();
+ 
+-#if defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_IOS) || defined(DEATH_TARGET_WINDOWS_RT) || defined(DEATH_TARGET_PS2)
++#if defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_IOS) || defined(DEATH_TARGET_WINDOWS_RT) || defined(DEATH_TARGET_PS2) || defined(WITH_LIBRETRO)
+ 		String _contentPath;
+ #endif
+ #if defined(DEATH_TARGET_ANDROID) || defined(DEATH_TARGET_APPLE) || defined(DEATH_TARGET_UNIX) || defined(DEATH_TARGET_WINDOWS_RT) || defined(DEATH_TARGET_PS2)
+diff --git a/Sources/Jazz2/PreferencesCache.cpp b/Sources/Jazz2/PreferencesCache.cpp
+index b5ca324..3063c34 100644
+--- a/Sources/Jazz2/PreferencesCache.cpp
++++ b/Sources/Jazz2/PreferencesCache.cpp
+@@ -19,7 +19,7 @@
+ #include <IO/MemoryStream.h>
+ #include <IO/Compression/DeflateStream.h>
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ #	include "../nCine/Backends/Android/AndroidApplication.h"
+ #	include "../nCine/Backends/Android/AndroidJniHelper.h"
+ #elif defined(DEATH_TARGET_DREAMCAST)
+@@ -115,7 +115,7 @@ namespace Jazz2
+ 	bool PreferencesCache::EnableReforgedGameplay = true;
+ 	bool PreferencesCache::EnableReforgedHUD = true;
+ 	bool PreferencesCache::EnableReforgedMainMenu = true;
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 	// Used to swap Android activity icons on exit/suspend
+ 	bool PreferencesCache::EnableReforgedMainMenuInitial = true;
+ #endif
+@@ -953,7 +953,7 @@ namespace
+ 		_configPath = "Jazz2.config"_s;
+ 		bool overrideConfigPath = false;
+ 
+-#	if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH) && \
++#	if (!defined(DEATH_TARGET_ANDROID) || defined(WITH_LIBRETRO)) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH) && \
+ 		!defined(DEATH_TARGET_N64) && !defined(DEATH_TARGET_WII) && !defined(DEATH_TARGET_GAMECUBE) && \
+ 		!defined(DEATH_TARGET_3DS) && !defined(DEATH_TARGET_DREAMCAST) && !defined(DEATH_TARGET_PS2) && !defined(DEATH_TARGET_PS3) && \
+ 		!defined(DEATH_TARGET_PSP) && !defined(DEATH_TARGET_VITA)
+@@ -1123,7 +1123,7 @@ namespace
+ 			_configPath = fs::CombinePath(fs::GetSavePath("Jazz² Resurrection"_s), "Jazz2.config"_s);
+ #	endif
+ 
+-#	if defined(DEATH_TARGET_ANDROID)
++#	if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			// Save config file to external path if possible
+ 			auto& resolver = ContentResolver::Get();
+ 			auto externalConfigPath = fs::CombinePath(fs::GetDirectoryName(resolver.GetSourcePath()), "Jazz2.config"_s);
+@@ -1261,7 +1261,7 @@ namespace
+ 						// These 2 new options needs to be enabled by default
+ 						EnableReforgedHUD = ((boolOptions & BoolOptions::EnableReforgedHUD) == BoolOptions::EnableReforgedHUD);
+ 						EnableReforgedMainMenu = ((boolOptions & BoolOptions::EnableReforgedMainMenu) == BoolOptions::EnableReforgedMainMenu);
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 						EnableReforgedMainMenuInitial = EnableReforgedMainMenu;
+ #endif
+ 					}
+@@ -1500,7 +1500,7 @@ namespace
+ 			fs::CreateDirectories(resolver.GetSourcePath());
+ #endif
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			// Use native Back button as default on smart watches
+ 			UseNativeBackButton = static_cast<AndroidApplication&>(theApplication()).IsScreenRound();
+ #elif defined(DEATH_TARGET_SWITCH) || defined(DEATH_TARGET_N64) || defined(DEATH_TARGET_3DS)
+@@ -1524,7 +1524,7 @@ namespace
+ #endif
+ 		}
+ 
+-#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH) && \
++#if (!defined(DEATH_TARGET_ANDROID) || defined(WITH_LIBRETRO)) && !defined(DEATH_TARGET_IOS) && !defined(DEATH_TARGET_SWITCH) && \
+ 		!defined(DEATH_TARGET_N64) && !defined(DEATH_TARGET_WII) && !defined(DEATH_TARGET_GAMECUBE) && \
+ 		!defined(DEATH_TARGET_3DS) && !defined(DEATH_TARGET_DREAMCAST) && !defined(DEATH_TARGET_PS2) && !defined(DEATH_TARGET_PS3) && \
+ 		!defined(DEATH_TARGET_PSP) && !defined(DEATH_TARGET_VITA)
+@@ -1821,7 +1821,7 @@ namespace
+ 		StringView systemSuffix = {};
+ #endif
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		auto sanitizeName = [](char* dst, std::size_t dstMaxLength, std::size_t& dstLength, StringView name, bool isBrand) {
+ 			bool wasSpace = true;
+ 			std::size_t lowercaseLength = 0;
+diff --git a/Sources/Jazz2/UI/InGameConsole.cpp b/Sources/Jazz2/UI/InGameConsole.cpp
+index 62c5f08..9fdeaf2 100644
+--- a/Sources/Jazz2/UI/InGameConsole.cpp
++++ b/Sources/Jazz2/UI/InGameConsole.cpp
+@@ -9,7 +9,7 @@
+ #include "../../nCine/Graphics/RenderQueue.h"
+ #include "../../nCine/Input/IInputManager.h"
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ #	include "../../nCine/Backends/Android/AndroidApplication.h"
+ #	include "../../nCine/Backends/Android/AndroidJniHelper.h"
+ #endif
+@@ -33,14 +33,14 @@ namespace Jazz2::UI
+ 	InGameConsole::InGameConsole(LevelHandler* levelHandler)
+ 		: _levelHandler(levelHandler), _currentLine{}, _textCursor(0), _carretAnim(0.0f), _scrollPos(0), _isVisible(false),
+ 			_keyboardVisible(false)
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			, _recalcVisibleBoundsTimeLeft(30.0f)
+ #endif
+ 	{
+ 		PruneLogHistory();
+ 		_historyIndex = _commandHistory.size();
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		_currentVisibleBounds = Backends::AndroidJniWrap_Activity::getVisibleBounds();
+ 		_initialVisibleSize.X = _currentVisibleBounds.W;
+ 		_initialVisibleSize.Y = _currentVisibleBounds.H;
+@@ -82,7 +82,7 @@ namespace Jazz2::UI
+ 		}
+ #endif
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		if (_isVisible && _keyboardVisible) {
+ 			_recalcVisibleBoundsTimeLeft -= timeMult;
+ 			if (_recalcVisibleBoundsTimeLeft <= 0.0f) {
+@@ -185,7 +185,7 @@ namespace Jazz2::UI
+ 		// behind the keyboard (mirrors how text input is handled in the main menu)
+ 		if (_isVisible && theApplication().CanShowScreenKeyboard()) {
+ 			bool keyboardCoversInput = _keyboardVisible;
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			// On Android the keyboard state can't be queried directly, so detect it from the shrunk visible bounds
+ 			keyboardCoversInput = (_keyboardVisible &&
+ 				(_currentVisibleBounds.W < _initialVisibleSize.X || _currentVisibleBounds.H < _initialVisibleSize.Y) &&
+@@ -417,7 +417,7 @@ namespace Jazz2::UI
+ 
+ 		AnimTime = 0.0f;
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		// On touch-only devices the on-screen keyboard is the only way to type, so show it right away. On desktop
+ 		// the keyboard stays hidden until the user taps the hint, so it never pops up over a physical keyboard.
+ 		if (!_keyboardVisible && theApplication().CanShowScreenKeyboard()) {
+@@ -482,7 +482,7 @@ namespace Jazz2::UI
+ 
+ 	void InGameConsole::RecalcLayoutForScreenKeyboard()
+ 	{
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		_currentVisibleBounds = Backends::AndroidJniWrap_Activity::getVisibleBounds();
+ 
+ 		if (_recalcVisibleBoundsTimeLeft > 30.0f) {
+diff --git a/Sources/Jazz2/UI/Menu/BeginSection.cpp b/Sources/Jazz2/UI/Menu/BeginSection.cpp
+index 9420710..a0b9f64 100644
+--- a/Sources/Jazz2/UI/Menu/BeginSection.cpp
++++ b/Sources/Jazz2/UI/Menu/BeginSection.cpp
+@@ -22,7 +22,7 @@
+ #include "../../../nCine/Application.h"
+ #include "../../../nCine/I18n.h"
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ #	include "../../../nCine/Backends/Android/AndroidApplication.h"
+ #	include "../../../nCine/Backends/Android/AndroidJniHelper.h"
+ #endif
+@@ -199,7 +199,7 @@ namespace Jazz2::UI::Menu
+ 	{
+ 		bool canGrantPermission = false;
+ 		bool permissionGranted = false;
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		if (auto* mainMenu = runtime_cast<MainMenu>(_root)) {
+ 			IRootController::Flags flags = mainMenu->_root->GetFlags();
+ 			canGrantPermission = Backends::AndroidJniHelper::SdkVersion() >= 30 && (flags & IRootController::Flags::HasExternalStoragePermission) != IRootController::Flags::HasExternalStoragePermission;
+@@ -231,7 +231,7 @@ namespace Jazz2::UI::Menu
+ 		}
+ #else
+ 		if (!_isPlayable) {
+-#	if defined(DEATH_TARGET_ANDROID)
++#	if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			if (permissionGranted) {
+ 				if (_selectedIndex == 0) {
+ 					_root->DrawElement(MenuGlow, 0, center.X, center.Y * 0.96f - 14.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf(1.0f, 1.0f, 1.0f, 0.16f), 26.0f, 12.0f, true, true);
+@@ -256,7 +256,7 @@ namespace Jazz2::UI::Menu
+ 				_root->DrawStringShadow(_sourcePath.data(), charOffset, center.X, center.Y - 10.0f, IMenuContainer::FontLayer,
+ 					Alignment::Top, Colorf(0.44f, 0.44f, 0.44f, 0.5f), 0.8f, 0.7f, 0.4f, 0.4f, 0.4f, 0.8f, 1.2f);
+ 
+-#	if defined(DEATH_TARGET_ANDROID)
++#	if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 				if (canGrantPermission) {
+ 					// TRANSLATORS: Menu item in main menu (Android 11+ only)
+ 					auto grantPermissionText = _("Allow access to external storage");
+@@ -394,7 +394,7 @@ namespace Jazz2::UI::Menu
+ 				}
+ #if !defined(DEATH_TARGET_EMSCRIPTEN)
+ 				else {
+-#	if defined(DEATH_TARGET_ANDROID)
++#	if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 					// Show `ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION` intent on Android
+ 					Backends::AndroidJniWrap_Activity::requestExternalStoragePermission();
+ #	else
+diff --git a/Sources/Jazz2/UI/Menu/HighscoresSection.cpp b/Sources/Jazz2/UI/Menu/HighscoresSection.cpp
+index 973ba27..aa1cf80 100644
+--- a/Sources/Jazz2/UI/Menu/HighscoresSection.cpp
++++ b/Sources/Jazz2/UI/Menu/HighscoresSection.cpp
+@@ -8,7 +8,7 @@
+ #include "../../../nCine/Application.h"
+ #include "../../../nCine/I18n.h"
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ #	include "../../../nCine/Backends/Android/AndroidApplication.h"
+ #	include "../../../nCine/Backends/Android/AndroidJniHelper.h"
+ #endif
+@@ -32,14 +32,14 @@ namespace Jazz2::UI::Menu
+ 	HighscoresSection::HighscoresSection()
+ 		: _selectedSeries(0), _notValidPos(-1), _notValidSeries(-1), _pendingFocus(0), _textCursor(0), _carretAnim(0.0f),
+ 			_animation(0.0f), _waitForInput(false), _list(nullptr)
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			, _recalcVisibleBoundsTimeLeft(30.0f)
+ #endif
+ 	{
+ 		DeserializeFromFile();
+ 		FillDefaultsIfEmpty();
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		_currentVisibleBounds = Backends::AndroidJniWrap_Activity::getVisibleBounds();
+ 		_initialVisibleSize.X = _currentVisibleBounds.W;
+ 		_initialVisibleSize.Y = _currentVisibleBounds.H;
+@@ -102,7 +102,7 @@ namespace Jazz2::UI::Menu
+ 		}
+ 
+ 		if (_waitForInput) {
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			_recalcVisibleBoundsTimeLeft -= timeMult;
+ 			if (_recalcVisibleBoundsTimeLeft <= 0.0f) {
+ 				_recalcVisibleBoundsTimeLeft = 60.0f;
+@@ -210,7 +210,7 @@ namespace Jazz2::UI::Menu
+ 			_root->DrawElement(ShowKeyboard, -1, 72.0f, titleY - 2.0f + 2.0f, IMenuContainer::MainLayer - 10, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.2f));
+ 			_root->DrawElement(ShowKeyboard, -1, 72.0f, titleY - 2.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf::White);
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			if (_currentVisibleBounds.W < _initialVisibleSize.X || _currentVisibleBounds.H < _initialVisibleSize.Y) {
+ 				Vector2i viewSize = _root->GetViewSize();
+ 				if (_currentVisibleBounds.Y * viewSize.Y / _initialVisibleSize.Y < 32.0f) {
+@@ -706,7 +706,7 @@ namespace Jazz2::UI::Menu
+ 
+ 	void HighscoresSection::RecalcLayoutForScreenKeyboard()
+ 	{
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		_currentVisibleBounds = Backends::AndroidJniWrap_Activity::getVisibleBounds();
+ 
+ 		if (_recalcVisibleBoundsTimeLeft > 30.0f) {
+diff --git a/Sources/Jazz2/UI/Menu/ServerSelectSection.cpp b/Sources/Jazz2/UI/Menu/ServerSelectSection.cpp
+index 2628f3a..1e4f4d0 100644
+--- a/Sources/Jazz2/UI/Menu/ServerSelectSection.cpp
++++ b/Sources/Jazz2/UI/Menu/ServerSelectSection.cpp
+@@ -13,7 +13,7 @@
+ #include "../../../nCine/I18n.h"
+ #include "../../../nCine/Base/FrameTimer.h"
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ #	include "../../../nCine/Backends/Android/AndroidApplication.h"
+ #	include "../../../nCine/Backends/Android/AndroidJniHelper.h"
+ #endif
+@@ -38,11 +38,11 @@ namespace Jazz2::UI::Menu
+ 		_switchingMode(false),
+ #endif
+ 		_waitForIpInput(false), _keyboardVisible(false), _ipInput(64)
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		, _recalcVisibleBoundsTimeLeft(30.0f)
+ #endif
+ 	{
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		_currentVisibleBounds = Backends::AndroidJniWrap_Activity::getVisibleBounds();
+ 		_initialVisibleSize.X = _currentVisibleBounds.W;
+ 		_initialVisibleSize.Y = _currentVisibleBounds.H;
+@@ -138,7 +138,7 @@ namespace Jazz2::UI::Menu
+ 			if (_waitForIpInput) {
+ 				_ipInput.Update(timeMult);
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 				// The on-screen keyboard can also be dismissed by the user, so follow the reported state
+ 				// instead of assuming it stays shown until the game hides it
+ 				_keyboardVisible = theApplication().IsScreenKeyboardVisible();
+@@ -483,7 +483,7 @@ namespace Jazz2::UI::Menu
+ 				Alignment::Left, Font::DefaultColor, 0.7f, 0.4f, 0.0f, 0.0f, 0.0f, 0.9f);
+ 		}
+ 
+-#if !defined(DEATH_TARGET_ANDROID)
++#if (!defined(DEATH_TARGET_ANDROID) || defined(WITH_LIBRETRO))
+ 		if (_waitForIpInput && _keyboardVisible) {
+ 			auto contentBounds2 = _root->GetContentBounds();
+ 			float titleY = contentBounds2.Y - MenuLayout::GetTitleOffset(canvas->ViewSize) - 2.0f;
+@@ -505,7 +505,7 @@ namespace Jazz2::UI::Menu
+ 		}
+ #endif
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		if (_waitForIpInput && (_currentVisibleBounds.W < _initialVisibleSize.X || _currentVisibleBounds.H < _initialVisibleSize.Y)) {
+ 			Vector2i viewSizeLocal = _root->GetViewSize();
+ 			if (_currentVisibleBounds.Y * viewSizeLocal.Y / _initialVisibleSize.Y < 32.0f) {
+@@ -908,7 +908,7 @@ namespace Jazz2::UI::Menu
+ 
+ 	void ServerSelectSection::RecalcLayoutForScreenKeyboard()
+ 	{
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		_currentVisibleBounds = Backends::AndroidJniWrap_Activity::getVisibleBounds();
+ 
+ 		if (_recalcVisibleBoundsTimeLeft > 30.0f) {
+diff --git a/Sources/Jazz2/UI/Menu/UserProfileOptionsSection.cpp b/Sources/Jazz2/UI/Menu/UserProfileOptionsSection.cpp
+index a28a9a9..5eeae7a 100644
+--- a/Sources/Jazz2/UI/Menu/UserProfileOptionsSection.cpp
++++ b/Sources/Jazz2/UI/Menu/UserProfileOptionsSection.cpp
+@@ -9,7 +9,7 @@
+ #include "../../../nCine/Application.h"
+ #include "../../../nCine/I18n.h"
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ #	include "../../../nCine/Backends/Android/AndroidApplication.h"
+ #	include "../../../nCine/Backends/Android/AndroidJniHelper.h"
+ #endif
+@@ -43,7 +43,7 @@ namespace Jazz2::UI::Menu
+ 
+ 	UserProfileOptionsSection::UserProfileOptionsSection()
+ 		: _isDirty(false), _nameInput(nullptr)
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			, _recalcVisibleBoundsTimeLeft(30.0f)
+ #endif
+ 	{
+@@ -61,7 +61,7 @@ namespace Jazz2::UI::Menu
+ 		_previewLoaded = false;
+ 		_previewPaletteColor = 0;
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		auto androidId = Backends::AndroidJniWrap_Secure::getAndroidId();
+ 		if (!androidId.empty()) {
+ 			_deviceId = "A:"_s + androidId;
+@@ -233,7 +233,7 @@ namespace Jazz2::UI::Menu
+ 				uuid[0], uuid[1], uuid[2], uuid[3], uuid[4], uuid[5], uuid[6], uuid[7], uuid[8], uuid[9], uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]);
+ 			Colorf c = (selected ? Colorf(0.46f, 0.46f, 0.46f, 0.5f) : Font::DefaultColor);
+ 			r->DrawStringShadow({ uniquePlayerId, length }, charOffset, centerX, y, IMenuContainer::FontLayer - 10, Alignment::Center, c, 0.8f);
+-#	if defined(DEATH_TARGET_ANDROID)
++#	if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			r->DrawStringShadow(_deviceId, charOffset, centerX, y + 16.0f, IMenuContainer::FontLayer - 10, Alignment::Center, c, 0.8f);
+ #	elif (defined(DEATH_TARGET_WINDOWS) && !defined(DEATH_TARGET_WINDOWS_RT)) || defined(DEATH_TARGET_UNIX)
+ 			if (DiscordRpcClient::Get().IsSupported()) {
+@@ -259,7 +259,7 @@ namespace Jazz2::UI::Menu
+ 
+ 		// While editing (and still editing after the base update handled Menu/Fire), handle the editing-only actions
+ 		if (wasEditing && _nameInput != nullptr && _nameInput->IsActive()) {
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			_recalcVisibleBoundsTimeLeft -= timeMult;
+ 			if (_recalcVisibleBoundsTimeLeft <= 0.0f) {
+ 				_recalcVisibleBoundsTimeLeft = 60.0f;
+@@ -391,7 +391,7 @@ namespace Jazz2::UI::Menu
+ 			_root->DrawElement(ShowKeyboard, -1, 72.0f, titleY - 2.0f + 2.0f, IMenuContainer::MainLayer - 10, Alignment::Center, Colorf(0.0f, 0.0f, 0.0f, 0.2f));
+ 			_root->DrawElement(ShowKeyboard, -1, 72.0f, titleY - 2.0f, IMenuContainer::MainLayer, Alignment::Center, Colorf::White);
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 			if (_currentVisibleBounds.W < _initialVisibleSize.X || _currentVisibleBounds.H < _initialVisibleSize.Y) {
+ 				Vector2i viewSize = _root->GetViewSize();
+ 				if (_currentVisibleBounds.Y * viewSize.Y / _initialVisibleSize.Y < 32.0f) {
+@@ -456,7 +456,7 @@ namespace Jazz2::UI::Menu
+ 
+ 	void UserProfileOptionsSection::RecalcLayoutForScreenKeyboard()
+ 	{
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		_currentVisibleBounds = Backends::AndroidJniWrap_Activity::getVisibleBounds();
+ 
+ 		if (_recalcVisibleBoundsTimeLeft > 30.0f) {
+diff --git a/Sources/Main.cpp b/Sources/Main.cpp
+index 91da0be..bb892a4 100644
+--- a/Sources/Main.cpp
++++ b/Sources/Main.cpp
+@@ -1,10 +1,10 @@
+ ﻿#include "Main.h"
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(WITH_LIBRETRO)
++#	include "nCine/Backends/Libretro/LibretroApplication.h"
++#elif defined(DEATH_TARGET_ANDROID)
+ #	include "nCine/Backends/Android/AndroidApplication.h"
+ #	include "nCine/Backends/Android/AndroidJniHelper.h"
+-#elif defined(WITH_LIBRETRO)
+-#	include "nCine/Backends/Libretro/LibretroApplication.h"
+ #elif defined(DEATH_TARGET_WINDOWS_RT)
+ #	include "nCine/Backends/Uwp/UwpApplication.h"
+ #else
+@@ -229,7 +229,7 @@ private:
+ 	bool SetLevelHandler(const LevelInitialization& levelInit);
+ 	void HandleEndOfGame(const LevelInitialization& levelInit, bool playerDied);
+ 	void RemoveResumableStateIfAny();
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 	void ApplyActivityIcon();
+ #endif
+ #if defined(WITH_MULTIPLAYER) && defined(WITH_THREADS) && !defined(DEATH_TARGET_EMSCRIPTEN)
+@@ -648,7 +648,7 @@ void GameEventHandler::OnShutdown()
+ {
+ 	ZoneScopedC(0x888888);
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 	ApplyActivityIcon();
+ #endif
+ 
+@@ -675,14 +675,14 @@ void GameEventHandler::OnSuspend()
+ 	}
+ #endif
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 	ApplyActivityIcon();
+ #endif
+ }
+ 
+ void GameEventHandler::OnResume()
+ {
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 	if (Backends::AndroidJniWrap_Activity::hasExternalStoragePermission()) {
+ 		_flags |= Flags::HasExternalStoragePermissionOnResume;
+ 	} else {
+@@ -1108,7 +1108,7 @@ void GameEventHandler::RemoveResumableStateIfAny()
+ 	}
+ }
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ void GameEventHandler::ApplyActivityIcon()
+ {
+ 	if (PreferencesCache::EnableReforgedMainMenuInitial == PreferencesCache::EnableReforgedMainMenu) {
+@@ -1387,7 +1387,7 @@ ConnectionResult GameEventHandler::OnPeerConnected(const Peer& peer, std::uint32
+ 		packet.WriteValue<std::uint8_t>((std::uint8_t)playerName.size());
+ 		packet.Write(playerName.data(), (std::uint32_t)playerName.size());
+ 
+-#	if defined(DEATH_TARGET_ANDROID)
++#	if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		auto androidId = Backends::AndroidJniWrap_Secure::getAndroidId();
+ 		std::size_t androidIdLength = std::min(androidId.size(), (std::size_t)UINT8_MAX);
+ 		packet.WriteValue<std::uint8_t>((std::uint8_t)androidIdLength);
+@@ -1828,7 +1828,7 @@ void GameEventHandler::OnBeginInitialize()
+ 	theApplication().SetAutoSuspension(true);
+ #endif
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 	theApplication().SetAutoSuspension(true);
+ 
+ 	if (Backends::AndroidJniWrap_Activity::hasExternalStoragePermission()) {
+diff --git a/Sources/nCine/Application.cpp b/Sources/nCine/Application.cpp
+index 7bec2a0..48d9dc4 100644
+--- a/Sources/nCine/Application.cpp
++++ b/Sources/nCine/Application.cpp
+@@ -77,7 +77,7 @@ extern "C"
+ 
+ #if defined(DEATH_TARGET_WINDOWS)
+ #	include <Utf8.h>
+-#elif defined(DEATH_TARGET_ANDROID)
++#elif defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ #	include "Backends/Android/AndroidJniHelper.h"
+ #elif defined(DEATH_TARGET_SWITCH)
+ #	include <switch.h>
+@@ -164,7 +164,7 @@ using namespace Death::IO;
+ #if defined(DEATH_TARGET_WINDOWS)
+ #	include <Environment.h>
+ #	include <Utf8.h>
+-#elif defined(DEATH_TARGET_ANDROID)
++#elif defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ #	include <stdarg.h>
+ #	include <time.h>
+ #	include <unistd.h>
+@@ -610,7 +610,7 @@ static ConsoleType __consoleType = ConsoleType::None;
+ // Whether the trace sink is already attached, so Application::InitializeTrace() can be called as early as
+ // an entry point is able to and still be called again by PreInitCommon() without attaching twice
+ static bool __traceInitialized = false;
+-#if !defined(DEATH_TARGET_ANDROID) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_VITA) && !defined(DEATH_TARGET_WINDOWS_RT)
++#if (!defined(DEATH_TARGET_ANDROID) || defined(WITH_LIBRETRO)) && !defined(DEATH_TARGET_SWITCH) && !defined(DEATH_TARGET_VITA) && !defined(DEATH_TARGET_WINDOWS_RT)
+ static bool __consoleDarkMode = true;
+ static bool __consoleSixelSupported = false;
+ #endif
+@@ -1727,7 +1727,7 @@ namespace nCine
+ 
+ 	void Application::SetFocus(bool hasFocus)
+ 	{
+-#if defined(WITH_TRACY) && !defined(DEATH_TARGET_ANDROID)
++#if defined(WITH_TRACY) && (!defined(DEATH_TARGET_ANDROID) || defined(WITH_LIBRETRO))
+ 		hasFocus = true;
+ #endif
+ 
+@@ -1783,7 +1783,7 @@ namespace nCine
+ 
+ 		char logEntryWithColors[MaxLogEntryLength + 24];
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		std::int32_t length2 = 0;
+ 		// Provide actual timestamps even though Android includes its own
+ 		AppendDateTime(logEntryWithColors, length2, timestamp);
+@@ -2314,7 +2314,7 @@ namespace nCine
+ 			return Utf8::FromUtf16(hostNameW, hostNameWLength);
+ 		}
+ 		return {};
+-#elif defined(DEATH_TARGET_ANDROID)
++#elif defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		// A device has no host name a user would recognize; the Android ID (64 bits as hex, fixed per device,
+ 		// user and signing key) stands in for it
+ 		return Backends::AndroidJniWrap_Secure::getAndroidId();
+@@ -2891,7 +2891,7 @@ namespace nCine
+ 		constexpr MetadataPlatform platform = MetadataPlatform::WindowsRT;
+ #		elif defined(DEATH_TARGET_WINDOWS)
+ 		constexpr MetadataPlatform platform = MetadataPlatform::Windows;
+-#		elif defined(DEATH_TARGET_ANDROID)
++#		elif defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		constexpr MetadataPlatform platform = MetadataPlatform::Android;
+ #		elif defined(DEATH_TARGET_SWITCH)
+ 		constexpr MetadataPlatform platform = MetadataPlatform::Switch;
+@@ -2937,7 +2937,7 @@ namespace nCine
+ 		if (Environment::IsWine()) {
+ 			flags |= 0x2000;	// IsWine
+ 		}
+-#		elif defined(DEATH_TARGET_ANDROID)
++#		elif defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		flags |= 0x04 | 0x20;	// ProcessIdEqualsToMainThreadId | RemoteDevice
+ 		std::uint32_t processId = (std::uint32_t)::getpid();
+ #		elif defined(DEATH_TARGET_N64) || defined(DEATH_TARGET_WII) || defined(DEATH_TARGET_GAMECUBE) || \
+@@ -3006,7 +3006,7 @@ namespace nCine
+ 			}
+ 		}
+ 
+-#		if defined(DEATH_TARGET_ANDROID)
++#		if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		auto executableFileName = nCine::Backends::AndroidJniWrap_Activity::getPackageName();
+ #		else
+ 		auto executablePath = fs::GetExecutablePath();
+diff --git a/Sources/nCine/I18n.cpp b/Sources/nCine/I18n.cpp
+index db44610..2963030 100644
+--- a/Sources/nCine/I18n.cpp
++++ b/Sources/nCine/I18n.cpp
+@@ -2,7 +2,7 @@
+ #include "../Main.h"
+ #include "Base/Algorithms.h"
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ #	include "Backends/Android/AndroidJniHelper.h"
+ #elif defined(DEATH_TARGET_APPLE)
+ #	include <CoreFoundation/CFPreferences.h>
+@@ -640,7 +640,7 @@ namespace nCine
+ 	{
+ 		Array<String> preferred;
+ 
+-#if defined(DEATH_TARGET_ANDROID)
++#if defined(DEATH_TARGET_ANDROID) && !defined(WITH_LIBRETRO)
+ 		String langId = Backends::AndroidJniWrap_Activity::getPreferredLanguage();
+ 		if (!langId.empty()) {
+ 			StringUtils::lowercaseInPlace(langId);
