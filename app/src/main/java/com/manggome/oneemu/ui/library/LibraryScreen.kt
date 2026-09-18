@@ -46,6 +46,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -108,6 +112,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
     }
     var launchBlock by remember { mutableStateOf<LaunchCheck?>(null) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
+    var showHidden by rememberSaveable { mutableStateOf(false) }
     var fabExpanded by rememberSaveable { mutableStateOf(false) }
     var thumbnailTarget by rememberSaveable { mutableStateOf(-1L) }
 
@@ -149,7 +154,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
                         onRemove = { confirmRemoveMany = true },
                     )
                 } else {
-                    LibraryTopBar(state, vm, nav)
+                    LibraryTopBar(state, vm, nav, onShowHidden = { showHidden = true })
                 }
                 ScanProgressBar(progress)
             }
@@ -230,6 +235,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
         )
     }
     launchBlock?.let { LaunchCheckDialog(it) { launchBlock = null } }
+    if (showHidden) HiddenGamesDialog(vm) { showHidden = false }
     if (showHelp) HelpDialog(vm.dirs.system, vm.cores) { showHelp = false }
 }
 
@@ -237,7 +243,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavHostController) {
+private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavHostController, onShowHidden: () -> Unit) {
     var sortMenu by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
 
@@ -330,7 +336,7 @@ private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavH
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.lib_menu_unhide)) },
-                        onClick = { moreMenu = false; vm.unhideAll() },
+                        onClick = { moreMenu = false; onShowHidden() },
                     )
                     HorizontalDivider()
                     CheckItem(R.string.lib_menu_group_by_system, state.groupBySystem) { vm.setGroupBySystem(!state.groupBySystem) }
@@ -513,4 +519,70 @@ private fun EmptyState(onAddGame: () -> Unit, onAddFolder: () -> Unit) {
             }
         }
     }
+}
+
+/**
+ * The games hidden by "라이브러리에서 제거", with a tick each. Restoring everything at once was the first
+ * try and it undid deliberate hiding too, so nothing happens here until entries are picked.
+ */
+@Composable
+private fun HiddenGamesDialog(vm: LibraryViewModel, onDismiss: () -> Unit) {
+    var games by remember { mutableStateOf<List<GameEntity>?>(null) }
+    var picked by remember { mutableStateOf(setOf<Long>()) }
+    LaunchedEffect(Unit) { games = vm.hiddenGames() }
+    val list = games
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.lib_hidden_title)) },
+        text = {
+            when {
+                list == null -> Text(stringResource(R.string.lib_hidden_loading))
+                list.isEmpty() -> Text(stringResource(R.string.lib_hidden_empty))
+                else -> Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stringResource(R.string.lib_sel_count, picked.size),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = {
+                            picked = if (picked.size == list.size) emptySet() else list.map { it.id }.toSet()
+                        }) {
+                            Text(stringResource(if (picked.size == list.size) R.string.lib_sel_none else R.string.lib_sel_all))
+                        }
+                    }
+                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        items(list, key = { it.id }) { game ->
+                            val on = game.id in picked
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { picked = if (on) picked - game.id else picked + game.id }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(checked = on, onCheckedChange = null)
+                                Spacer(Modifier.size(8.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(game.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                                    Text(
+                                        game.path.substringAfterLast('/'),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = picked.isNotEmpty(),
+                onClick = { vm.unhide(picked); onDismiss() },
+            ) { Text(stringResource(R.string.lib_hidden_restore)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+    )
 }

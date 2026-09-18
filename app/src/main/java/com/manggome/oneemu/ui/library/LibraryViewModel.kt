@@ -19,6 +19,7 @@ import com.manggome.oneemu.library.ArcadeCoreRouter
 import com.manggome.oneemu.library.ArcadeRomCheck
 import com.manggome.oneemu.library.ArcadeRomChecker
 import com.manggome.oneemu.library.RomScanner
+import com.manggome.oneemu.emu.EmulatorSession
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.util.StorageAccess
 import kotlinx.coroutines.Dispatchers
@@ -223,7 +224,9 @@ class LibraryViewModel : ViewModel() {
         else SystemId.fromId(game.system)?.let { cores.defaultCoreFor(it) }
 
     fun checkLaunch(game: GameEntity): LaunchCheck {
-        if (!File(game.path).exists()) return LaunchCheck.MissingFile(game.path)
+        // A no-ROM core's entry has no file behind it: its path is the "core:<id>" marker, not a ROM.
+        if (!game.path.startsWith(EmulatorSession.NO_CONTENT_PREFIX) && !File(game.path).exists())
+            return LaunchCheck.MissingFile(game.path)
         val system = SystemId.fromId(game.system)
         if (system == SystemId.ARCADE && game.coreId == null) {
             val route = ArcadeCoreRouter.route(game, app)
@@ -278,14 +281,18 @@ class LibraryViewModel : ViewModel() {
     /** Manually added games are deleted outright; scanned ones are hidden so a rescan doesn't resurrect them. */
     /** Removes several games at once (multi-selection in the library). */
     /**
-     * Brings back everything "removed from library". A removal only hides an entry that came from a scanned
-     * folder, because deleting the row would let the next scan add it straight back; the flip side is that
-     * nothing else can bring it back, and a scan skips the file for ever since the row still exists.
+     * The games "removed from library". A removal only hides an entry that came from a scanned folder,
+     * because deleting the row would let the next scan add it straight back; the flip side is that a scan
+     * then skips the file for ever, so there has to be a way to look at this list and pick from it.
      */
-    fun unhideAll() = launchIo {
-        val hidden = db.games().allOnce().filter { it.hidden }
-        for (g in hidden) db.games().setHidden(g.id, false)
-        post(LibraryMessage(R.string.lib_msg_unhidden, listOf(hidden.size)))
+    suspend fun hiddenGames(): List<GameEntity> = withContext(Dispatchers.IO) {
+        db.games().allOnce().filter { it.hidden }.sortedBy { it.title.lowercase() }
+    }
+
+    fun unhide(ids: Set<Long>) = launchIo {
+        if (ids.isEmpty()) return@launchIo
+        for (id in ids) db.games().setHidden(id, false)
+        post(LibraryMessage(R.string.lib_msg_unhidden, listOf(ids.size)))
     }
 
     fun removeAll(ids: Set<Long>) = launchIo {
