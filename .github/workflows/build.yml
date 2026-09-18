@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        core: [mgba, fceumm, melondsds, ppsspp, mame2003plus, play, azaharplus, pcsx_rearmed, jazz2]
+        core: [mgba, fceumm, melondsds, ppsspp, mame2003plus, play, azaharplus, pcsx_rearmed, jazz2, genesisplusgx]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -144,6 +144,24 @@ jobs:
               echo "skip ${id} (distribution: download → cores.yml / cores release)"
             fi
           done
+
+      # Guard the other way round: a bundled core missing from the matrix above would ship an APK that lists
+      # the system and cannot load it (Genesis Plus GX shipped that way once). Fail here instead.
+      - name: Every bundled core is in the APK
+        run: |
+          missing=""
+          for cj in cores/*/core.json; do
+            id="$(jq -r '.id' "$cj")"
+            dist="$(jq -r '.distribution // "bundled"' "$cj")"
+            lib="$(jq -r '.libFile' "$cj")"
+            [ "$dist" = "download" ] && continue
+            [ -s "app/src/main/jniLibs/arm64-v8a/${lib}" ] || missing="${missing} ${id}"
+          done
+          if [ -n "$missing" ]; then
+            echo "bundled cores with no library:${missing}" >&2
+            echo "add them to the 'core:' matrix in this workflow" >&2
+            exit 1
+          fi
 
       - name: List cores
         run: ls -la app/src/main/jniLibs/arm64-v8a
