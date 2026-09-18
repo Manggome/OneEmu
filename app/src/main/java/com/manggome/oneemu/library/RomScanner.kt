@@ -115,6 +115,7 @@ class RomScanner(
             // Jazz² levels (.j2l, .j2e) were listed one by one before the scanner settled on the Anims.j2a
             // anchor. The core still names them as loadable extensions, so the extension test below keeps
             // them; they are not games and there are hundreds of them per install.
+            if (isJunk(g.path.substringAfterLast('/'))) return@filter true
             if (g.system == SystemId.JAZZ2.id && ext != JAZZ2_ANCHOR_EXT) return@filter true
             ext.isNotEmpty() && ext !in extMap
         }
@@ -132,8 +133,9 @@ class RomScanner(
         if (id > 0) entity.copy(id = id) else db.games().getByPath(file.absolutePath)
     }
 
-    /** Multi-disc/track companions and BIOS packs we should not list as games. */
+    /** Multi-disc/track companions, BIOS packs and file-system litter we should not list as games. */
     private fun isSkippable(f: File, ext: String): Boolean {
+        if (isJunk(f.name)) return true
         val name = f.nameWithoutExtension.lowercase()
         if (ext == "bin") return !isLoneDiscBin(f) // normally reached through its .cue
         if (ext == "zip" && (name in mameBiosNames || isArcadeBiosSet(name))) return true
@@ -162,6 +164,14 @@ class RomScanner(
         }.orEmpty()
     }
 
+    /**
+     * Copying a game folder through macOS leaves an AppleDouble twin next to every file ("._Anims.j2a"), a few
+     * kilobytes of resource fork carrying the real file's extension. They scan as games, sit next to the real
+     * entry under a nearly identical name, and handing one to a core is what crashed Jazz² Resurrection.
+     */
+    private fun isJunk(name: String): Boolean =
+        name.startsWith("._") || name.equals(".DS_Store", true) || name.equals("Thumbs.db", true)
+
     private val mameBiosNames = setOf("neogeo", "pgm", "stvbios", "decocass", "cvs", "playch10", "skns", "konamigx", "nss", "megaplay", "megatech")
 
     /** BIOS sets of every bundled MAME core (runnable="no" in its DAT), e.g. psarc95.zip for MAME 2010's Namco/PSX games. */
@@ -171,6 +181,7 @@ class RomScanner(
     }
 
     private fun identify(f: File, ext: String, folderId: Long?): GameEntity? {
+        if (isJunk(f.name)) return null
         val candidates = extMap[ext] ?: return null
         val system = resolveSystem(f, ext, candidates, lookup = { extMap[it] }, zip = ::zipSystem) ?: return null
 
