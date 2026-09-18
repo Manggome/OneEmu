@@ -134,6 +134,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
             startedAt = System.currentTimeMillis()
             return@withContext true
         }
+        dropShaderCacheAfterCrash()
         val romPath = resolveRomPath() ?: run {
             _state.value = makeError(ErrorKind.ROM_READ_FAILED, "ROM not found: ${game.path}")
             NativeBridge.unload()
@@ -225,6 +226,29 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     }
 
 
+
+
+    /**
+     * Jazz² keeps compiled GL programs in Cache/Shaders next to the game. A session killed while that cache is
+     * being written leaves a truncated entry behind, and every later launch dies reading it: the game crashed
+     * about a second in, for ever, until the folder was removed by hand (confirmed on a Fold 7 - deleting it
+     * took the same install from crashing to 57 fps). A previous session that did not end cleanly is the only
+     * signal available, so the cache is rebuilt then; it costs a few seconds of shader compilation once.
+     */
+    private fun dropShaderCacheAfterCrash() {
+        if (core.id != "jazz2") return
+        val marker = CrashMarker.read(app) ?: return
+        if (marker.path != game.path) return
+        val file = java.io.File(game.path).takeIf { it.isFile } ?: return
+        val dir = file.parentFile ?: return
+        val gameDir = if (dir.name.equals("Source", ignoreCase = true)) dir.parentFile ?: dir else dir
+        for (root in listOf(gameDir, java.io.File(dirs.system, "jazz2"))) {
+            val shaders = java.io.File(root, "Cache/Shaders")
+            if (shaders.isDirectory && shaders.deleteRecursively()) {
+                Log.i("OneEmu", "jazz2: dropped the shader cache left by a crashed session ($shaders)")
+            }
+        }
+    }
 
     private suspend fun applyVideoSettings() {
         val s = app.settings
