@@ -4,7 +4,7 @@
   "libFile": "libgenesisplusgx_libretro.so",
   "systems": ["md", "sms", "gg"],
   "extensions": ["md", "gen", "smd", "mdx", "sms", "gg", "sg", "68k", "zip"],
-  "needFullPath": false,
+  "needFullPath": true,
   "hwRender": "none",
   "bios": [
     {
@@ -32,5 +32,5 @@
     "genesis_plus_gx_no_sprite_limit": "disabled",
     "genesis_plus_gx_render": "single field"
   },
-  "notes": "메가드라이브(제네시스), 마스터 시스템, 게임 기어, SG-1000 을 한 코어가 담당한다. 픽셀 포맷 RGB565, 소프트웨어 렌더라 HW 렌더 없음.\n\nneedFullPath=false: 코어가 zip 을 직접 열 수 있어서 프론트엔드가 압축을 풀지 않고 데이터를 그대로 넘긴다. FB Alpha 식으로 포장된 메가드라이브 롬(g_soni3.zip 처럼 zip 안에 .md 한 개)도 그대로 실행된다.\n\n컨트롤러: 기본 6버튼 패드. 레트로패드 매핑은 Y=A, B=B, A=C, L=X, X=Y, R=Z, Start=Start, Select=Mode 이므로 기본 레이아웃의 ABXY 와 L/R 이 그대로 6버튼이 된다. 3버튼 게임은 남는 버튼을 무시한다.\n\nBIOS: 카트리지 게임에는 필요 없다. 메가 CD 를 쓰려면 지역별 BIOS 가 필요하지만 지금은 CD 이미지 확장자를 등록하지 않았다(.cue/.chd 는 PS1·PS2 와 충돌한다).\n\n라이선스: 비상업적 사용에 한해 재배포 가능(코어 자체 라이선스). 앱에 포함해 배포하되 판매하지 않는다."
+  "notes": "메가드라이브(제네시스), 마스터 시스템, 게임 기어, SG-1000 을 한 코어가 담당한다. 픽셀 포맷 RGB565, 소프트웨어 렌더라 HW 렌더 없음.\n\nneedFullPath=true: 코어가 retro_get_system_info 에서 need_fullpath 를 1 로 보고한다(메가 CD 이미지 때문). 데이터만 넘기면 retro_load_game 안에서 바로 죽으므로 프론트엔드가 zip 을 임시 폴더에 풀어 실제 경로를 넘겨야 한다. FB Alpha 식으로 포장된 메가드라이브 롬(g_soni3.zip 처럼 zip 안에 .md 한 개)도 그렇게 실행된다.\n\n컨트롤러: 기본 6버튼 패드. 레트로패드 매핑은 Y=A, B=B, A=C, L=X, X=Y, R=Z, Start=Start, Select=Mode 이므로 기본 레이아웃의 ABXY 와 L/R 이 그대로 6버튼이 된다. 3버튼 게임은 남는 버튼을 무시한다.\n\nBIOS: 카트리지 게임에는 필요 없다. 메가 CD 를 쓰려면 지역별 BIOS 가 필요하지만 지금은 CD 이미지 확장자를 등록하지 않았다(.cue/.chd 는 PS1·PS2 와 충돌한다).\n\n라이선스: 비상업적 사용에 한해 재배포 가능(코어 자체 라이선스). 앱에 포함해 배포하되 판매하지 않는다."
 }
