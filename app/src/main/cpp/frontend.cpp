@@ -421,7 +421,7 @@ bool Frontend::loadGame(const std::string& romPath, std::string* error) {
             LOGI("av info: %ux%u max %ux%u aspect %.3f fps %.3f rate %.1f", avInfo_.geometry.base_width,
                  avInfo_.geometry.base_height, avInfo_.geometry.max_width, avInfo_.geometry.max_height,
                  avInfo_.geometry.aspect_ratio, avInfo_.timing.fps, avInfo_.timing.sample_rate);
-            for (unsigned p = 0; p < 2; p++) core_.retro_set_controller_port_device(p, RETRO_DEVICE_JOYPAD);
+            for (unsigned p = 0; p < 4; p++) core_.retro_set_controller_port_device(p, RETRO_DEVICE_JOYPAD);
             audio_.start(avInfo_.timing.sample_rate);
             gameLoaded_ = true;
             paused_ = true;
@@ -466,7 +466,7 @@ bool Frontend::loadGame(const std::string& romPath, std::string* error) {
         LOGI("av info: %ux%u max %ux%u aspect %.3f fps %.3f rate %.1f", avInfo_.geometry.base_width,
              avInfo_.geometry.base_height, avInfo_.geometry.max_width, avInfo_.geometry.max_height,
              avInfo_.geometry.aspect_ratio, avInfo_.timing.fps, avInfo_.timing.sample_rate);
-        for (unsigned p = 0; p < 2; p++) core_.retro_set_controller_port_device(p, RETRO_DEVICE_JOYPAD);
+        for (unsigned p = 0; p < 4; p++) core_.retro_set_controller_port_device(p, RETRO_DEVICE_JOYPAD);
         loadSram();
         audio_.start(avInfo_.timing.sample_rate);
         gameLoaded_ = true;
@@ -607,6 +607,7 @@ void Frontend::runFrame() {
     // HW texture before the previous present finished sampling it, and the present must not sample it before
     // the core's frame is complete. Without this Adreno shows the previous frame / uninitialised (green) tiles.
     if (hwRender_ && !vulkan) video_.waitPresentFence();
+    frames_++;
     core_.retro_run();
     if (hwRender_ && !vulkan) { video_.logGlErrors("retro_run (core context)"); video_.fenceCoreFrame(); }
 
@@ -693,18 +694,28 @@ size_t Frontend::audioSampleBatch(const int16_t* data, size_t frames) {
     return frames;
 }
 
+uint32_t Frontend::turbo(uint32_t buttons) const {
+    uint32_t mask = turboMask_.load(std::memory_order_relaxed) & buttons;
+    if (!mask) return buttons;
+    unsigned period = turboPeriod_.load(std::memory_order_relaxed);
+    if (period < 2) return buttons;
+    // Held down for the first half of every cycle, released for the second: one press per cycle.
+    if ((frames_ % period) < period / 2) return buttons;
+    return buttons & ~mask;
+}
+
 int16_t Frontend::inputState(unsigned port, unsigned device, unsigned index, unsigned id) {
     if (port >= 4) return 0;
     const InputState& in = input_[port];
     switch (device & RETRO_DEVICE_MASK) {
         case RETRO_DEVICE_JOYPAD: {
-            uint32_t b = in.buttons.load(std::memory_order_relaxed);
+            uint32_t b = turbo(in.buttons.load(std::memory_order_relaxed));
             if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return (int16_t)(b & 0xffff);
             return (b >> id) & 1 ? 1 : 0;
         }
         case RETRO_DEVICE_ANALOG:
             if (index == RETRO_DEVICE_INDEX_ANALOG_BUTTON) {
-                uint32_t b = in.buttons.load(std::memory_order_relaxed);
+                uint32_t b = turbo(in.buttons.load(std::memory_order_relaxed));
                 return (b >> id) & 1 ? 0x7fff : 0;
             }
             if (index < 2 && id < 2) return in.analog[index][id].load(std::memory_order_relaxed);
@@ -730,6 +741,11 @@ void Frontend::setInput(unsigned port, uint32_t buttons, int16_t lx, int16_t ly,
     input_[port].analog[0][1].store(ly, std::memory_order_relaxed);
     input_[port].analog[1][0].store(rx, std::memory_order_relaxed);
     input_[port].analog[1][1].store(ry, std::memory_order_relaxed);
+}
+
+void Frontend::setTurbo(uint32_t mask, unsigned framesPerCycle) {
+    turboMask_.store(mask, std::memory_order_relaxed);
+    turboPeriod_.store(framesPerCycle < 2 ? 2 : framesPerCycle, std::memory_order_relaxed);
 }
 
 void Frontend::setPointer(int16_t x, int16_t y, bool pressed) {

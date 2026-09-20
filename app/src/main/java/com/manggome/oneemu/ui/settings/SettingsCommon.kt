@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -217,6 +218,51 @@ internal fun ChoiceRow(
             open = false
             onSelect(it)
         }
+    }
+}
+
+/**
+ * Row that opens a checkbox list; [selected] and the callback are indices into [options]. Used for
+ * settings where several answers make sense at once, such as which buttons 연사 taps.
+ */
+@Composable
+internal fun MultiChoiceRow(
+    title: String,
+    options: List<String>,
+    selected: Set<Int>,
+    onChange: (Set<Int>) -> Unit,
+    emptyLabel: String,
+    icon: ImageVector? = null,
+) {
+    var open by remember { mutableStateOf(false) }
+    SettingsRow(
+        title = title,
+        subtitle = selected.sorted().mapNotNull { options.getOrNull(it) }.joinToString(", ").ifEmpty { emptyLabel },
+        icon = icon,
+        onClick = { open = true },
+    )
+    if (open) {
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text(title) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    options.forEachIndexed { i, label ->
+                        val checked = i in selected
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable { onChange(if (checked) selected - i else selected + i) }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = checked, onCheckedChange = { onChange(if (checked) selected - i else selected + i) })
+                            Text(label, Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { open = false }) { Text(stringResource(R.string.ok)) } },
+        )
     }
 }
 

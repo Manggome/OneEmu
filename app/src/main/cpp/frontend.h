@@ -86,6 +86,8 @@ public:
     bool isRunning() const { return gameLoaded_; }
 
     void setInput(unsigned port, uint32_t buttons, int16_t lx, int16_t ly, int16_t rx, int16_t ry);
+    /** Autofire: [mask] buttons are released every other half of a [framesPerCycle]-frame cycle. */
+    void setTurbo(uint32_t mask, unsigned framesPerCycle);
     void setPointer(int16_t x, int16_t y, bool pressed);
     void setFastForward(int speed);
     void setControllerPortDevice(unsigned port, unsigned device); // 0 = off, 1..N = N×, -1 = unlimited
@@ -213,7 +215,14 @@ private:
     std::vector<int16_t> audioBuf_;
 
     // input
+    /** [buttons] with the autofire ones released on the off half of the cycle. */
+    uint32_t turbo(uint32_t buttons) const;
+
     InputState input_[4];
+    std::atomic<uint32_t> turboMask_{0};
+    std::atomic<unsigned> turboPeriod_{6};
+    /** Frames run since load; only ever touched on the emu thread, which is where autofire reads it. */
+    uint64_t frames_ = 0;
     std::atomic<int16_t> pointerX_{0}, pointerY_{0};
     std::atomic<bool> pointerPressed_{false};
     bool supportsBitmasks_ = false;

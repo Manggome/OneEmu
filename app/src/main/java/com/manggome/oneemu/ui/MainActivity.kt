@@ -2,6 +2,7 @@ package com.manggome.oneemu.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.activity.ComponentActivity
@@ -20,6 +21,7 @@ import com.manggome.oneemu.ui.settings.settingsGraph
 import com.manggome.oneemu.ui.skins.skinsGraph
 import com.manggome.oneemu.ui.theme.OneEmuTheme
 import com.manggome.oneemu.emu.CrashReportPrompt
+import com.manggome.oneemu.emu.input.GamepadCapture
 import com.manggome.oneemu.update.UpdatePrompt
 
 class MainActivity : ComponentActivity() {
@@ -29,6 +31,10 @@ class MainActivity : ComponentActivity() {
     }
 
     internal fun handleOpenIntent(intent: Intent?) = handleOpenIntentImpl(intent)
+
+    /** The button-mapping dialog reads one raw press; everything else behaves as usual. */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+        GamepadCapture.dispatch(event) || super.dispatchKeyEvent(event)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

@@ -33,6 +33,7 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
     MENU(0, Kind.SMALL),
     FAST_FORWARD(0, Kind.SMALL),
     SPEED(0, Kind.SMALL),
+    TURBO(0, Kind.SMALL),
     COIN(Buttons.SELECT, Kind.PILL),
     ARCADE_1(Buttons.B, Kind.ROUND),
     ARCADE_2(Buttons.A, Kind.ROUND),
@@ -78,6 +79,7 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
         MENU -> "☰"
         FAST_FORWARD -> "▶▶"
         SPEED -> "1×" // replaced with the live speed while a game runs
+        TURBO -> "연사"
         COIN -> "COIN"
         ARCADE_1 -> "1"
         ARCADE_2 -> "2"
@@ -92,6 +94,7 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
     val defaultSpot: Pair<Float, Float>
         get() = when (this) {
             SPEED -> 0.96f to 0.18f
+            TURBO -> 0.96f to 0.28f
             FAST_FORWARD -> 0.96f to 0.08f
             MENU -> 0.04f to 0.08f
             else -> 0.5f to 0.5f
@@ -117,6 +120,7 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             MENU -> "메뉴 버튼"
             FAST_FORWARD -> "빨리감기 버튼"
             SPEED -> "배속 버튼"
+            TURBO -> "연사 버튼"
             COIN -> "코인"
             ARCADE_1 -> "버튼 1"
             ARCADE_2 -> "버튼 2"

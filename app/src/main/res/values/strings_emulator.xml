@@ -42,6 +42,10 @@
     <string name="menu_close">닫기</string>
     <string name="ff_unlimited">무제한</string>
     <string name="ff_speed_x">%1$d배</string>
+    <string name="menu_turbo">연사</string>
+    <string name="turbo_on">연사 켜짐</string>
+    <string name="turbo_off">연사 꺼짐</string>
+    <string name="turbo_no_buttons">설정 &gt; 입력에서 연사할 버튼을 먼저 고르세요</string>
     <string name="ff_on">켜짐</string>
     <string name="ff_off">꺼짐</string>
     <string name="reset_confirm">게임을 리셋할까요? 저장하지 않은 진행 상황은 사라집니다.</string>

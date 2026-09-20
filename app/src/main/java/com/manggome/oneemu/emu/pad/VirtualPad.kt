@@ -58,6 +58,10 @@ fun VirtualPad(
     speedLabel: String = "1×",
     onSpeedCycle: () -> Unit = {},
     modifier: Modifier = Modifier,
+    /** True while autofire is on, which keeps the 연사 button lit. */
+    turboActive: Boolean = false,
+    /** A tap on the 연사 button asks to flip autofire. */
+    onTurbo: () -> Unit = {},
 ) {
     val density = LocalDensity.current.density
     var size by remember { mutableStateOf(Size.Zero) }
@@ -75,6 +79,7 @@ fun VirtualPad(
     val onMenuState = rememberUpdatedState(onMenu)
     val onFfState = rememberUpdatedState(onFastForward)
     val onSpeedState = rememberUpdatedState(onSpeedCycle)
+    val onTurboState = rememberUpdatedState(onTurbo)
 
     // Visual state read by the canvas.
     var pressedMask by remember { mutableIntStateOf(0) }
@@ -167,6 +172,8 @@ fun VirtualPad(
                                 onFfState.value(if (held < LONG_PRESS_MS) !t.ffWasActive else t.ffWasActive)
                             } else if (t.id == PadElementId.SPEED) {
                                 if (inside) onSpeedState.value()
+                            } else if (t.id == PadElementId.TURBO) {
+                                if (inside) onTurboState.value()
                             }
                         }
                         is Tracker.GameTouch -> onPointerState.value(t.lastX, t.lastY, false)
@@ -200,7 +207,9 @@ fun VirtualPad(
                     PadElementId.RIGHT_STICK -> rightStick
                     else -> Offset.Zero
                 }
-                val elements = if (element.id == PadElementId.FAST_FORWARD && fastForwardActive) pressedElements + element.id else pressedElements
+                val lit = (element.id == PadElementId.FAST_FORWARD && fastForwardActive) ||
+                    (element.id == PadElementId.TURBO && turboActive)
+                val elements = if (lit) pressedElements + element.id else pressedElements
                 val labelOverride = if (element.id == PadElementId.SPEED) speedLabel else null
                 drawPadElement(element, rect, system, PadElementVisual(pressedMask, elements, stick, labelOverride = labelOverride), textMeasurer)
             }

@@ -10,6 +10,7 @@ object Routes {
     const val SETTINGS_VIDEO = "settings/video"
     const val SETTINGS_AUDIO = "settings/audio"
     const val SETTINGS_INPUT = "settings/input"
+    const val SETTINGS_GAMEPAD = "settings/gamepad"
     const val SETTINGS_LAYOUTS = "settings/layouts"
     const val SETTINGS_CORES = "settings/cores"
     const val SETTINGS_MISC = "settings/misc"
@@ -23,6 +24,10 @@ object Routes {
     /** Pad skin picker for a system: settings/skins/{systemId} */
     const val SKINS = "settings/skins/{systemId}"
     fun skins(systemId: String) = "settings/skins/$systemId"
+
+    /** Button mapping for one controller: settings/gamepad/{deviceKey} */
+    const val GAMEPAD_MAPPING = "settings/gamepad/{deviceKey}"
+    fun gamepadMapping(deviceKey: String) = "settings/gamepad/${android.net.Uri.encode(deviceKey)}"
 
     /** Theme picker */
     const val SETTINGS_THEME = "settings/theme"

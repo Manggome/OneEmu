@@ -64,6 +64,14 @@ class Settings(private val context: Context) {
         /** Legacy orientation-only accessor; maps to the folded/phone configs so existing saves keep working. */
         fun layout(systemId: String, landscape: Boolean) = layout(systemId, if (landscape) ScreenConfig.LANDSCAPE else ScreenConfig.PORTRAIT)
         fun gamepadMapping(deviceKey: String) = stringPreferencesKey("gamepad.$deviceKey")
+        /** Player this pad is pinned to, 1-based; absent or 0 = follow connection order. */
+        fun gamepadPort(deviceKey: String) = intPreferencesKey("gamepadport.$deviceKey")
+        const val GAMEPAD_PORT_PREFIX = "gamepadport."
+
+        /** Buttons autofire presses while 연사 is on, as a libretro button mask. */
+        val turboMask = intPreferencesKey("turbo_mask")
+        /** Autofire presses per second. */
+        val turboRate = intPreferencesKey("turbo_rate")
     }
 
     val flow: Flow<Preferences> get() = ds.data
@@ -76,6 +84,15 @@ class Settings(private val context: Context) {
     // Convenience accessors used across features.
     val viewMode: Flow<ViewMode> get() = observe(Keys.viewMode, ViewMode.LIST.name).map { runCatching { ViewMode.valueOf(it) }.getOrDefault(ViewMode.LIST) }
     val sortMode: Flow<SortMode> get() = observe(Keys.sortMode, SortMode.TITLE.name).map { runCatching { SortMode.valueOf(it) }.getOrDefault(SortMode.TITLE) }
+
+    /** Every pinned player choice, keyed by device key; pads with no pin are simply absent. */
+    val gamepadPorts: Flow<Map<String, Int>> get() = ds.data.map { prefs ->
+        prefs.asMap().entries.mapNotNull { (k, v) ->
+            val name = k.name
+            if (!name.startsWith(Keys.GAMEPAD_PORT_PREFIX)) null
+            else (v as? Int)?.let { name.removePrefix(Keys.GAMEPAD_PORT_PREFIX) to it }
+        }.toMap()
+    }
 
     suspend fun graphicsApi(coreId: String): String? = get(Keys.graphicsApi(coreId), "").takeIf { it.isNotEmpty() }
     suspend fun setGraphicsApi(coreId: String, api: String?) = set(Keys.graphicsApi(coreId), api ?: "")
@@ -95,6 +112,11 @@ class Settings(private val context: Context) {
         const val DEFAULT_PAD_SCALE = 1.0f
         const val DEFAULT_VIBRATION_MS = 15
         const val DEFAULT_FF_SPEED = 3
+
+        /** Autofire defaults: the two face buttons (B|A), ~10 presses a second. */
+        const val DEFAULT_TURBO_MASK = (1 shl 0) or (1 shl 8)
+        const val DEFAULT_TURBO_RATE = 10
+        val TURBO_RATES = listOf(5, 8, 10, 15, 20)
         /** Fast-forward speeds offered in the settings, 0 = unlimited. */
         val FF_SPEEDS = listOf(2, 3, 5, 10, 0)
         /** Steps the on-screen 배속 button cycles through; 1 = normal speed (fast forward off). */

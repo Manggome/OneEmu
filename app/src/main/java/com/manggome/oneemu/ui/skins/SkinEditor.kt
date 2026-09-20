@@ -136,6 +136,7 @@ fun SkinEditor(
     // The 배속 button lives in the vector layout even while a skin is active (PadHost draws it on top).
     val padLayout by remember(system, config) { PadLayoutStore.observe(system, config) }.collectAsState(initial = null)
     val speedButton = padLayout?.get(PadElementId.SPEED)
+    val turboButton = padLayout?.get(PadElementId.TURBO)
     var layout by remember { mutableStateOf<SkinLayout?>(null) }
     var viewport by remember { mutableStateOf<ViewportRect?>(null) }
     var viewportSelected by remember { mutableStateOf(false) }
@@ -504,6 +505,18 @@ fun SkinEditor(
                         scope.launch { PadLayoutStore.save(system, config, next) }
                     },
                     label = { Text(stringResource(R.string.se_speed_button)) },
+                )
+                // Same for 연사: the skin has no such control, so it comes from the vector pad.
+                FilterChip(
+                    selected = turboButton?.visible == true,
+                    onClick = {
+                        val cur = padLayout ?: PadLayout(emptyList())
+                        val on = cur[PadElementId.TURBO]?.visible == true
+                        val next = if (on) cur.update(PadElementId.TURBO) { it.copy(visible = false) }
+                        else cur.withElement(PadElementId.TURBO, PadElementId.TURBO.defaultSpot.first, PadElementId.TURBO.defaultSpot.second)
+                        scope.launch { PadLayoutStore.save(system, config, next) }
+                    },
+                    label = { Text(stringResource(R.string.se_turbo_button)) },
                 )
                 TextButton(onClick = {
                     history.record(snapshot())

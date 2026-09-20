@@ -24,11 +24,12 @@ import androidx.compose.ui.window.DialogProperties
 import com.manggome.oneemu.R
 import com.manggome.oneemu.ui.theme.OneEmuColors
 
-enum class MenuAction { LOAD, SAVE, FAST_FORWARD, CHEATS, SETTINGS, SCREENSHOT, COPY_LOG, RESET, CLOSE }
+enum class MenuAction { LOAD, SAVE, FAST_FORWARD, TURBO, CHEATS, SETTINGS, SCREENSHOT, COPY_LOG, RESET, CLOSE }
 
 /**
  * My Boy-style pause menu: a rounded dark card with a plain vertical list.
- * [fastForwardLabel] is shown as a trailing value on the 빨리감기 row (e.g. "3배 · 켜짐").
+ * [fastForwardLabel] is shown as a trailing value on the 빨리감기 row (e.g. "3배 · 켜짐"), and
+ * [turboLabel] the same on the 연사 row.
  */
 @Composable
 fun InGameMenuDialog(
@@ -36,6 +37,7 @@ fun InGameMenuDialog(
     fastForwardLabel: String,
     onAction: (MenuAction) -> Unit,
     onDismiss: () -> Unit,
+    turboLabel: String = "",
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
@@ -56,6 +58,7 @@ fun InGameMenuDialog(
                 MenuRow(stringResource(R.string.menu_load)) { onAction(MenuAction.LOAD) }
                 MenuRow(stringResource(R.string.menu_save)) { onAction(MenuAction.SAVE) }
                 MenuRow(stringResource(R.string.menu_fast_forward), trailing = fastForwardLabel) { onAction(MenuAction.FAST_FORWARD) }
+                MenuRow(stringResource(R.string.menu_turbo), trailing = turboLabel) { onAction(MenuAction.TURBO) }
                 MenuRow(stringResource(R.string.menu_cheats)) { onAction(MenuAction.CHEATS) }
                 MenuRow(stringResource(R.string.menu_settings)) { onAction(MenuAction.SETTINGS) }
                 MenuRow(stringResource(R.string.menu_screenshot)) { onAction(MenuAction.SCREENSHOT) }

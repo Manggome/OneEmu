@@ -4,7 +4,7 @@
     <string name="settings_title">설정</string>
     <string name="settings_video_desc">화면 필터, 화면비, FPS 표시</string>
     <string name="settings_audio_desc">소리 켜기/끄기</string>
-    <string name="settings_input_desc">가상 패드 투명도, 크기, 진동</string>
+    <string name="settings_input_desc">가상 패드, 게임패드, 연사</string>
     <string name="settings_layouts_desc">기종별 버튼 위치 편집</string>
     <string name="settings_cores_desc">기본 코어 선택, 코어 옵션, BIOS 상태</string>
     <string name="settings_misc_desc">업데이트, 자동 저장, 빨리감기</string>
@@ -35,6 +35,44 @@
     <string name="input_hide_with_gamepad">게임패드 연결 시 가상 패드 숨기기</string>
     <string name="input_hide_with_gamepad_desc">물리 게임패드가 연결되면 화면의 가상 패드를 감춥니다</string>
     <string name="input_layout_note">버튼 위치와 배치는 \'패드 레이아웃\' 메뉴에서 기종별로 편집할 수 있습니다.</string>
+
+    <!-- 연사 -->
+    <string name="input_turbo">연사</string>
+    <string name="input_turbo_buttons">연사할 버튼</string>
+    <string name="input_turbo_buttons_desc">고른 버튼을 누르고 있으면 자동으로 연타합니다</string>
+    <string name="input_turbo_none">없음</string>
+    <string name="input_turbo_rate">연사 속도</string>
+    <string name="input_turbo_rate_value">초당 %1$d회</string>
+    <string name="input_turbo_note">게임 화면에서 연사를 켜고 끄려면 \'패드 레이아웃\'에서 연사 버튼을 추가하거나, 게임패드의 버튼 하나를 연사에 지정하세요.</string>
+
+    <!-- 게임패드 -->
+    <string name="settings_gamepad">게임패드</string>
+    <string name="settings_gamepad_desc">연결된 패드의 플레이어 번호와 버튼 배치</string>
+    <string name="gamepad_title">게임패드</string>
+    <string name="gamepad_none">연결된 게임패드가 없습니다. 블루투스로 패드를 연결하면 여기에 나타납니다.</string>
+    <string name="gamepad_player">플레이어</string>
+    <string name="gamepad_player_auto">자동 (연결 순서)</string>
+    <string name="gamepad_player_n">%1$d P</string>
+    <string name="gamepad_current_player">지금 %1$dP 입니다</string>
+    <string name="gamepad_current_player_desc">2인용 게임은 패드를 하나 더 연결하면 바로 됩니다</string>
+    <string name="gamepad_buttons">버튼 바꾸기</string>
+    <string name="gamepad_buttons_desc">A·B가 바뀐 패드도 여기서 맞출 수 있습니다</string>
+    <string name="gamepad_note">패드마다 따로 저장되므로, 다시 연결해도 설정이 그대로 남습니다.</string>
+    <string name="gamepad_disconnected">이 패드는 지금 연결되어 있지 않습니다. 연결한 뒤에 버튼을 바꿀 수 있습니다.</string>
+    <string name="gamepad_map_hint">바꿀 버튼을 누른 뒤, 패드에서 사용할 버튼을 누르세요.</string>
+    <string name="gamepad_unbound">지정 안 됨</string>
+    <string name="gamepad_reset">기본값으로 되돌리기</string>
+    <string name="gamepad_reset_desc">이 패드의 버튼 배치를 처음 상태로 돌립니다</string>
+    <string name="gamepad_reset_confirm">이 패드에 저장한 버튼 배치가 모두 사라집니다.</string>
+    <string name="gamepad_press_title">%1$s 에 쓸 버튼</string>
+    <string name="gamepad_press_body">패드에서 사용할 버튼을 지금 누르세요.</string>
+    <string name="gamepad_unbind">지정 해제</string>
+    <string name="gamepad_btn_menu">메뉴 열기</string>
+    <string name="gamepad_btn_turbo">연사 켜기/끄기</string>
+    <string name="gamepad_btn_up">위</string>
+    <string name="gamepad_btn_down">아래</string>
+    <string name="gamepad_btn_left">왼쪽</string>
+    <string name="gamepad_btn_right">오른쪽</string>
 
     <!-- 패드 레이아웃 -->
     <string name="layouts_edit_hint">편집할 기종을 선택하세요. 오른쪽 버튼으로 패드 스킨을 바꿀 수 있습니다.</string>
