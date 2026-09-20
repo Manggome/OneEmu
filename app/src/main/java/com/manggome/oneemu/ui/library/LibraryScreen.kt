@@ -98,6 +98,7 @@ fun LibraryScreen(nav: NavHostController, vm: LibraryViewModel = viewModel()) {
 private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
     val state by vm.uiState.collectAsStateWithLifecycle()
     val progress by vm.scanProgress.collectAsStateWithLifecycle()
+    val boxArtProgress by vm.boxArtProgress.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
 
@@ -157,6 +158,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
                     LibraryTopBar(state, vm, nav, onShowHidden = { showHidden = true })
                 }
                 ScanProgressBar(progress)
+                BoxArtProgressBar(boxArtProgress, onCancel = { vm.cancelBoxArt() })
             }
         },
         floatingActionButton = if (selectionMode) ({}) else ({
@@ -339,6 +341,10 @@ private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavH
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.lib_menu_unhide)) },
                         onClick = { moreMenu = false; onShowHidden() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.lib_menu_boxart_all)) },
+                        onClick = { moreMenu = false; vm.fetchAllBoxArt() },
                     )
                     HorizontalDivider()
                     CheckItem(R.string.lib_menu_group_by_system, state.groupBySystem) { vm.setGroupBySystem(!state.groupBySystem) }

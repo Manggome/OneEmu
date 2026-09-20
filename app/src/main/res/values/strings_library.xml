@@ -109,6 +109,15 @@
     <string name="lib_msg_folder_added">폴더를 추가하고 스캔했습니다</string>
     <string name="lib_msg_rescan_done">다시 스캔했습니다</string>
     <string name="lib_msg_thumbnail_failed">이미지를 불러올 수 없습니다</string>
+    <string name="lib_action_boxart">박스아트 받기</string>
+    <string name="lib_menu_boxart_all">박스아트 모두 받기</string>
+    <string name="lib_msg_boxart_searching">박스아트를 찾는 중…</string>
+    <string name="lib_msg_boxart_set">박스아트를 받았습니다</string>
+    <string name="lib_msg_boxart_not_found">박스아트를 찾지 못했습니다. 이름을 바꾸거나 직접 이미지를 넣어 보세요.</string>
+    <string name="lib_msg_boxart_unsupported">이 기종은 박스아트를 받을 수 없습니다</string>
+    <string name="lib_msg_boxart_nothing_to_do">받을 박스아트가 없습니다</string>
+    <string name="lib_msg_boxart_done">박스아트 %1$d/%2$d개를 받았습니다</string>
+    <string name="lib_boxart_progress">박스아트 %1$d/%2$d</string>
     <string name="lib_msg_thumbnail_set">썸네일을 변경했습니다</string>
     <string name="lib_msg_removed">라이브러리에서 제거했습니다</string>
     <string name="lib_msg_removed_many">%1$d개를 라이브러리에서 제거했습니다</string>

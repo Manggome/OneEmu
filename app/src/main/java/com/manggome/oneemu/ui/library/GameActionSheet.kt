@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
@@ -113,6 +114,7 @@ fun GameActionSheet(
                 stringResource(if (game.favorite) R.string.lib_action_favorite_remove else R.string.lib_action_favorite_add),
             ) { vm.toggleFavorite(game) }
             SheetItem(Icons.Filled.Image, stringResource(R.string.lib_action_thumbnail)) { onDismiss(); onPickThumbnail(game) }
+            SheetItem(Icons.Filled.CloudDownload, stringResource(R.string.lib_action_boxart)) { onDismiss(); vm.fetchBoxArt(game) }
             if (game.thumbnail != null) {
                 SheetItem(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.lib_action_thumbnail_reset)) { vm.resetThumbnail(game) }
             }
