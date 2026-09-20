@@ -45,6 +45,7 @@ fun NavGraphBuilder.settingsGraph(nav: NavHostController) {
         )
     }
     composable(Routes.SETTINGS_MISC) { MiscSettingsScreen(onBack = { nav.popBackStack() }) }
+    composable(Routes.SETTINGS_SAVEDATA) { SaveDataSettingsScreen(onBack = { nav.popBackStack() }) }
     composable(Routes.SETTINGS_ABOUT) { AboutSettingsScreen(onBack = { nav.popBackStack() }) }
     composable(
         Routes.CORE_OPTIONS,

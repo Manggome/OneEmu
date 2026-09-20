@@ -14,6 +14,7 @@ object Routes {
     const val SETTINGS_LAYOUTS = "settings/layouts"
     const val SETTINGS_CORES = "settings/cores"
     const val SETTINGS_MISC = "settings/misc"
+    const val SETTINGS_SAVEDATA = "settings/savedata"
     const val SETTINGS_ABOUT = "settings/about"
     const val FOLDERS = "folders"
 
