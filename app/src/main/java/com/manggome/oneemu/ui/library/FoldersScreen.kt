@@ -27,6 +27,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -217,5 +218,26 @@ fun ScanProgressBar(progress: com.manggome.oneemu.library.RomScanner.Progress, m
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
+    }
+}
+
+/** Progress of a whole-library box art run, with a way to stop it. */
+@Composable
+fun BoxArtProgressBar(progress: BoxArtProgress, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    if (!progress.running) return
+    Row(modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            LinearProgressIndicator(
+                progress = { if (progress.total > 0) (progress.done.toFloat() / progress.total).coerceIn(0f, 1f) else 0f },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                stringResource(R.string.lib_boxart_progress, progress.done, progress.total),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+        }
+        TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
     }
 }

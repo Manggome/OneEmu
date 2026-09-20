@@ -18,11 +18,13 @@ import com.manggome.oneemu.data.db.GameEntity
 import com.manggome.oneemu.library.ArcadeCoreRouter
 import com.manggome.oneemu.library.ArcadeRomCheck
 import com.manggome.oneemu.library.ArcadeRomChecker
+import com.manggome.oneemu.library.BoxArtFetcher
 import com.manggome.oneemu.library.RomScanner
 import com.manggome.oneemu.emu.EmulatorSession
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.util.StorageAccess
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,6 +65,9 @@ data class LibraryUiState(
     val filteredCount: Int get() = sections.sumOf { it.games.size }
 }
 
+/** How far a whole-library box art run has got; [running] false hides the bar. */
+data class BoxArtProgress(val running: Boolean = false, val done: Int = 0, val total: Int = 0, val found: Int = 0)
+
 /** One-off messages for the snackbar; the UI resolves [resId] with [args]. */
 data class LibraryMessage(val resId: Int, val args: List<Any> = emptyList())
 
@@ -91,6 +96,11 @@ class LibraryViewModel : ViewModel() {
     private val scanner = app.scanner
     val cores get() = app.cores
     val dirs get() = app.dirs
+
+    private val boxArt by lazy { BoxArtFetcher(app.dirs) }
+    private val _boxArtProgress = MutableStateFlow(BoxArtProgress())
+    val boxArtProgress: StateFlow<BoxArtProgress> get() = _boxArtProgress
+    private var boxArtJob: Job? = null
 
     private val query = MutableStateFlow("")
     private val searching = MutableStateFlow(false)
@@ -332,6 +342,62 @@ class LibraryViewModel : ViewModel() {
         deleteOwnedThumbnail(game)
         db.games().setThumbnail(game.id, out.absolutePath)
         post(LibraryMessage(R.string.lib_msg_thumbnail_set))
+    }
+
+    /**
+     * Box art from the libretro thumbnail server for one game. A miss is reported rather than left
+     * silent, because the user can still pick a picture by hand.
+     */
+    fun fetchBoxArt(game: GameEntity) = launchIo {
+        if (!BoxArtFetcher.isSupported(game)) {
+            post(LibraryMessage(R.string.lib_msg_boxart_unsupported))
+            return@launchIo
+        }
+        post(LibraryMessage(R.string.lib_msg_boxart_searching))
+        val file = runCatching { boxArt.fetch(game) }.getOrNull()
+        if (file == null) {
+            post(LibraryMessage(R.string.lib_msg_boxart_not_found))
+            return@launchIo
+        }
+        deleteOwnedThumbnail(game)
+        db.games().setThumbnail(game.id, file.absolutePath)
+        post(LibraryMessage(R.string.lib_msg_boxart_set))
+    }
+
+    /** Fills in every game that has no picture yet. Only the first game pays for the server listing. */
+    fun fetchAllBoxArt() {
+        if (boxArtJob?.isActive == true) return
+        boxArtJob = viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val games = db.games().allOnce()
+                    .filter { !it.hidden && it.thumbnail == null && BoxArtFetcher.isSupported(it) }
+                if (games.isEmpty()) {
+                    post(LibraryMessage(R.string.lib_msg_boxart_nothing_to_do))
+                    return@withContext
+                }
+                var found = 0
+                _boxArtProgress.value = BoxArtProgress(running = true, total = games.size)
+                try {
+                    games.forEachIndexed { i, game ->
+                        val file = runCatching { boxArt.fetch(game) }.getOrNull()
+                        if (file != null) {
+                            deleteOwnedThumbnail(game)
+                            db.games().setThumbnail(game.id, file.absolutePath)
+                            found++
+                        }
+                        _boxArtProgress.value = BoxArtProgress(true, i + 1, games.size, found)
+                    }
+                    post(LibraryMessage(R.string.lib_msg_boxart_done, listOf(found, games.size)))
+                } finally {
+                    _boxArtProgress.value = BoxArtProgress()
+                }
+            }
+        }
+    }
+
+    fun cancelBoxArt() {
+        boxArtJob?.cancel()
+        boxArtJob = null
     }
 
     fun resetThumbnail(game: GameEntity) = launchIo {

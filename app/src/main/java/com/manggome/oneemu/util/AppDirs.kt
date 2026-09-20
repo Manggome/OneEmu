@@ -23,6 +23,8 @@ class AppDirs(private val context: Context) {
     val thumbnails: File get() = File(root, "thumbnails").also { it.mkdirs() }
     val temp: File get() = File(context.cacheDir, "temp").also { it.mkdirs() }
     val updates: File get() = File(context.cacheDir, "updates").also { it.mkdirs() }
+    /** Cached listings of the libretro thumbnail server, so box art lookups stay cheap. */
+    val boxArtIndex: File get() = File(context.cacheDir, "boxart").also { it.mkdirs() }
 
     fun saves(systemId: String): File = File(root, "saves/$systemId").also { it.mkdirs() }
     fun states(systemId: String, romBaseName: String): File = File(root, "states/$systemId/${sanitize(romBaseName)}").also { it.mkdirs() }
