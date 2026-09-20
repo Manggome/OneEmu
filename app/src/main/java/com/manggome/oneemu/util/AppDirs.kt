@@ -27,6 +27,12 @@ class AppDirs(private val context: Context) {
     val boxArtIndex: File get() = File(context.cacheDir, "boxart").also { it.mkdirs() }
 
     fun saves(systemId: String): File = File(root, "saves/$systemId").also { it.mkdirs() }
+
+    /** One of the save-data folders by name ("saves" / "states"), for backup and restore. */
+    fun saveRoot(name: String): File = File(root, name).also { it.mkdirs() }
+
+    /** Shown in the settings so the folder can be found with a file manager. */
+    val savesPath: String get() = File(root, "saves").absolutePath
     fun states(systemId: String, romBaseName: String): File = File(root, "states/$systemId/${sanitize(romBaseName)}").also { it.mkdirs() }
 
     fun statePath(systemId: String, romBaseName: String, slot: Int): File = File(states(systemId, romBaseName), "slot$slot.state")

@@ -91,6 +91,9 @@ interface CheatDao {
     @Query("SELECT * FROM cheats WHERE gameId = :gameId ORDER BY id")
     suspend fun forGame(gameId: Long): List<CheatEntity>
 
+    @Query("SELECT * FROM cheats ORDER BY gameId, id")
+    suspend fun allOnce(): List<CheatEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(cheat: CheatEntity): Long
 
