@@ -35,6 +35,8 @@ fun PadHost(
     onFastForward: (Boolean) -> Unit,
     speedLabel: String = "1×",
     onSpeedCycle: () -> Unit = {},
+    turboActive: Boolean = false,
+    onTurbo: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -50,6 +52,7 @@ fun PadHost(
         SkinSelection.Vector -> VirtualPad(
             layout, system, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive,
             onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier,
+            turboActive, onTurbo,
         )
         is SkinSelection.Skin -> {
             val loaded by produceState<Result<LoadedSkin>?>(null, sel.info.id) {
@@ -62,7 +65,7 @@ fun PadHost(
             val skin = result.getOrNull()
             if (skin == null || skin.cfg(landscape).isEmpty) {
                 // Broken import: fall back to the vector pad rather than leaving the user without controls.
-                VirtualPad(layout, system, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier)
+                VirtualPad(layout, system, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier, turboActive, onTurbo)
             } else if (!hidden) {
                 SkinPad(
                     skin = skin, layout = skinLayout, system = system, landscape = landscape,
@@ -72,21 +75,22 @@ fun PadHost(
                     modifier = modifier,
                 )
                 // After SkinPad so it sits on top: the skin's pointer handler consumes every touch below it.
-                SpeedOverlay(layout, system, opacity, globalScale, hapticMs, haptics, speedLabel, onSpeedCycle, modifier)
+                ExtraOverlay(layout, system, opacity, globalScale, hapticMs, haptics, speedLabel, onSpeedCycle, turboActive, onTurbo, modifier)
             } else if (gameRect != null) {
                 // Pad hidden (physical gamepad) but the touch screen must still work.
-                VirtualPad(layout, system, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier)
+                VirtualPad(layout, system, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier, turboActive, onTurbo)
             }
         }
     }
 }
 
 /**
- * The 배속 button on top of an image skin. RetroArch overlays have no such control, so it is taken from the
- * vector layout (the skin editor's 배속 버튼 chip adds it there) and drawn as a pad of its own.
+ * The 배속 and 연사 buttons on top of an image skin. RetroArch overlays have no such controls, so they
+ * are taken from the vector layout (the skin editor's chips add them there) and drawn as a pad of
+ * their own.
  */
 @Composable
-private fun SpeedOverlay(
+private fun ExtraOverlay(
     layout: PadLayout,
     system: SystemId,
     opacity: Float,
@@ -95,11 +99,15 @@ private fun SpeedOverlay(
     haptics: Haptics?,
     speedLabel: String,
     onSpeedCycle: () -> Unit,
+    turboActive: Boolean,
+    onTurbo: () -> Unit,
     modifier: Modifier,
 ) {
-    val speed = layout[PadElementId.SPEED]?.takeIf { it.visible } ?: return
+    val extras = listOf(PadElementId.SPEED, PadElementId.TURBO)
+        .mapNotNull { layout[it]?.takeIf { e -> e.visible } }
+    if (extras.isEmpty()) return
     VirtualPad(
-        layout = PadLayout(listOf(speed)),
+        layout = PadLayout(extras),
         system = system,
         opacity = opacity,
         globalScale = globalScale,
@@ -114,5 +122,7 @@ private fun SpeedOverlay(
         speedLabel = speedLabel,
         onSpeedCycle = onSpeedCycle,
         modifier = modifier,
+        turboActive = turboActive,
+        onTurbo = onTurbo,
     )
 }

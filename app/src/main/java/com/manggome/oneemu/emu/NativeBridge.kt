@@ -68,6 +68,9 @@ object NativeBridge {
     // ---- runtime config ----
     /** 0 = normal speed, N = N× fast forward, -1 = unlimited. */
     external fun setFastForward(speed: Int)
+
+    /** Autofire: [mask] buttons are released for half of every [framesPerCycle]-frame cycle. */
+    external fun setTurbo(mask: Int, framesPerCycle: Int)
     /** aspect: 0 core, 1 stretch, 2 integer, 3 square pixels. rotation: extra quarter turns (0..3) on top
      *  of what the core asked for, counter-clockwise. */
     external fun setVideoConfig(linearFilter: Boolean, aspect: Int, rotation: Int)

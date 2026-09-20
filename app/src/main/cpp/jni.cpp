@@ -147,6 +147,10 @@ BRIDGE(void, setPointer)(JNIEnv*, jobject, jint x, jint y, jboolean pressed) {
 BRIDGE(void, setControllerPortDevice)(JNIEnv*, jobject, jint port, jint device) {
     Frontend::get().setControllerPortDevice((unsigned)port, (unsigned)device);
 }
+BRIDGE(void, setTurbo)(JNIEnv*, jobject, jint mask, jint framesPerCycle) {
+    Frontend::get().setTurbo((uint32_t)mask, (unsigned)framesPerCycle);
+}
+
 BRIDGE(void, setFastForward)(JNIEnv*, jobject, jint speed) { Frontend::get().setFastForward(speed); }
 BRIDGE(void, setVideoConfig)(JNIEnv*, jobject, jboolean linear, jint aspect, jint rotation) { Frontend::get().setVideoConfig(linear, aspect, rotation); }
 BRIDGE(void, setViewport)(JNIEnv*, jobject, jfloat x, jfloat y, jfloat w, jfloat h) { Frontend::get().setViewport(x, y, w, h); }

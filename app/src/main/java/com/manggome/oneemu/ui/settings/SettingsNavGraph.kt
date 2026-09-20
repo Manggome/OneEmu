@@ -15,7 +15,21 @@ fun NavGraphBuilder.settingsGraph(nav: NavHostController) {
     composable(Routes.SETTINGS) { SettingsHomeScreen(nav) }
     composable(Routes.SETTINGS_VIDEO) { VideoSettingsScreen(onBack = { nav.popBackStack() }) }
     composable(Routes.SETTINGS_AUDIO) { AudioSettingsScreen(onBack = { nav.popBackStack() }) }
-    composable(Routes.SETTINGS_INPUT) { InputSettingsScreen(onBack = { nav.popBackStack() }) }
+    composable(Routes.SETTINGS_INPUT) {
+        InputSettingsScreen(onBack = { nav.popBackStack() }, onGamepad = { nav.navigate(Routes.SETTINGS_GAMEPAD) })
+    }
+    composable(Routes.SETTINGS_GAMEPAD) {
+        GamepadSettingsScreen(
+            onBack = { nav.popBackStack() },
+            onMapping = { deviceKey -> nav.navigate(Routes.gamepadMapping(deviceKey)) },
+        )
+    }
+    composable(
+        Routes.GAMEPAD_MAPPING,
+        arguments = listOf(navArgument("deviceKey") { type = NavType.StringType }),
+    ) { entry ->
+        GamepadMappingScreen(deviceKey = entry.arguments?.getString("deviceKey") ?: "", onBack = { nav.popBackStack() })
+    }
     composable(Routes.SETTINGS_LAYOUTS) {
         LayoutsSettingsScreen(
             onBack = { nav.popBackStack() },

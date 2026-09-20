@@ -76,5 +76,6 @@
     <string name="se_reset">기본값으로</string>
     <string name="se_saved">스킨 배치를 저장했습니다</string>
     <string name="se_variant">변형: %1$s</string>
+    <string name="se_turbo_button">연사 버튼</string>
     <string name="se_speed_button">배속 버튼</string>
 </resources>

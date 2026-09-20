@@ -321,6 +321,13 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     }
 
     fun setFastForward(enabled: Boolean, speed: Int) = NativeBridge.setFastForward(if (enabled) (if (speed <= 0) -1 else speed) else 0)
+
+    /**
+     * Autofire. [mask] is the set of buttons to tap, [rate] the presses per second; the core is
+     * driven in frames, so the rate is converted against the usual 60 Hz.
+     */
+    fun setTurbo(mask: Int, rate: Int) =
+        NativeBridge.setTurbo(mask, if (rate <= 0) 6 else (60f / rate).toInt().coerceAtLeast(2))
     fun reset() = NativeBridge.reset()
 
     // ---- states ----

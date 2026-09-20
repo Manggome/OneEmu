@@ -21,6 +21,7 @@ import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.core.CoreInfo
 import com.manggome.oneemu.data.Settings
+import com.manggome.oneemu.emu.input.GamepadDevices
 import com.manggome.oneemu.emu.input.GamepadInput
 import com.manggome.oneemu.emu.pad.PadInput
 import com.manggome.oneemu.library.ArcadeCoreRouter
@@ -43,6 +44,8 @@ class EmulatorUiState {
     var menuOpen by mutableStateOf(false)
     var gamepadConnected by mutableStateOf(false)
     var fastForward by mutableStateOf(false)
+    /** 연사: the buttons chosen in the settings are tapped for you while this is on. */
+    var turbo by mutableStateOf(false)
     var toast by mutableStateOf<String?>(null)
 }
 
@@ -77,7 +80,8 @@ class EmulatorActivity : ComponentActivity() {
     private var overlayOpen = false
     private var closed = false
     private var padInput = PadInput()
-    private var gamepadInput = PadInput()
+    /** One entry per player; pads publish on the port they were assigned. */
+    private val gamepadInputs = Array(GamepadDevices.MAX_PLAYERS) { PadInput() }
     private var gameId = -1L
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,8 +89,14 @@ class EmulatorActivity : ComponentActivity() {
         haptics = Haptics(this)
         gamepad = GamepadInput(
             this,
-            onChanged = { mask, lx, ly, rx, ry -> gamepadInput = PadInput(mask, lx, ly, rx, ry); pushInput() },
+            onChanged = { port, mask, lx, ly, rx, ry ->
+                if (port in gamepadInputs.indices) {
+                    gamepadInputs[port] = PadInput(mask, lx, ly, rx, ry)
+                    pushInput(port)
+                }
+            },
             onMenu = { toggleMenu() },
+            onTurbo = { toggleTurbo() },
         )
         gamepad.startWatching { ui.gamepadConnected = gamepad.isGamepadConnected() }
         ui.gamepadConnected = gamepad.isGamepadConnected()
@@ -182,13 +192,18 @@ class EmulatorActivity : ComponentActivity() {
     // ---- input ----
     fun onPadInput(input: PadInput) {
         padInput = input
-        pushInput()
+        pushInput(0)
     }
 
-    private fun pushInput() {
+    /** The on-screen pad is always player 1; every other port is whatever its controller reports. */
+    private fun pushInput(port: Int) {
         val s = ui.session ?: return
+        val g = gamepadInputs[port]
+        if (port != 0) {
+            s.setInput(g.mask, g.lx, g.ly, g.rx, g.ry, port)
+            return
+        }
         val p = padInput
-        val g = gamepadInput
         val leftFromPad = p.lx != 0 || p.ly != 0
         val rightFromPad = p.rx != 0 || p.ry != 0
         s.setInput(
@@ -198,6 +213,22 @@ class EmulatorActivity : ComponentActivity() {
             if (rightFromPad) p.rx else g.rx,
             if (rightFromPad) p.ry else g.ry,
         )
+    }
+
+    /** 연사 on/off. The core does the tapping itself, so the rate holds however the game runs. */
+    fun toggleTurbo() {
+        val s = ui.session ?: return
+        lifecycleScope.launch {
+            val mask = settings.get(Settings.Keys.turboMask, Settings.DEFAULT_TURBO_MASK)
+            val rate = settings.get(Settings.Keys.turboRate, Settings.DEFAULT_TURBO_RATE)
+            if (mask == 0) {
+                ui.toast = getString(R.string.turbo_no_buttons)
+                return@launch
+            }
+            ui.turbo = !ui.turbo
+            s.setTurbo(if (ui.turbo) mask else 0, rate)
+            ui.toast = getString(if (ui.turbo) R.string.turbo_on else R.string.turbo_off)
+        }
     }
 
     /** 배속 button: steps through 1× (normal) → 2 → 3 → 5 → 10 → 무제한 and applies it at once. */

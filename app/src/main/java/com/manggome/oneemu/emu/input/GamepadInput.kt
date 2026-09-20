@@ -18,24 +18,47 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
- * Key code → libretro button mapping for a physical controller. [MENU] is a pseudo-button that
- * opens the in-game menu. Overrides are stored per device as "keycode=BUTTON\n" lines where BUTTON
- * is a name from [buttonNames] (or a raw bit index).
+ * Key code → libretro button mapping for a physical controller. [MENU] and [TURBO] are
+ * pseudo-buttons that open the in-game menu and toggle autofire. Overrides are stored per device as
+ * "keycode=BUTTON\n" lines where BUTTON is a name from [buttonNames] (or a raw bit index); an empty
+ * value drops a default binding.
  */
 data class GamepadMapping(val keys: Map<Int, Int>) {
     fun buttonFor(keyCode: Int): Int? = keys[keyCode]
 
-    fun serialize(): String = keys.entries.joinToString("\n") { (k, v) -> "$k=${nameOf(v)}" }
+    /** The first key bound to [button], which is what the mapping screen shows on its row. */
+    fun keyFor(button: Int): Int? = keys.entries.firstOrNull { it.value == button }?.key
+
+    /** Binds [keyCode] to [button], dropping whatever used to press it. */
+    fun rebind(button: Int, keyCode: Int): GamepadMapping =
+        GamepadMapping(keys.filterValues { it != button } + (keyCode to button))
+
+    /** Only the differences from [base], in the format [parse] reads back. */
+    fun overridesOf(base: GamepadMapping = DEFAULT): String = buildList {
+        for (k in base.keys.keys) if (k !in keys) add("$k=")
+        for ((k, v) in keys) if (base.keys[k] != v) add("$k=${nameOf(v)}")
+    }.joinToString("\n")
 
     companion object {
         const val MENU = 1 shl 30
+        const val TURBO = 1 shl 29
 
         val buttonNames: Map<String, Int> = mapOf(
             "A" to Buttons.A, "B" to Buttons.B, "X" to Buttons.X, "Y" to Buttons.Y,
             "L" to Buttons.L, "R" to Buttons.R, "L2" to Buttons.L2, "R2" to Buttons.R2,
             "L3" to Buttons.L3, "R3" to Buttons.R3, "START" to Buttons.START, "SELECT" to Buttons.SELECT,
             "UP" to Buttons.UP, "DOWN" to Buttons.DOWN, "LEFT" to Buttons.LEFT, "RIGHT" to Buttons.RIGHT,
-            "MENU" to MENU,
+            "MENU" to MENU, "TURBO" to TURBO,
+        )
+
+        /** Buttons the mapping screen offers, in the order it lists them. */
+        val assignable: List<Pair<String, Int>> = listOf(
+            "A" to Buttons.A, "B" to Buttons.B, "X" to Buttons.X, "Y" to Buttons.Y,
+            "L" to Buttons.L, "R" to Buttons.R, "L2" to Buttons.L2, "R2" to Buttons.R2,
+            "L3" to Buttons.L3, "R3" to Buttons.R3,
+            "START" to Buttons.START, "SELECT" to Buttons.SELECT,
+            "UP" to Buttons.UP, "DOWN" to Buttons.DOWN, "LEFT" to Buttons.LEFT, "RIGHT" to Buttons.RIGHT,
+            "MENU" to MENU, "TURBO" to TURBO,
         )
 
         fun nameOf(button: Int): String = buttonNames.entries.firstOrNull { it.value == button }?.key ?: button.toString()
@@ -95,51 +118,87 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
 
 /**
  * Translates physical controller / keyboard events into a libretro button mask plus two analog
- * sticks. Feed it from Activity.dispatchKeyEvent / dispatchGenericMotionEvent.
+ * sticks, per player. Feed it from Activity.dispatchKeyEvent / dispatchGenericMotionEvent.
+ *
+ * Each attached pad keeps its own state and is published on its own port, so a second controller
+ * plays as 2P instead of fighting the first one for player 1. Anything that is not a pad (a
+ * keyboard, a TV remote) always plays as 1P.
  */
 class GamepadInput(
     context: Context,
-    private val onChanged: (mask: Int, lx: Int, ly: Int, rx: Int, ry: Int) -> Unit,
+    private val onChanged: (port: Int, mask: Int, lx: Int, ly: Int, rx: Int, ry: Int) -> Unit,
     private val onMenu: () -> Unit,
+    private val onTurbo: () -> Unit = {},
 ) {
+    private class DeviceState {
+        var keyMask = 0
+        var hatMask = 0
+        var triggerMask = 0
+        var lx = 0; var ly = 0; var rx = 0; var ry = 0
+        val mask: Int get() = keyMask or hatMask or triggerMask
+    }
+
     private val inputManager = context.getSystemService(Context.INPUT_SERVICE) as InputManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mappings = HashMap<Int, GamepadMapping>()
+    private val states = HashMap<Int, DeviceState>()
 
-    private var keyMask = 0
-    private var hatMask = 0
-    private var triggerMask = 0
-    private var lx = 0; private var ly = 0; private var rx = 0; private var ry = 0
-
-    var mask: Int = 0
-        private set
+    /** deviceId → port, recomputed whenever pads come and go or the player choice changes. */
+    private var ports = emptyMap<Int, Int>()
+    private var preferredPorts = emptyMap<String, Int>()
 
     private var deviceListener: InputManager.InputDeviceListener? = null
+    private var onDevices: (() -> Unit)? = null
 
     /** True when a device with gamepad or joystick sources is attached. */
-    fun isGamepadConnected(): Boolean = InputDevice.getDeviceIds().any { id ->
-        val d = InputDevice.getDevice(id) ?: return@any false
-        // Compare whole source constants: a bare `and != 0` also matches keyboards via SOURCE_CLASS_BUTTON.
-        !d.isVirtual && ((d.sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
-            (d.sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK)
-    }
+    fun isGamepadConnected(): Boolean = GamepadDevices.connected().isNotEmpty()
+
+    /** Attached pads with the player each one currently drives. */
+    fun devices(): List<PadDevice> = GamepadDevices.assign(GamepadDevices.connected(), preferredPorts)
 
     fun startWatching(onDevicesChanged: () -> Unit) {
         if (deviceListener != null) return
+        onDevices = onDevicesChanged
         val l = object : InputManager.InputDeviceListener {
-            override fun onInputDeviceAdded(deviceId: Int) { mappings.remove(deviceId); onDevicesChanged() }
-            override fun onInputDeviceRemoved(deviceId: Int) { mappings.remove(deviceId); onDevicesChanged() }
-            override fun onInputDeviceChanged(deviceId: Int) { mappings.remove(deviceId); onDevicesChanged() }
+            override fun onInputDeviceAdded(deviceId: Int) = forget(deviceId)
+            override fun onInputDeviceRemoved(deviceId: Int) = forget(deviceId)
+            override fun onInputDeviceChanged(deviceId: Int) = forget(deviceId)
         }
         deviceListener = l
         inputManager.registerInputDeviceListener(l, Handler(Looper.getMainLooper()))
+        scope.launch {
+            OneEmuApp.get().settings.gamepadPorts.collect {
+                preferredPorts = it
+                refreshPorts()
+                onDevices?.invoke()
+            }
+        }
+        refreshPorts()
+    }
+
+    private fun forget(deviceId: Int) {
+        mappings.remove(deviceId)
+        // A pad that just left must not leave its buttons stuck down on its port.
+        val port = ports[deviceId]
+        states.remove(deviceId)
+        refreshPorts()
+        if (port != null) publish(port)
+        onDevices?.invoke()
     }
 
     fun stopWatching() {
         deviceListener?.let { inputManager.unregisterInputDeviceListener(it) }
         deviceListener = null
+        onDevices = null
         scope.cancel()
     }
+
+    private fun refreshPorts() {
+        ports = GamepadDevices.assign(GamepadDevices.connected(), preferredPorts).associate { it.deviceId to it.port }
+    }
+
+    /** Pads play as the player they were given; keyboards and other oddities are always 1P. */
+    private fun portFor(deviceId: Int): Int = ports[deviceId] ?: 0
 
     private fun mappingFor(deviceId: Int): GamepadMapping {
         mappings[deviceId]?.let { return it }
@@ -153,16 +212,22 @@ class GamepadInput(
         return GamepadMapping.DEFAULT
     }
 
+    private fun stateFor(deviceId: Int): DeviceState = states.getOrPut(deviceId) { DeviceState() }
+
     /** Returns true if the event was consumed. */
     fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.repeatCount > 0 && event.action == KeyEvent.ACTION_DOWN) return isMapped(event)
         val button = mappingFor(event.deviceId).buttonFor(event.keyCode) ?: return false
-        if (button == GamepadMapping.MENU) {
-            if (event.action == KeyEvent.ACTION_UP) onMenu()
+        if (button == GamepadMapping.MENU || button == GamepadMapping.TURBO) {
+            // Pseudo-buttons fire once, on release, whichever player pressed them.
+            if (event.action == KeyEvent.ACTION_UP) {
+                if (button == GamepadMapping.MENU) onMenu() else onTurbo()
+            }
             return true
         }
-        keyMask = if (event.action == KeyEvent.ACTION_DOWN) keyMask or button else keyMask and button.inv()
-        publish()
+        val st = stateFor(event.deviceId)
+        st.keyMask = if (event.action == KeyEvent.ACTION_DOWN) st.keyMask or button else st.keyMask and button.inv()
+        publish(portFor(event.deviceId))
         return true
     }
 
@@ -171,27 +236,30 @@ class GamepadInput(
     fun onMotionEvent(event: MotionEvent): Boolean {
         if (event.source and InputDevice.SOURCE_JOYSTICK == 0 || event.action != MotionEvent.ACTION_MOVE) return false
         val device = event.device ?: return false
-        lx = axis(event, device, MotionEvent.AXIS_X)
-        ly = axis(event, device, MotionEvent.AXIS_Y)
+        val st = stateFor(event.deviceId)
+        st.lx = axis(event, device, MotionEvent.AXIS_X)
+        st.ly = axis(event, device, MotionEvent.AXIS_Y)
         // Right stick is Z/RZ on most Android pads, RX/RY on a few.
         val hasZ = device.getMotionRange(MotionEvent.AXIS_Z, InputDevice.SOURCE_JOYSTICK) != null
-        rx = axis(event, device, if (hasZ) MotionEvent.AXIS_Z else MotionEvent.AXIS_RX)
-        ry = axis(event, device, if (hasZ) MotionEvent.AXIS_RZ else MotionEvent.AXIS_RY)
+        st.rx = axis(event, device, if (hasZ) MotionEvent.AXIS_Z else MotionEvent.AXIS_RX)
+        st.ry = axis(event, device, if (hasZ) MotionEvent.AXIS_RZ else MotionEvent.AXIS_RY)
 
         val hx = event.getAxisValue(MotionEvent.AXIS_HAT_X)
         val hy = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
-        hatMask = 0
-        if (hx < -0.5f) hatMask = hatMask or Buttons.LEFT
-        if (hx > 0.5f) hatMask = hatMask or Buttons.RIGHT
-        if (hy < -0.5f) hatMask = hatMask or Buttons.UP
-        if (hy > 0.5f) hatMask = hatMask or Buttons.DOWN
+        var hat = 0
+        if (hx < -0.5f) hat = hat or Buttons.LEFT
+        if (hx > 0.5f) hat = hat or Buttons.RIGHT
+        if (hy < -0.5f) hat = hat or Buttons.UP
+        if (hy > 0.5f) hat = hat or Buttons.DOWN
+        st.hatMask = hat
 
         val lt = maxOf(event.getAxisValue(MotionEvent.AXIS_LTRIGGER), event.getAxisValue(MotionEvent.AXIS_BRAKE))
         val rt = maxOf(event.getAxisValue(MotionEvent.AXIS_RTRIGGER), event.getAxisValue(MotionEvent.AXIS_GAS))
-        triggerMask = 0
-        if (lt > 0.5f) triggerMask = triggerMask or Buttons.L2
-        if (rt > 0.5f) triggerMask = triggerMask or Buttons.R2
-        publish()
+        var trigger = 0
+        if (lt > 0.5f) trigger = trigger or Buttons.L2
+        if (rt > 0.5f) trigger = trigger or Buttons.R2
+        st.triggerMask = trigger
+        publish(portFor(event.deviceId))
         return true
     }
 
@@ -206,9 +274,17 @@ class GamepadInput(
         return (sign * v.coerceIn(0f, 1f) * 32767f).toInt()
     }
 
-    private fun publish() {
-        mask = keyMask or hatMask or triggerMask
-        onChanged(mask, lx, ly, rx, ry)
+    /** Merges every device sharing [port] — two pads on one player act as one. */
+    private fun publish(port: Int) {
+        var mask = 0
+        var lx = 0; var ly = 0; var rx = 0; var ry = 0
+        for ((id, st) in states) {
+            if (portFor(id) != port) continue
+            mask = mask or st.mask
+            if (st.lx != 0 || st.ly != 0) { lx = st.lx; ly = st.ly }
+            if (st.rx != 0 || st.ry != 0) { rx = st.rx; ry = st.ry }
+        }
+        onChanged(port, mask, lx, ly, rx, ry)
     }
 
     companion object {

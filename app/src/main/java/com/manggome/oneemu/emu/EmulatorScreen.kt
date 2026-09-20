@@ -154,6 +154,8 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     onFastForward = host::setFastForward,
                     speedLabel = if (!ui.fastForward) "1×" else if (ffSpeed <= 0) "∞" else "${ffSpeed}×",
                     onSpeedCycle = host::cycleSpeed,
+                    turboActive = ui.turbo,
+                    onTurbo = host::toggleTurbo,
                 )
             }
 
@@ -183,10 +185,13 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
             val ffLabel = (if (ffSpeed <= 0) stringResource(R.string.ff_unlimited) else stringResource(R.string.ff_speed_x, ffSpeed)) +
                 " · " + stringResource(if (ui.fastForward) R.string.ff_on else R.string.ff_off)
 
+            val turboLabel = stringResource(if (ui.turbo) R.string.ff_on else R.string.ff_off)
+
             if (ui.menuOpen) {
                 InGameMenuDialog(
                     title = ui.title,
                     fastForwardLabel = ffLabel,
+                    turboLabel = turboLabel,
                     onDismiss = { ui.menuOpen = false },
                     onAction = { action ->
                         ui.menuOpen = false
@@ -194,6 +199,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                             MenuAction.LOAD -> sheet = Sheet.LOAD
                             MenuAction.SAVE -> sheet = Sheet.SAVE
                             MenuAction.FAST_FORWARD -> host.setFastForward(!ui.fastForward)
+                            MenuAction.TURBO -> host.toggleTurbo()
                             MenuAction.CHEATS -> sheet = Sheet.CHEATS
                             MenuAction.SETTINGS -> sheet = Sheet.SETTINGS
                             MenuAction.SCREENSHOT -> scope.launch {
