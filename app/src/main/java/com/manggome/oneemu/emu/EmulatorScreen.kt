@@ -156,6 +156,8 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     onSpeedCycle = host::cycleSpeed,
                     turboActive = ui.turbo,
                     onTurbo = host::toggleTurbo,
+                    onSaveState = { sheet = Sheet.SAVE },
+                    onLoadState = { sheet = Sheet.LOAD },
                 )
             }
 

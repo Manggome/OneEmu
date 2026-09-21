@@ -135,8 +135,10 @@ fun SkinEditor(
     val loaded by produceState<Result<LoadedSkin>?>(null, skinInfo.id) { value = runCatching { SkinLoader.load(context, skinInfo) } }
     // The 배속 button lives in the vector layout even while a skin is active (PadHost draws it on top).
     val padLayout by remember(system, config) { PadLayoutStore.observe(system, config) }.collectAsState(initial = null)
-    val speedButton = padLayout?.get(PadElementId.SPEED)
-    val turboButton = padLayout?.get(PadElementId.TURBO)
+    // Controls a RetroArch overlay has no concept of; PadHost draws them over the skin.
+    val overlayExtras = listOf(
+        PadElementId.SPEED, PadElementId.TURBO, PadElementId.SAVE_STATE, PadElementId.LOAD_STATE,
+    )
     var layout by remember { mutableStateOf<SkinLayout?>(null) }
     var viewport by remember { mutableStateOf<ViewportRect?>(null) }
     var viewportSelected by remember { mutableStateOf(false) }
@@ -494,30 +496,18 @@ fun SkinEditor(
                     onClick = { viewportSelected = !viewportSelected; if (viewportSelected) selection = emptyList() },
                     label = { Text(stringResource(R.string.vp_select)) },
                 )
-                // Skins carry no speed control: this places the vector pad's 배속 button over the skin.
-                FilterChip(
-                    selected = speedButton?.visible == true,
-                    onClick = {
-                        val cur = padLayout ?: PadLayout(emptyList())
-                        val on = cur[PadElementId.SPEED]?.visible == true
-                        val next = if (on) cur.update(PadElementId.SPEED) { it.copy(visible = false) }
-                        else cur.withElement(PadElementId.SPEED, PadElementId.SPEED.defaultSpot.first, PadElementId.SPEED.defaultSpot.second)
-                        scope.launch { PadLayoutStore.save(system, config, next) }
-                    },
-                    label = { Text(stringResource(R.string.se_speed_button)) },
-                )
-                // Same for 연사: the skin has no such control, so it comes from the vector pad.
-                FilterChip(
-                    selected = turboButton?.visible == true,
-                    onClick = {
-                        val cur = padLayout ?: PadLayout(emptyList())
-                        val on = cur[PadElementId.TURBO]?.visible == true
-                        val next = if (on) cur.update(PadElementId.TURBO) { it.copy(visible = false) }
-                        else cur.withElement(PadElementId.TURBO, PadElementId.TURBO.defaultSpot.first, PadElementId.TURBO.defaultSpot.second)
-                        scope.launch { PadLayoutStore.save(system, config, next) }
-                    },
-                    label = { Text(stringResource(R.string.se_turbo_button)) },
-                )
+                for (id in overlayExtras) {
+                    FilterChip(
+                        selected = padLayout?.get(id)?.visible == true,
+                        onClick = {
+                            val cur = padLayout ?: PadLayout(emptyList())
+                            val next = if (cur[id]?.visible == true) cur.update(id) { it.copy(visible = false) }
+                            else cur.withElement(id, id.defaultSpot.first, id.defaultSpot.second)
+                            scope.launch { PadLayoutStore.save(system, config, next) }
+                        },
+                        label = { Text(id.displayName) },
+                    )
+                }
                 TextButton(onClick = {
                     history.record(snapshot())
                     layout = SkinLayout.EMPTY

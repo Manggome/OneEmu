@@ -26,6 +26,10 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
     R(Buttons.R, Kind.PILL),
     L2(Buttons.L2, Kind.PILL),
     R2(Buttons.R2, Kind.PILL),
+    // Stick clicks. Cores put their own functions here: melonDS DS uses L3 for the microphone and
+    // R3 for the next screen layout, which is what its on-screen mic and layout icons really are.
+    L3(Buttons.L3, Kind.PILL),
+    R3(Buttons.R3, Kind.PILL),
     START(Buttons.START, Kind.PILL),
     SELECT(Buttons.SELECT, Kind.PILL),
     LEFT_STICK(0, Kind.STICK),
@@ -34,6 +38,8 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
     FAST_FORWARD(0, Kind.SMALL),
     SPEED(0, Kind.SMALL),
     TURBO(0, Kind.SMALL),
+    SAVE_STATE(0, Kind.SMALL),
+    LOAD_STATE(0, Kind.SMALL),
     COIN(Buttons.SELECT, Kind.PILL),
     ARCADE_1(Buttons.B, Kind.ROUND),
     ARCADE_2(Buttons.A, Kind.ROUND),
@@ -53,9 +59,10 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             Kind.DPAD -> 150f
             Kind.ROUND -> 62f
             Kind.CLUSTER -> 170f
-            Kind.PILL -> if (this == L || this == R || this == L2 || this == R2) 84f else 72f
+            Kind.PILL -> if (this == L || this == R || this == L2 || this == R2 || this == L3 || this == R3) 84f else 72f
             Kind.STICK -> 120f
-            Kind.SMALL -> 40f
+            // The state buttons carry a word rather than a glyph, so they need the room for it.
+            Kind.SMALL -> if (this == SAVE_STATE || this == LOAD_STATE) 64f else 40f
         }
     val baseHeightDp: Float
         get() = when (kind) {
@@ -73,13 +80,18 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
         L -> if (system.isPlayStation) "L1" else "L"
         R -> if (system.isPlayStation) "R1" else "R"
         L2 -> "L2"
-        R2 -> "R2"
+        R2 -> if (system == SystemId.NDS) "터치" else "R2"
+        // melonDS DS reads these as its microphone and screen-layout controls.
+        L3 -> if (system == SystemId.NDS) "마이크" else "L3"
+        R3 -> if (system == SystemId.NDS) "화면" else "R3"
         START -> "START"
         SELECT -> "SELECT"
         MENU -> "☰"
         FAST_FORWARD -> "▶▶"
         SPEED -> "1×" // replaced with the live speed while a game runs
         TURBO -> "연사"
+        SAVE_STATE -> "저장"
+        LOAD_STATE -> "불러오기"
         COIN -> "COIN"
         ARCADE_1 -> "1"
         ARCADE_2 -> "2"
@@ -97,6 +109,8 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             TURBO -> 0.96f to 0.28f
             FAST_FORWARD -> 0.96f to 0.08f
             MENU -> 0.04f to 0.08f
+            SAVE_STATE -> 0.13f to 0.08f
+            LOAD_STATE -> 0.33f to 0.08f
             else -> 0.5f to 0.5f
         }
 
@@ -112,7 +126,9 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             L -> "L 버튼"
             R -> "R 버튼"
             L2 -> "L2 버튼"
-            R2 -> "R2 버튼"
+            R2 -> "R2 버튼 (DS: 터치 조이스틱)"
+            L3 -> "L3 버튼 (DS: 마이크)"
+            R3 -> "R3 버튼 (DS: 화면 배치 전환)"
             START -> "START"
             SELECT -> "SELECT"
             LEFT_STICK -> "왼쪽 스틱"
@@ -121,6 +137,8 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             FAST_FORWARD -> "빨리감기 버튼"
             SPEED -> "배속 버튼"
             TURBO -> "연사 버튼"
+            SAVE_STATE -> "저장 버튼"
+            LOAD_STATE -> "불러오기 버튼"
             COIN -> "코인"
             ARCADE_1 -> "버튼 1"
             ARCADE_2 -> "버튼 2"
