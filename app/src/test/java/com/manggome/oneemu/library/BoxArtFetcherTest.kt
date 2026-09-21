@@ -71,6 +71,20 @@ class BoxArtFetcherTest {
     }
 
     @Test
+    fun `a title the server could never match gives way to the file name`() {
+        // The server holds English and romanized names only, so a Korean title is no use as a query.
+        assertEquals("Ratchet & Clank", BoxArtFetcher.searchSeed("라쳇 앤 클랭크", "Ratchet & Clank.iso"))
+        assertEquals("", BoxArtFetcher.normalize("라쳇 앤 클랭크"))
+    }
+
+    @Test
+    fun `a usable title is kept as it is`() {
+        assertEquals("Sonic 3", BoxArtFetcher.searchSeed("Sonic 3", "g_soni3.zip"))
+        // A title with any letters or digits at all is worth trying before the file name.
+        assertEquals("Tekken 5", BoxArtFetcher.searchSeed("Tekken 5", "tk5.iso"))
+    }
+
+    @Test
     fun `characters the server cannot store become underscores`() {
         assertEquals("Ratchet _ Clank", BoxArtFetcher.sanitize("Ratchet & Clank"))
         assertEquals("Spy vs. Spy_ The Island Caper", BoxArtFetcher.sanitize("Spy vs. Spy: The Island Caper"))

@@ -250,6 +250,16 @@ class BoxArtFetcher(
             hits.sortedWith(compareBy({ if (normalize(it.name) == normalizedQuery) 0 else 1 }, { score(it.name) }))
                 .take(limit)
 
+        /**
+         * What to search for first. The server only holds English and romanized release names, so a
+         * title with nothing it could ever match — a Korean one, which normalizes to an empty
+         * string — is dropped in favour of the ROM's file name, which is usually English.
+         */
+        fun searchSeed(title: String, fileName: String): String {
+            val fileBase = fileName.substringBeforeLast('.')
+            return if (normalize(title).isNotEmpty()) title else fileBase
+        }
+
         /** RetroArch's own rule for turning a release name into a file name. */
         fun sanitize(name: String): String = name.replace(Regex("[&*/:`\"<>?\\\\|]"), "_")
 
