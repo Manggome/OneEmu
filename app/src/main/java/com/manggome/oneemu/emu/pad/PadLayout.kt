@@ -155,6 +155,12 @@ data class PadLayout(val elements: List<PadElement>) {
         if (this[id] != null) update(id) { it.copy(visible = true) }
         else copy(elements = elements + PadElement(id, x, y))
 
+    /**
+     * Left and right swapped. Buttons keep their size and their vertical place, so a right-handed
+     * layout becomes the left-handed one in a single step.
+     */
+    fun mirrored(): PadLayout = copy(elements = elements.map { it.copy(x = 1f - it.x) })
+
     fun toJson(): String = json.encodeToString(serializer(), this)
 
     companion object {
