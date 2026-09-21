@@ -1,6 +1,10 @@
 package com.manggome.oneemu.emu.pad
 
+import com.manggome.oneemu.emu.ScreenConfig
+import com.manggome.oneemu.model.SystemId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -41,6 +45,33 @@ class PadLayoutTest {
     fun `an element on the centre line stays on it`() {
         val centred = layout(PadElement(PadElementId.START, x = 0.5f, y = 0.9f))
         assertEquals(0.5f, centred.mirrored()[PadElementId.START]!!.x, 1e-6f)
+    }
+
+    @Test
+    fun `the DS pad carries the two stick clicks melonDS uses`() {
+        // L3 is the microphone and R3 cycles the screen layout; without them a DS game cannot blow
+        // into the mic or move the touch screen.
+        for (config in ScreenConfig.entries) {
+            val nds = DefaultLayouts.forSystem(SystemId.NDS, config)
+            assertNotNull("$config has no L3", nds[PadElementId.L3])
+            assertNotNull("$config has no R3", nds[PadElementId.R3])
+        }
+    }
+
+    @Test
+    fun `other systems are not given stick clicks they have no use for`() {
+        val gba = DefaultLayouts.forSystem(SystemId.GBA, ScreenConfig.PORTRAIT)
+        assertNull(gba[PadElementId.L3])
+        assertNull(gba[PadElementId.R3])
+    }
+
+    @Test
+    fun `the DS labels say what the buttons actually do`() {
+        assertEquals("마이크", PadElementId.L3.label(SystemId.NDS))
+        assertEquals("화면", PadElementId.R3.label(SystemId.NDS))
+        // Every other system gets the plain name, since the function is the core's, not ours.
+        assertEquals("L3", PadElementId.L3.label(SystemId.PSX))
+        assertEquals("R3", PadElementId.R3.label(SystemId.PSX))
     }
 
     @Test

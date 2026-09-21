@@ -73,7 +73,12 @@ object DefaultLayouts {
     fun forSystem(system: SystemId, landscape: Boolean): PadLayout = when (system) {
         SystemId.NES, SystemId.GB, SystemId.GBC -> twoButton(landscape, shoulders = false)
         SystemId.GBA -> twoButton(landscape, shoulders = true)
-        SystemId.NDS -> fourButton(landscape, shoulders = true, leftStick = false, rightStick = false, triggers = false, lowPortrait = true)
+        // melonDS DS reads L3 as the microphone and R3 as "next screen layout", so a DS pad without
+        // them cannot blow into the mic or move the touch screen where the player wants it.
+        SystemId.NDS -> withNdsExtras(
+            fourButton(landscape, shoulders = true, leftStick = false, rightStick = false, triggers = false, lowPortrait = true),
+            landscape,
+        )
         SystemId.N3DS -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = false, triggers = false, lowPortrait = true)
         SystemId.PSX -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = true, triggers = true, lowPortrait = false)
         SystemId.PSP -> fourButton(landscape, shoulders = true, leftStick = true, rightStick = false, triggers = false, lowPortrait = false)
@@ -89,6 +94,15 @@ object DefaultLayouts {
     }
 
     private fun e(id: PadElementId, x: Float, y: Float, scale: Float = 1f) = PadElement(id, x, y, scale)
+
+    /** The two stick clicks melonDS DS uses, next to the shoulders they sit beside on a real pad. */
+    private fun withNdsExtras(base: PadLayout, landscape: Boolean): PadLayout = PadLayout(
+        base.elements + if (landscape) {
+            listOf(e(L3, 0.19f, 0.12f, 0.85f), e(R3, 0.81f, 0.12f, 0.85f))
+        } else {
+            listOf(e(L3, 0.28f, 0.66f, 0.85f), e(R3, 0.72f, 0.66f, 0.85f))
+        },
+    )
 
     private fun twoButton(landscape: Boolean, shoulders: Boolean): PadLayout {
         val list = mutableListOf<PadElement>()

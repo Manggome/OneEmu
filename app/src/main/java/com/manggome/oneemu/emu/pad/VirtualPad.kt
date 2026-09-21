@@ -62,6 +62,9 @@ fun VirtualPad(
     turboActive: Boolean = false,
     /** A tap on the 연사 button asks to flip autofire. */
     onTurbo: () -> Unit = {},
+    /** Taps on the 저장 / 불러오기 buttons open the slot list, as the pause menu does. */
+    onSaveState: () -> Unit = {},
+    onLoadState: () -> Unit = {},
 ) {
     val density = LocalDensity.current.density
     var size by remember { mutableStateOf(Size.Zero) }
@@ -80,6 +83,8 @@ fun VirtualPad(
     val onFfState = rememberUpdatedState(onFastForward)
     val onSpeedState = rememberUpdatedState(onSpeedCycle)
     val onTurboState = rememberUpdatedState(onTurbo)
+    val onSaveState = rememberUpdatedState(onSaveState)
+    val onLoadStateState = rememberUpdatedState(onLoadState)
 
     // Visual state read by the canvas.
     var pressedMask by remember { mutableIntStateOf(0) }
@@ -174,6 +179,10 @@ fun VirtualPad(
                                 if (inside) onSpeedState.value()
                             } else if (t.id == PadElementId.TURBO) {
                                 if (inside) onTurboState.value()
+                            } else if (t.id == PadElementId.SAVE_STATE) {
+                                if (inside) onSaveState.value()
+                            } else if (t.id == PadElementId.LOAD_STATE) {
+                                if (inside) onLoadStateState.value()
                             }
                         }
                         is Tracker.GameTouch -> onPointerState.value(t.lastX, t.lastY, false)
