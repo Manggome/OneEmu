@@ -42,8 +42,11 @@ object SaveBackup {
         var files = 0
         var bytes = 0L
         for (root in ROOTS) {
-            dirs.saveRoot(root).walkTopDown().forEach {
-                if (it.isFile) { files++; bytes += it.length() }
+            val base = dirs.saveRoot(root)
+            base.walkTopDown().forEach {
+                if (!it.isFile || isRebuildable(it.relativeTo(base).invariantSeparatorsPath)) return@forEach
+                files++
+                bytes += it.length()
             }
         }
         Stats(files, bytes, db.cheats().allOnce().size)
@@ -62,7 +65,9 @@ object SaveBackup {
                 val base = dirs.saveRoot(root)
                 base.walkTopDown().forEach { file ->
                     if (!file.isFile) return@forEach
-                    val name = "$root/${file.relativeTo(base).invariantSeparatorsPath}"
+                    val relative = file.relativeTo(base).invariantSeparatorsPath
+                    if (isRebuildable(relative)) return@forEach
+                    val name = "$root/$relative"
                     zip.putNextEntry(ZipEntry(name))
                     file.inputStream().use { it.copyTo(zip) }
                     zip.closeEntry()
@@ -100,7 +105,7 @@ object SaveBackup {
                     continue
                 }
                 val target = resolve(dirs, name)
-                if (target == null) { zip.closeEntry(); continue }
+                if (target == null || isRebuildable(name.substringAfter('/'))) { zip.closeEntry(); continue }
                 target.parentFile?.mkdirs()
                 runCatching { target.outputStream().use { zip.copyTo(it) } }
                     .onSuccess { files++ }
@@ -109,6 +114,17 @@ object SaveBackup {
             }
         }
         ImportResult(files, cheats)
+    }
+
+    /**
+     * Files a core leaves next to the saves that it will simply make again: shader caches, which
+     * can run to hundreds of megabytes, and logs. Backing them up would dwarf the saves themselves.
+     */
+    internal fun isRebuildable(relative: String): Boolean {
+        val parts = relative.split('/')
+        if (parts.any { it.equals("Cache", true) || it.equals("Logs", true) || it.equals("ShaderCache", true) }) return true
+        val name = parts.last().lowercase()
+        return name.endsWith(".log") || name.endsWith(".log.gz")
     }
 
     /** Where an entry may be written, or null when it does not belong to the backup. */

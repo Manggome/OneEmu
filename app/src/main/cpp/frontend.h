@@ -215,14 +215,19 @@ private:
     std::vector<int16_t> audioBuf_;
 
     // input
-    /** [buttons] with the autofire ones released on the off half of the cycle. */
-    uint32_t turbo(uint32_t buttons) const;
+    /** [buttons] of [port] with the autofire ones released on the off half of their cycle. */
+    uint32_t turbo(unsigned port, uint32_t buttons) const;
+    /** Notes which autofire buttons were pressed this frame, so each starts its cycle held down. */
+    void advanceTurbo();
 
     InputState input_[4];
     std::atomic<uint32_t> turboMask_{0};
     std::atomic<unsigned> turboPeriod_{6};
     /** Frames run since load; only ever touched on the emu thread, which is where autofire reads it. */
     uint64_t frames_ = 0;
+    /** The frame each button was last pressed on, per port: an autofire cycle starts from there. */
+    uint64_t turboStart_[4][16]{};
+    uint32_t turboPrev_[4]{};
     std::atomic<int16_t> pointerX_{0}, pointerY_{0};
     std::atomic<bool> pointerPressed_{false};
     bool supportsBitmasks_ = false;
