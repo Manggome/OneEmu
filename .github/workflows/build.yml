@@ -14,6 +14,8 @@ on:
 
 permissions:
   contents: write
+  # The runs delete their own artifacts once the APK is built; see "Drop this run's core artifacts".
+  actions: write
 
 concurrency:
   group: build-${{ github.ref }}
@@ -259,7 +261,10 @@ jobs:
           cp "$APK" "dist/OneEmu-v${VERSION}-arm64.apk"
           ls -la dist
 
-      - name: Upload APK artifact
+      # Only when no release is published: on main the release asset is the same 62 MB file, and
+      # keeping both was by far the biggest draw on the account's Actions storage.
+      - name: Upload APK artifact (runs with no release)
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           retention-days: 1
@@ -283,3 +288,17 @@ jobs:
             - 설치: 아래 `OneEmu-v${{ steps.version.outputs.version }}-arm64.apk` 를 내려받아 설치하세요.
             - 앱 내 업데이트는 이 릴리스 태그(`v${{ steps.version.outputs.version }}`)와 앱 버전을 비교합니다.
             - ROM/BIOS 는 포함되어 있지 않습니다.
+
+      # The core artifacts only exist to hand .so files from the matrix jobs to this one. Actions
+      # storage is metered while they sit there, and a retention day is a day too long for something
+      # already consumed, so the run removes its own.
+      - name: Drop this run's core artifacts
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ids="$(gh api --paginate "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
+            --jq '.artifacts[] | select(.name | startswith("core-")) | .id')"
+          for id in $ids; do
+            gh api -X DELETE "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}" && echo "deleted artifact ${id}"
+          done
