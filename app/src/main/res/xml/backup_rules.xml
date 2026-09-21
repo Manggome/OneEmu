@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 and below. Settings and the library database are small and worth carrying to a new
+  phone; the downloaded cores are hundreds of megabytes of something the app can fetch again, and
+  the caches are scratch, so neither belongs in a backup of the user's Google account.
+-->
+<full-backup-content>
+    <exclude domain="file" path="cores/" />
+    <exclude domain="file" path="native_crash.txt" />
+    <exclude domain="file" path="native_crash.prev.txt" />
+</full-backup-content>
