@@ -54,6 +54,23 @@ class BoxArtFetcherTest {
     }
 
     @Test
+    fun `the picker leads with the exact title, not a longer game that contains it`() {
+        val hits = listOf(
+            "Sonic 3D Blast (USA, Europe, Korea) (En)",
+            "Sonic 3 (Europe)",
+            "Sonic 3D Blast ~ Sonic 3D Flickies' Island (USA, Europe)",
+        ).map { BoxArtCandidate("Sega - Mega Drive - Genesis", it) }
+        val ranked = BoxArtFetcher.rank(hits, BoxArtFetcher.normalize("Sonic 3"), limit = 10)
+        assertEquals("Sonic 3 (Europe)", ranked.first().name)
+    }
+
+    @Test
+    fun `the picker returns at most what it was asked for`() {
+        val hits = (1..50).map { BoxArtCandidate("MAME", "Game $it (World)") }
+        assertEquals(12, BoxArtFetcher.rank(hits, "nothingmatches", limit = 12).size)
+    }
+
+    @Test
     fun `characters the server cannot store become underscores`() {
         assertEquals("Ratchet _ Clank", BoxArtFetcher.sanitize("Ratchet & Clank"))
         assertEquals("Spy vs. Spy_ The Island Caper", BoxArtFetcher.sanitize("Spy vs. Spy: The Island Caper"))

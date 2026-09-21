@@ -37,6 +37,10 @@ object Routes {
     const val LAYOUT_EDITOR = "layout/{systemId}"
     fun layoutEditor(systemId: String) = "layout/$systemId"
 
+    /** Box art picker for one game: boxart/{gameId} */
+    const val BOXART = "boxart/{gameId}"
+    fun boxArt(gameId: Long) = "boxart/$gameId"
+
     /** Game detail sheet route: game/{gameId} */
     const val GAME = "game/{gameId}"
     fun game(gameId: Long) = "game/$gameId"

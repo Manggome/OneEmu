@@ -18,7 +18,9 @@ import com.manggome.oneemu.data.db.GameEntity
 import com.manggome.oneemu.library.ArcadeCoreRouter
 import com.manggome.oneemu.library.ArcadeRomCheck
 import com.manggome.oneemu.library.ArcadeRomChecker
+import com.manggome.oneemu.library.BoxArtCandidate
 import com.manggome.oneemu.library.BoxArtFetcher
+import com.manggome.oneemu.library.BoxArtKind
 import com.manggome.oneemu.library.RomScanner
 import com.manggome.oneemu.emu.EmulatorSession
 import com.manggome.oneemu.model.SystemId
@@ -394,6 +396,31 @@ class LibraryViewModel : ViewModel() {
             }
         }
     }
+
+    suspend fun game(id: Long): GameEntity? = withContext(Dispatchers.IO) { db.games().get(id) }
+
+    /** What the server has for [query], for the picker to show. */
+    fun searchBoxArt(systemId: String, query: String, onResult: (List<BoxArtCandidate>) -> Unit) {
+        viewModelScope.launch {
+            val found = runCatching { boxArt.search(systemId, query) }.getOrDefault(emptyList())
+            onResult(found)
+        }
+    }
+
+    fun boxArtUrl(candidate: BoxArtCandidate, kind: BoxArtKind): String = boxArt.url(candidate, kind)
+
+    /**
+     * Stores the picture the user picked in the box art screen as this game's thumbnail. It runs in
+     * the caller's coroutine rather than [viewModelScope] on purpose: that screen closes as soon as
+     * this returns, and closing it would otherwise cancel the download half way through.
+     */
+    suspend fun applyBoxArt(game: GameEntity, candidate: BoxArtCandidate, kind: BoxArtKind): Boolean =
+        withContext(Dispatchers.IO) {
+            val file = runCatching { boxArt.fetchChosen(game, candidate, kind) }.getOrNull() ?: return@withContext false
+            deleteOwnedThumbnail(game)
+            db.games().setThumbnail(game.id, file.absolutePath)
+            true
+        }
 
     fun cancelBoxArt() {
         boxArtJob?.cancel()
