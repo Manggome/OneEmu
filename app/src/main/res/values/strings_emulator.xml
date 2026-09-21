@@ -130,6 +130,11 @@
     <string name="le_visible">표시</string>
     <string name="le_elements">요소 표시/숨기기</string>
     <string name="le_snap">격자에 맞추기</string>
+    <string name="le_select_all">전체 선택</string>
+    <string name="le_mirror_all">좌우 반전</string>
+    <string name="le_copy_from">다른 배치 가져오기</string>
+    <string name="le_copy_from_hint">아래에서 고르면 지금 배치를 덮어씁니다. 마음에 안 들면 되돌리기로 취소하세요.</string>
+    <string name="le_copy_from_other_systems">다른 기종에서</string>
     <string name="le_portrait">세로</string>
     <string name="le_landscape">가로</string>
     <string name="le_hint">끌어서 이동 · 탭 선택 · 길게 눌러 여러 개 선택 · 점선 화면 상자는 끌어서 옮기고 모서리로 크기 조절</string>

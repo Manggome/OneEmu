@@ -9,6 +9,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +29,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -140,6 +142,7 @@ private fun VectorLayoutEditor(
     var snap by remember { mutableStateOf(false) }
     var vibrate by remember { mutableStateOf(true) }
     var showElementList by remember { mutableStateOf(false) }
+    var showCopyFrom by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
     val history = remember { UndoHistory<VectorEditState>(50) }
@@ -365,6 +368,34 @@ private fun VectorLayoutEditor(
             )
         }
 
+        // Corner handles on a single selected button: drag to resize, the way the viewport already
+        // works. The slider stays for fine values, but nobody looks for a slider first.
+        val handleTarget = selection.singleOrNull()?.let { id -> layout?.get(id) }?.takeIf { it.visible }
+        if (!viewportSelected && handleTarget != null && canvasSize != Size.Zero) {
+            var startRect by remember { mutableStateOf(Rect.Zero) }
+            var startScale by remember { mutableFloatStateOf(1f) }
+            ViewportHandles(
+                rect = handleTarget.rectOn(canvasSize, density, globalScale),
+                onDragStart = {
+                    startRect = handleTarget.rectOn(canvasSize, density, globalScale)
+                    startScale = handleTarget.scale
+                    snapshot()?.let { history.record(it) }
+                },
+                onDrag = { corner, total ->
+                    // Uniform scale: how much further the dragged corner is from the centre than it started.
+                    val c = startRect.center
+                    val from = (corner.point(startRect) - c).getDistance()
+                    if (from > 1f) {
+                        val to = (corner.point(startRect) + total - c).getDistance()
+                        val next = (startScale * to / from).coerceIn(ELEMENT_SCALE_MIN, ELEMENT_SCALE_MAX)
+                        layout = layout?.update(handleTarget.id) { it.copy(scale = next) }
+                        dirty = true
+                    }
+                },
+                onDragEnd = { dirty = true },
+            )
+        }
+
         val readout = drag.dragRect?.takeIf { canvasSize != Size.Zero }?.let { r ->
             stringResource(
                 R.string.le_readout,
@@ -435,7 +466,7 @@ private fun VectorLayoutEditor(
                         value = sel.scale,
                         onValueChange = { s -> edit("scale") { l -> l.update(sel.id) { it.copy(scale = s) } } },
                         onValueChangeFinished = { history.endCoalesce() },
-                        valueRange = 0.6f..1.8f,
+                        valueRange = ELEMENT_SCALE_MIN..ELEMENT_SCALE_MAX,
                         modifier = Modifier.weight(1f),
                     )
                     Text("${(sel.scale * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
@@ -452,6 +483,13 @@ private fun VectorLayoutEditor(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 FilterChip(selected = snap, onClick = { snap = !snap }, label = { Text(stringResource(R.string.le_snap)) })
+                TextButton(onClick = {
+                    val l = layout
+                    selection = if (l == null) emptyList() else l.elements.filter { it.visible }.map { it.id }
+                    viewportSelected = false
+                }) { Text(stringResource(R.string.le_select_all), maxLines = 1) }
+                TextButton(onClick = { edit { it.mirrored() } }) { Text(stringResource(R.string.le_mirror_all), maxLines = 1) }
+                TextButton(onClick = { showCopyFrom = true }) { Text(stringResource(R.string.le_copy_from), maxLines = 1) }
                 FilterChip(
                     selected = viewportSelected,
                     onClick = { viewportSelected = !viewportSelected; if (viewportSelected) selection = emptyList() },
@@ -516,6 +554,22 @@ private fun VectorLayoutEditor(
         )
     }
 
+    if (showCopyFrom) {
+        CopyLayoutDialog(
+            system = system,
+            config = config,
+            onDismiss = { showCopyFrom = false },
+            onPicked = { picked ->
+                showCopyFrom = false
+                val before = snapshot()
+                if (before != null) history.record(before)
+                layout = picked
+                dirty = true
+                selection = emptyList()
+            },
+        )
+    }
+
     if (confirmDiscard) {
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
@@ -524,6 +578,71 @@ private fun VectorLayoutEditor(
             dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
+}
+
+/** How far a single button may be scaled, shared by the slider and the corner handles. */
+private const val ELEMENT_SCALE_MIN = 0.6f
+private const val ELEMENT_SCALE_MAX = 1.8f
+
+/**
+ * Picks a layout to copy in: the same system in another screen shape first (setting up portrait and
+ * then landscape is the usual order), then the same shape on another system.
+ */
+@Composable
+private fun CopyLayoutDialog(
+    system: SystemId,
+    config: ScreenConfig,
+    onDismiss: () -> Unit,
+    onPicked: (PadLayout) -> Unit,
+) {
+    data class Source(val label: String, val load: suspend () -> PadLayout)
+
+    val scope = rememberCoroutineScope()
+    val otherConfigs = ScreenConfig.entries.filter { it != config }
+    val otherSystems = remember(system) { SystemId.entries.filter { it != system } }
+    // stringResource cannot be called from inside buildList, so the labels are resolved first.
+    val configLabels = otherConfigs.map { stringResource(it.labelRes) }
+    val sources = remember(system, config, configLabels) {
+        buildList {
+            otherConfigs.forEachIndexed { i, c -> add(Source(configLabels[i]) { PadLayoutStore.load(system, c) }) }
+            for (s in otherSystems) add(Source(s.displayName) { PadLayoutStore.load(s, config) })
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.le_copy_from)) },
+        text = {
+            Column {
+                Text(
+                    stringResource(R.string.le_copy_from_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = OneEmuColors.OnSurfaceMuted,
+                )
+                LazyColumn(Modifier.height(320.dp)) {
+                    items(sources.size, key = { it }) { i ->
+                        val src = sources[i]
+                        if (i == otherConfigs.size) {
+                            Text(
+                                stringResource(R.string.le_copy_from_other_systems),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = OneEmuColors.Accent,
+                                modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+                            )
+                        }
+                        Text(
+                            src.label,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { scope.launch { onPicked(src.load()) } }
+                                .padding(vertical = 10.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 private fun snapTo(v: Float): Float = (v * 50f).roundToInt() / 50f
