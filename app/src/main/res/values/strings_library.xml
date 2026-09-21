@@ -109,6 +109,17 @@
     <string name="lib_msg_folder_added">폴더를 추가하고 스캔했습니다</string>
     <string name="lib_msg_rescan_done">다시 스캔했습니다</string>
     <string name="lib_msg_thumbnail_failed">이미지를 불러올 수 없습니다</string>
+    <string name="lib_action_delete_file">기기에서 파일 삭제</string>
+    <string name="lib_delete_file_title">파일을 삭제할까요?</string>
+    <string name="lib_delete_file_body">%1$s 을(를) 기기에서 지웁니다.\n\n라이브러리 목록에서만 빼려면 \'라이브러리에서 제거\'를 쓰세요.</string>
+    <string name="lib_delete_file_next">다음</string>
+    <string name="lib_delete_file_confirm_title">정말 삭제할까요?</string>
+    <string name="lib_delete_file_confirm_body">아래 파일이 영구히 지워집니다. 되돌릴 수 없습니다.</string>
+    <string name="lib_delete_file_count">파일 %1$d개 · %2$s</string>
+    <string name="lib_delete_file_do">영구 삭제</string>
+    <string name="lib_delete_file_missing">이 게임의 파일을 찾을 수 없습니다. 이미 지워졌거나 옮겨진 것 같습니다.</string>
+    <string name="lib_msg_file_deleted">파일 %1$d개를 삭제했습니다</string>
+    <string name="lib_msg_file_delete_failed">%1$s 을(를) 지우지 못했습니다</string>
     <string name="lib_action_boxart">박스아트 받기</string>
     <string name="lib_action_boxart_pick">박스아트 고르기</string>
     <string name="boxart_picker_title">박스아트 고르기</string>

@@ -21,6 +21,7 @@ import com.manggome.oneemu.library.ArcadeRomChecker
 import com.manggome.oneemu.library.BoxArtCandidate
 import com.manggome.oneemu.library.BoxArtFetcher
 import com.manggome.oneemu.library.BoxArtKind
+import com.manggome.oneemu.library.RomFiles
 import com.manggome.oneemu.library.RomScanner
 import com.manggome.oneemu.emu.EmulatorSession
 import com.manggome.oneemu.model.SystemId
@@ -323,6 +324,27 @@ class LibraryViewModel : ViewModel() {
         if (game.folderId == null) db.games().delete(game) else db.games().setHidden(game.id, true)
         forgetGameSettings(game)
         post(LibraryMessage(R.string.lib_msg_removed))
+    }
+
+    /** The files that make up [game], for the delete confirmation to list before anything happens. */
+    suspend fun filesToDelete(game: GameEntity): List<File> = withContext(Dispatchers.IO) {
+        val rom = File(game.path)
+        if (!rom.isFile) emptyList() else RomFiles.of(rom)
+    }
+
+    /**
+     * Deletes the game's files from storage and drops the library row with them. Unlike [remove]
+     * this cannot be undone by rescanning, because there is nothing left to find.
+     */
+    fun deleteFiles(game: GameEntity) = launchIo {
+        val files = filesToDelete(game)
+        val failed = files.filterNot { runCatching { it.delete() }.getOrDefault(false) || !it.exists() }
+        // The row goes whatever happened: a file that is gone must not stay in the library, and one
+        // that would not go is reported so the user knows it is still there.
+        db.games().delete(game)
+        forgetGameSettings(game)
+        if (failed.isEmpty()) post(LibraryMessage(R.string.lib_msg_file_deleted, listOf(files.size)))
+        else post(LibraryMessage(R.string.lib_msg_file_delete_failed, listOf(failed.first().name)))
     }
 
     /**
