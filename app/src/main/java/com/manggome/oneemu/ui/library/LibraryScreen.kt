@@ -219,6 +219,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
                 pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             },
             onOpenCoreOptions = { nav.navigate(Routes.coreOptions(it)) },
+            onOpenGameCoreOptions = { g, coreId -> nav.navigate(Routes.gameCoreOptions(coreId, g.id)) },
             onPickBoxArt = { nav.navigate(Routes.boxArt(it.id)) },
             onOpenDetails = { nav.navigate(Routes.game(it.id)) },
         )

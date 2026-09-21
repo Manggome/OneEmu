@@ -132,6 +132,10 @@
     <string name="core_options_load_failed">코어를 불러오지 못했습니다</string>
     <string name="core_options_empty">이 코어에는 옵션이 없습니다</string>
     <string name="core_options_show_advanced">고급 옵션 표시</string>
+    <string name="core_options_per_game_note">이 게임에만 적용됩니다. 바꾸지 않은 항목은 %1$s 코어 설정을 그대로 따릅니다. 게임을 다시 시작하면 적용됩니다.</string>
+    <string name="core_options_this_game">이 게임만</string>
+    <string name="core_options_reset_game_confirm">이 게임에만 적용한 설정이 모두 사라지고, 코어 설정을 따르게 됩니다.</string>
+    <string name="lib_core_options_game">이 게임만</string>
     <string name="core_options_reset_all">모두 초기화</string>
     <string name="core_options_reset_all_confirm">이 코어의 모든 옵션 변경 사항을 지우고 기본값으로 되돌릴까요?</string>
     <string name="core_options_reset_one">기본값으로</string>

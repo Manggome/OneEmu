@@ -32,9 +32,14 @@ data class CoreOption(
 
 /**
  * Loads a core without a game just long enough to read its option table, then unloads it.
- * Overrides are persisted through Settings.setCoreOptionOverride and take effect on the next game start.
+ * Overrides are persisted through Settings and take effect on the next game start.
+ *
+ * With a [gameId] the screen edits that one game instead of the core: the core-wide settings become
+ * the baseline every row falls back to, and only what the user changes here is stored against the
+ * game. A game with nothing stored plays exactly as it did before.
  */
-class CoreOptionsViewModel(private val coreId: String) : ViewModel() {
+class CoreOptionsViewModel(private val coreId: String, private val gameId: Long = 0L) : ViewModel() {
+    private val perGame: Boolean get() = gameId > 0
     sealed interface State {
         data object Loading : State
         data object Running : State
@@ -42,8 +47,12 @@ class CoreOptionsViewModel(private val coreId: String) : ViewModel() {
         data class Ready(
             val core: CoreInfo,
             val options: List<CoreOption>,
-            /** User overrides only (not core.json defaults). */
+            /** What this screen has stored: the core's own overrides, or the game's. */
             val overrides: Map<String, String>,
+            /** What a row falls back to when its override is removed. */
+            val baseline: Map<String, String>,
+            /** True while editing one game rather than the core. */
+            val perGame: Boolean,
         ) : State
     }
 
@@ -66,8 +75,10 @@ class CoreOptionsViewModel(private val coreId: String) : ViewModel() {
         if (NativeBridge.isRunning()) return State.Running
         val libPath = app.cores.libraryPath(core)
         if (!libPath.exists()) return State.Error("core library missing: ${libPath.name}")
-        val overrides = app.settings.coreOptionOverrides(core.id)
-        val merged = core.defaultOptions.toMutableMap().apply { putAll(overrides) }
+        val coreOverrides = app.settings.coreOptionOverrides(core.id)
+        val baseline = core.defaultOptions + coreOverrides
+        val overrides = if (perGame) app.settings.gameOptionOverrides(gameId) else coreOverrides
+        val merged = baseline.toMutableMap().apply { putAll(overrides) }
         val blob = merged.entries.joinToString("\n") { "${it.key}=${it.value}" }
         val systemId = core.systems.firstOrNull() ?: "misc"
         runCatching { app.cores.installAssets(core, app.dirs.system) }.onFailure { Log.w(TAG, "installAssets failed", it) }
@@ -76,7 +87,7 @@ class CoreOptionsViewModel(private val coreId: String) : ViewModel() {
                 return State.Error(NativeBridge.lastError())
             }
             val options = parseOptions(NativeBridge.getOptions())
-            return State.Ready(core, options, overrides)
+            return State.Ready(core, options, overrides, baseline, perGame)
         } catch (t: Throwable) {
             Log.e(TAG, "option probe failed", t)
             return State.Error(t.message ?: t.javaClass.simpleName)
@@ -88,7 +99,7 @@ class CoreOptionsViewModel(private val coreId: String) : ViewModel() {
     fun setValue(key: String, value: String) {
         val s = _state.value as? State.Ready ?: return
         viewModelScope.launch {
-            app.settings.setCoreOptionOverride(s.core.id, key, value)
+            store(s.core.id, key, value)
             _state.update { st ->
                 if (st !is State.Ready) st
                 else st.copy(
@@ -99,15 +110,18 @@ class CoreOptionsViewModel(private val coreId: String) : ViewModel() {
         }
     }
 
-    /** Removes the user override; the effective value falls back to core.json's default, then the core's own. */
+    /**
+     * Removes the override; the value falls back to the baseline — the core-wide setting when
+     * editing one game, core.json's default and then the core's own otherwise.
+     */
     fun resetOption(key: String) {
         val s = _state.value as? State.Ready ?: return
         viewModelScope.launch {
-            app.settings.setCoreOptionOverride(s.core.id, key, null)
+            store(s.core.id, key, null)
             _state.update { st ->
                 if (st !is State.Ready) st
                 else st.copy(
-                    options = st.options.map { if (it.key == key) it.copy(current = st.core.defaultOptions[key] ?: it.default) else it },
+                    options = st.options.map { if (it.key == key) it.copy(current = st.baseline[key] ?: it.default) else it },
                     overrides = st.overrides - key,
                 )
             }
@@ -117,15 +131,21 @@ class CoreOptionsViewModel(private val coreId: String) : ViewModel() {
     fun resetAll() {
         val s = _state.value as? State.Ready ?: return
         viewModelScope.launch {
-            app.settings.set(com.manggome.oneemu.data.Settings.Keys.coreOptions(s.core.id), "")
+            val keys = com.manggome.oneemu.data.Settings.Keys
+            app.settings.set(if (perGame) keys.gameOptions(gameId) else keys.coreOptions(s.core.id), "")
             _state.update { st ->
                 if (st !is State.Ready) st
                 else st.copy(
-                    options = st.options.map { it.copy(current = st.core.defaultOptions[it.key] ?: it.default) },
+                    options = st.options.map { it.copy(current = st.baseline[it.key] ?: it.default) },
                     overrides = emptyMap(),
                 )
             }
         }
+    }
+
+    private suspend fun store(coreId: String, key: String, value: String?) {
+        if (perGame) app.settings.setGameOptionOverride(gameId, key, value)
+        else app.settings.setCoreOptionOverride(coreId, key, value)
     }
 
     companion object {

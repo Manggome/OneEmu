@@ -35,14 +35,22 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.manggome.oneemu.R
 import com.manggome.oneemu.ui.theme.OneEmuColors
 
+/**
+ * The core's option table. With a [gameId] it edits that one game instead: every row starts from the
+ * core-wide setting and only what the user changes here is kept against the game.
+ */
 @Composable
-internal fun CoreOptionsScreen(coreId: String, onBack: () -> Unit) {
-    val vm: CoreOptionsViewModel = viewModel(key = "coreopts:$coreId") { CoreOptionsViewModel(coreId) }
+internal fun CoreOptionsScreen(coreId: String, onBack: () -> Unit, gameId: Long = 0L, gameTitle: String = "") {
+    val vm: CoreOptionsViewModel = viewModel(key = "coreopts:$coreId:$gameId") { CoreOptionsViewModel(coreId, gameId) }
     val state by vm.state.collectAsState()
     var showAdvanced by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
     val ready = state as? CoreOptionsViewModel.State.Ready
-    val title = ready?.let { stringResource(R.string.core_options_title, it.core.displayName) } ?: stringResource(R.string.cores_core_options)
+    val title = when {
+        gameId > 0 && gameTitle.isNotBlank() -> gameTitle
+        ready != null -> stringResource(R.string.core_options_title, ready.core.displayName)
+        else -> stringResource(R.string.cores_core_options)
+    }
 
     SettingsScaffold(
         title = title,
@@ -60,7 +68,10 @@ internal fun CoreOptionsScreen(coreId: String, onBack: () -> Unit) {
             is CoreOptionsViewModel.State.Error -> CenterMessage(stringResource(R.string.core_options_load_failed), s.message, onRetry = vm::load)
             is CoreOptionsViewModel.State.Ready -> {
                 val hasHidden = s.options.any { !it.visible }
-                NoteText(stringResource(R.string.core_options_apply_note))
+                NoteText(
+                    if (s.perGame) stringResource(R.string.core_options_per_game_note, s.core.displayName)
+                    else stringResource(R.string.core_options_apply_note),
+                )
                 if (hasHidden) {
                     SwitchRow(title = stringResource(R.string.core_options_show_advanced), checked = showAdvanced, onCheckedChange = { showAdvanced = it })
                     SettingsDivider()
@@ -76,6 +87,7 @@ internal fun CoreOptionsScreen(coreId: String, onBack: () -> Unit) {
                             OptionRow(
                                 option = opt,
                                 overridden = opt.key in s.overrides,
+                                perGame = s.perGame,
                                 onSelect = { vm.setValue(opt.key, it) },
                                 onReset = { vm.resetOption(opt.key) },
                             )
@@ -90,7 +102,10 @@ internal fun CoreOptionsScreen(coreId: String, onBack: () -> Unit) {
     if (confirmReset) {
         ConfirmDialog(
             title = stringResource(R.string.core_options_reset_all),
-            body = stringResource(R.string.core_options_reset_all_confirm),
+            body = stringResource(
+                if (ready?.perGame == true) R.string.core_options_reset_game_confirm
+                else R.string.core_options_reset_all_confirm,
+            ),
             confirmLabel = stringResource(R.string.reset),
             onDismiss = { confirmReset = false },
             onConfirm = { confirmReset = false; vm.resetAll() },
@@ -99,7 +114,7 @@ internal fun CoreOptionsScreen(coreId: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun OptionRow(option: CoreOption, overridden: Boolean, onSelect: (String) -> Unit, onReset: () -> Unit) {
+private fun OptionRow(option: CoreOption, overridden: Boolean, perGame: Boolean, onSelect: (String) -> Unit, onReset: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth()) {
         Row(
@@ -121,7 +136,7 @@ private fun OptionRow(option: CoreOption, overridden: Boolean, onSelect: (String
                     if (overridden) {
                         Spacer(Modifier.size(8.dp))
                         Text(
-                            stringResource(R.string.core_options_modified),
+                            stringResource(if (perGame) R.string.core_options_this_game else R.string.core_options_modified),
                             style = MaterialTheme.typography.labelLarge,
                             color = OneEmuColors.OnSurfaceMuted,
                         )

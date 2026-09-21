@@ -54,4 +54,17 @@ fun NavGraphBuilder.settingsGraph(nav: NavHostController) {
         val coreId = entry.arguments?.getString("coreId") ?: ""
         CoreOptionsScreen(coreId = coreId, onBack = { nav.popBackStack() })
     }
+    composable(
+        Routes.GAME_CORE_OPTIONS,
+        arguments = listOf(
+            navArgument("coreId") { type = NavType.StringType },
+            navArgument("gameId") { type = NavType.LongType },
+        ),
+    ) { entry ->
+        GameCoreOptionsScreen(
+            coreId = entry.arguments?.getString("coreId") ?: "",
+            gameId = entry.arguments?.getLong("gameId") ?: 0L,
+            onBack = { nav.popBackStack() },
+        )
+    }
 }

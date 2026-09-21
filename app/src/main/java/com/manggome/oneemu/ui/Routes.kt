@@ -22,6 +22,10 @@ object Routes {
     const val CORE_OPTIONS = "settings/core/{coreId}"
     fun coreOptions(coreId: String) = "settings/core/$coreId"
 
+    /** The same editor, but storing what it changes against one game: settings/core/{coreId}/game/{gameId} */
+    const val GAME_CORE_OPTIONS = "settings/core/{coreId}/game/{gameId}"
+    fun gameCoreOptions(coreId: String, gameId: Long) = "settings/core/$coreId/game/$gameId"
+
     /** Pad skin picker for a system: settings/skins/{systemId} */
     const val SKINS = "settings/skins/{systemId}"
     fun skins(systemId: String) = "settings/skins/$systemId"
