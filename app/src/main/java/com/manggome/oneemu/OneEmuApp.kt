@@ -29,6 +29,10 @@ class OneEmuApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // Resolve the data folder (and carry an old install across) before anything can touch it:
+        // half the app reading the new location while the other half still writes the old one would
+        // split a user's saves in two.
+        runCatching { dirs.system }
         com.manggome.oneemu.emu.CrashMarker.preserveCrashLog(this)
         com.manggome.oneemu.emu.CrashMarker.installJavaCrashRecorder(this)
         runCatching { com.manggome.oneemu.emu.NativeBridge.installCrashHandler(java.io.File(cacheDir, "native_crash.txt").absolutePath) }

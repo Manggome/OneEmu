@@ -105,7 +105,7 @@ object SkinStore {
     private var bundledCache: List<SkinInfo>? = null
     private val importedFlow = MutableStateFlow<List<SkinInfo>?>(null)
 
-    fun userDir(context: Context): File = File(context.getExternalFilesDir(null) ?: context.filesDir, "skins").also { it.mkdirs() }
+    fun userDir(context: Context): File = com.manggome.oneemu.util.AppDirs(context).skins
 
     /** Default skin for a system when the user never chose one. */
     fun defaultSkinId(system: SystemId): String = when (system) {
