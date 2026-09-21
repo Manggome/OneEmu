@@ -74,7 +74,7 @@ internal fun SaveDataSettingsScreen(onBack: () -> Unit) {
         val s = stats
         SettingsRow(
             title = stringResource(R.string.save_folder),
-            subtitle = app.dirs.savesPath,
+            subtitle = app.dirs.dataPath,
             icon = Icons.Outlined.Folder,
         )
         SettingsRow(
@@ -82,7 +82,7 @@ internal fun SaveDataSettingsScreen(onBack: () -> Unit) {
             icon = Icons.Outlined.ContentCopy,
             onClick = {
                 context.getSystemService(ClipboardManager::class.java)
-                    ?.setPrimaryClip(ClipData.newPlainText("OneEmu saves", app.dirs.savesPath))
+                    ?.setPrimaryClip(ClipData.newPlainText("OneEmu", app.dirs.dataPath))
                 Toast.makeText(context, R.string.cores_path_copied, Toast.LENGTH_SHORT).show()
             },
         )

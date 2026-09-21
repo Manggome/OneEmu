@@ -50,7 +50,7 @@
     <!-- 저장 데이터 -->
     <string name="settings_savedata">저장 데이터</string>
     <string name="settings_savedata_desc">세이브 파일 위치, 백업과 복원</string>
-    <string name="save_folder">저장 폴더</string>
+    <string name="save_folder">저장 폴더 (세이브·BIOS·스크린샷)</string>
     <string name="save_copy_path">경로 복사</string>
     <string name="save_counting">세는 중…</string>
     <string name="save_summary">파일 %1$d개 · %2$s · 치트 %3$d개</string>
@@ -62,7 +62,7 @@
     <string name="save_import_desc">백업 zip에서 되돌립니다. 같은 이름의 세이브는 덮어씁니다.</string>
     <string name="save_import_done">파일 %1$d개, 치트 %2$d개를 복원했습니다</string>
     <string name="save_import_failed">복원하지 못했습니다: %1$s</string>
-    <string name="save_note">백업에는 세이브 파일, 상태 저장과 그 미리보기, 치트가 들어갑니다. 게임 실행 중에는 복원하지 마세요. 치트는 롬 파일 이름으로 맞추므로, 없는 게임의 치트는 건너뜁니다.</string>
+    <string name="save_note">이 폴더 안에 세이브(saves), 상태 저장(states), BIOS(system), 스크린샷이 모두 들어 있습니다. 파일 관리자로 바로 열 수 있고, 앱을 지워도 남습니다.\n\n백업에는 세이브, 상태 저장과 그 미리보기, 치트가 들어갑니다. 게임 실행 중에는 복원하지 마세요. 치트는 롬 파일 이름으로 맞추므로, 없는 게임의 치트는 건너뜁니다.</string>
 
     <!-- 게임패드 -->
     <string name="settings_gamepad">게임패드</string>
@@ -108,7 +108,7 @@
     <string name="cores_gfx_default">기본 (%1$s)</string>
     <string name="cores_gfx_desc">게임을 다시 시작하면 적용됩니다. Adreno GPU에서는 Vulkan이 Dolphin의 화면 깨짐을 피합니다. Vulkan 초기화에 실패하는 기기는 OpenGL ES를 선택하세요.</string>
     <string name="cores_bios_folder">BIOS 폴더</string>
-    <string name="cores_bios_folder_desc">파일 관리자 앱으로 아래 경로에 BIOS 파일을 복사하세요. 파일 이름은 표시된 것과 정확히 같아야 합니다.</string>
+    <string name="cores_bios_folder_desc">파일 관리자 앱으로 아래 폴더에 BIOS 파일을 복사하세요. 내장 저장공간 맨 위의 OneEmu 폴더라 바로 찾을 수 있습니다. 파일 이름은 표시된 것과 정확히 같아야 합니다.</string>
     <string name="cores_copy_path">경로 복사</string>
     <string name="cores_path_copied">경로를 복사했습니다</string>
     <string name="cores_import_bios">BIOS 파일 가져오기</string>
