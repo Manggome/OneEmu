@@ -25,6 +25,8 @@ on:
 
 permissions:
   contents: write
+  # The publish job deletes the per-run package artifacts once it has consumed them.
+  actions: write
 
 concurrency:
   group: cores-release
@@ -263,3 +265,16 @@ jobs:
             - 앱이 **설정 → 코어 / BIOS** 또는 게임 실행 시 `manifest.json`을 읽어 필요한 코어를 내려받습니다. 직접 설치할 필요는 없습니다.
             - 파일 이름: `<코어 id>-<소스 커밋 12자리>-arm64.zip` (내용: `lib<id>_libretro.so`, `core.json`)
             - ROM/BIOS 는 포함되어 있지 않습니다.
+
+      # Same as build.yml: the pkg-* artifacts exist only to carry the zips from the matrix jobs to
+      # here. Once they are on the release they are pure Actions storage, so the run removes them.
+      - name: Drop this run's package artifacts
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ids="$(gh api --paginate "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
+            --jq '.artifacts[] | select(.name | startswith("pkg-")) | .id')"
+          for id in $ids; do
+            gh api -X DELETE "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}" && echo "deleted artifact ${id}"
+          done
