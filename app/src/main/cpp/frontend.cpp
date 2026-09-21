@@ -608,6 +608,7 @@ void Frontend::runFrame() {
     // the core's frame is complete. Without this Adreno shows the previous frame / uninitialised (green) tiles.
     if (hwRender_ && !vulkan) video_.waitPresentFence();
     frames_++;
+    advanceTurbo();
     core_.retro_run();
     if (hwRender_ && !vulkan) { video_.logGlErrors("retro_run (core context)"); video_.fenceCoreFrame(); }
 
@@ -694,14 +695,31 @@ size_t Frontend::audioSampleBatch(const int16_t* data, size_t frames) {
     return frames;
 }
 
-uint32_t Frontend::turbo(uint32_t buttons) const {
+void Frontend::advanceTurbo() {
+    uint32_t mask = turboMask_.load(std::memory_order_relaxed);
+    for (unsigned p = 0; p < 4; p++) {
+        uint32_t buttons = input_[p].buttons.load(std::memory_order_relaxed);
+        uint32_t justPressed = buttons & ~turboPrev_[p] & mask;
+        turboPrev_[p] = buttons;
+        if (!justPressed) continue;
+        for (unsigned i = 0; i < 16; i++) if (justPressed & (1u << i)) turboStart_[p][i] = frames_;
+    }
+}
+
+uint32_t Frontend::turbo(unsigned port, uint32_t buttons) const {
     uint32_t mask = turboMask_.load(std::memory_order_relaxed) & buttons;
     if (!mask) return buttons;
     unsigned period = turboPeriod_.load(std::memory_order_relaxed);
     if (period < 2) return buttons;
-    // Held down for the first half of every cycle, released for the second: one press per cycle.
-    if ((frames_ % period) < period / 2) return buttons;
-    return buttons & ~mask;
+    // Each button's cycle starts on the frame it went down, so however briefly it is tapped the
+    // game sees at least one press; after that it is held for the first half of every cycle.
+    uint32_t out = buttons;
+    for (unsigned i = 0; i < 16; i++) {
+        uint32_t bit = 1u << i;
+        if (!(mask & bit)) continue;
+        if ((frames_ - turboStart_[port][i]) % period >= period / 2) out &= ~bit;
+    }
+    return out;
 }
 
 int16_t Frontend::inputState(unsigned port, unsigned device, unsigned index, unsigned id) {
@@ -709,13 +727,13 @@ int16_t Frontend::inputState(unsigned port, unsigned device, unsigned index, uns
     const InputState& in = input_[port];
     switch (device & RETRO_DEVICE_MASK) {
         case RETRO_DEVICE_JOYPAD: {
-            uint32_t b = turbo(in.buttons.load(std::memory_order_relaxed));
+            uint32_t b = turbo(port, in.buttons.load(std::memory_order_relaxed));
             if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return (int16_t)(b & 0xffff);
             return (b >> id) & 1 ? 1 : 0;
         }
         case RETRO_DEVICE_ANALOG:
             if (index == RETRO_DEVICE_INDEX_ANALOG_BUTTON) {
-                uint32_t b = turbo(in.buttons.load(std::memory_order_relaxed));
+                uint32_t b = turbo(port, in.buttons.load(std::memory_order_relaxed));
                 return (b >> id) & 1 ? 0x7fff : 0;
             }
             if (index < 2 && id < 2) return in.analog[index][id].load(std::memory_order_relaxed);

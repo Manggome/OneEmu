@@ -1,6 +1,7 @@
 package com.manggome.oneemu.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -41,6 +42,22 @@ class SaveBackupTest {
     fun `an entry naming the folder itself is refused`() {
         assertNull(SaveBackup.safeTarget(base, ""))
         assertNull(SaveBackup.safeTarget(base, "."))
+    }
+
+    @Test
+    fun `shader caches and logs stay out of the backup`() {
+        assertTrue(SaveBackup.isRebuildable("gc/User/Cache/Shaders/Vulkan-gs-2C6FFFC0.cache"))
+        assertTrue(SaveBackup.isRebuildable("gc/User/Logs/dolphin.log"))
+        assertTrue(SaveBackup.isRebuildable("jazz2/jazz2/Jazz2.log.gz"))
+    }
+
+    @Test
+    fun `memory cards and save files are kept`() {
+        assertFalse(SaveBackup.isRebuildable("psx/pcsx-card2.mcd"))
+        assertFalse(SaveBackup.isRebuildable("gc/User/Wii/shared2/sys/SYSCONF"))
+        assertFalse(SaveBackup.isRebuildable("md/Sonic the Hedgehog 3 (USA).srm"))
+        // "Cache" has to be a whole folder name, not a fragment of one.
+        assertFalse(SaveBackup.isRebuildable("psp/SAVEDATA/CacheKeeper/data.bin"))
     }
 
     @Test
