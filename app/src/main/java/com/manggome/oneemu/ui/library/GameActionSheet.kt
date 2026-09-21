@@ -14,6 +14,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Image
@@ -37,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -130,6 +132,7 @@ fun GameActionSheet(
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             SheetItem(Icons.Filled.Delete, stringResource(R.string.lib_action_remove), tint = MaterialTheme.colorScheme.error) { dialog = "remove" }
+            SheetItem(Icons.Filled.DeleteForever, stringResource(R.string.lib_action_delete_file), tint = MaterialTheme.colorScheme.error) { dialog = "deleteFile" }
         }
     }
 
@@ -150,7 +153,72 @@ fun GameActionSheet(
             onConfirm = { vm.remove(game); onDismiss() },
             onDismiss = { dialog = null },
         )
+        "deleteFile" -> DeleteFileDialogs(game, vm, onDone = { onDismiss() }, onCancel = { dialog = null })
     }
+}
+
+/**
+ * Deleting from storage asks twice on purpose: the first dialog says what it is about to do, the
+ * second lists the exact files and is the only one with a destructive button. Nothing is touched
+ * until that second confirmation.
+ */
+@Composable
+private fun DeleteFileDialogs(game: GameEntity, vm: LibraryViewModel, onDone: () -> Unit, onCancel: () -> Unit) {
+    var files by remember { mutableStateOf<List<File>?>(null) }
+    var confirming by remember { mutableStateOf(false) }
+    LaunchedEffect(game.id) { files = vm.filesToDelete(game) }
+
+    val found = files ?: return
+    if (found.isEmpty()) {
+        ConfirmDialog(
+            title = stringResource(R.string.lib_delete_file_title),
+            text = stringResource(R.string.lib_delete_file_missing),
+            confirmText = stringResource(R.string.close),
+            onConfirm = onCancel,
+            onDismiss = onCancel,
+        )
+        return
+    }
+
+    if (!confirming) {
+        // Not ConfirmDialog: its confirm button dismisses too, which would close this whole flow
+        // instead of moving on to the second question.
+        AlertDialog(
+            onDismissRequest = onCancel,
+            title = { Text(stringResource(R.string.lib_delete_file_title)) },
+            text = { Text(stringResource(R.string.lib_delete_file_body, File(game.path).name)) },
+            confirmButton = { TextButton(onClick = { confirming = true }) { Text(stringResource(R.string.lib_delete_file_next)) } },
+            dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } },
+        )
+        return
+    }
+
+    val total = found.sumOf { it.length() }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(stringResource(R.string.lib_delete_file_confirm_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(stringResource(R.string.lib_delete_file_confirm_body), color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(10.dp))
+                for (f in found) {
+                    Text(f.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    stringResource(R.string.lib_delete_file_count, found.size, formatFileSize(total)),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { vm.deleteFiles(game); onDone() }) {
+                Text(stringResource(R.string.lib_delete_file_do), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 @Composable
