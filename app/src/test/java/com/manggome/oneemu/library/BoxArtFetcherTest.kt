@@ -30,6 +30,32 @@ class BoxArtFetcherTest {
     }
 
     @Test
+    fun `the region the game itself names wins over the western default`() {
+        val korea = "Ace Combat Zero - The Belkan War (Korea)"
+        val usa = "Ace Combat Zero - The Belkan War (USA)"
+        // With nothing to go on, the American release is the safe pick.
+        assertEquals(usa, BoxArtFetcher.best(listOf(korea, usa)))
+        // A Korean dump should not be given the American cover.
+        assertEquals(korea, BoxArtFetcher.best(listOf(korea, usa), setOf("korea")))
+        assertEquals(usa, BoxArtFetcher.best(listOf(korea, usa), setOf("usa")))
+    }
+
+    @Test
+    fun `region tags are read out of a release name, language and version tags are not`() {
+        assertEquals(setOf("japan", "korea"), BoxArtFetcher.regionsOf("Bad Omen (Japan, Korea) (En)"))
+        assertEquals(setOf("usa"), BoxArtFetcher.regionsOf("Ratchet _ Clank (USA) (v1.00)"))
+        assertEquals(emptySet<String>(), BoxArtFetcher.regionsOf("Sonic The Hedgehog 3"))
+        // "En,Fr,De" are languages, not places.
+        assertEquals(setOf("europe"), BoxArtFetcher.regionsOf("Ratchet _ Clank (Europe) (En,Fr,De,Es,It)"))
+    }
+
+    @Test
+    fun `a game with no region tag still gets the usual order`() {
+        val names = listOf("Game (Japan)", "Game (USA)", "Game (Korea)")
+        assertEquals("Game (USA)", BoxArtFetcher.best(names, BoxArtFetcher.regionsOf("Game.iso")))
+    }
+
+    @Test
     fun `the widest plainest release wins when several files share a name`() {
         val usa = "Sonic The Hedgehog 3 (USA)"
         assertTrue(BoxArtFetcher.score(usa) < BoxArtFetcher.score("Sonic The Hedgehog 3 (Japan, Korea)"))

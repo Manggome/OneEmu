@@ -64,6 +64,8 @@ internal fun BoxArtPickerScreen(gameId: Long, vm: LibraryViewModel, onBack: () -
     var results by remember { mutableStateOf<List<BoxArtCandidate>?>(null) }
     var searching by remember { mutableStateOf(false) }
     var applying by remember { mutableStateOf(false) }
+    /** Regions the game itself names, so its own release sorts above the western default. */
+    var regions by remember { mutableStateOf(emptySet<String>()) }
     var failed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -76,7 +78,7 @@ internal fun BoxArtPickerScreen(gameId: Long, vm: LibraryViewModel, onBack: () -
         val g = game ?: return
         searching = true
         failed = false
-        vm.searchBoxArt(g.system, text) { found ->
+        vm.searchBoxArt(g.system, text, regions) { found ->
             if (found.isEmpty() && !fallback.isNullOrBlank() && fallback != text) {
                 query = fallback
                 search(fallback)
@@ -92,6 +94,7 @@ internal fun BoxArtPickerScreen(gameId: Long, vm: LibraryViewModel, onBack: () -
         val g = vm.game(gameId) ?: return@LaunchedEffect
         game = g
         val fileBase = File(g.path).name.substringBeforeLast('.')
+        regions = BoxArtFetcher.regionsOf(g.title) + BoxArtFetcher.regionsOf(File(g.path).name)
         val seed = BoxArtFetcher.searchSeed(g.title, File(g.path).name)
         query = seed
         search(seed, fallback = fileBase)

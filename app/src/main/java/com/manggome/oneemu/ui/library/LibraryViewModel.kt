@@ -433,9 +433,14 @@ class LibraryViewModel : ViewModel() {
     suspend fun game(id: Long): GameEntity? = withContext(Dispatchers.IO) { db.games().get(id) }
 
     /** What the server has for [query], for the picker to show. */
-    fun searchBoxArt(systemId: String, query: String, onResult: (List<BoxArtCandidate>) -> Unit) {
+    fun searchBoxArt(
+        systemId: String,
+        query: String,
+        preferredRegions: Set<String> = emptySet(),
+        onResult: (List<BoxArtCandidate>) -> Unit,
+    ) {
         viewModelScope.launch {
-            val found = runCatching { boxArt.search(systemId, query) }.getOrDefault(emptyList())
+            val found = runCatching { boxArt.search(systemId, query, preferredRegions) }.getOrDefault(emptyList())
             onResult(found)
         }
     }
