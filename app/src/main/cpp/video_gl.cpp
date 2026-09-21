@@ -19,15 +19,47 @@ void main() {
     gl_Position = uMvp * vec4(aPos, 0.0, 1.0);
 })";
 
+// The screen filters live here and in shaders/blit.frag; keep the two in step. Both work in source
+// pixels via textureSize, which is right for a software frame and for the visible part of a hardware
+// core's larger FBO alike, because vUv spans exactly that part.
 static const char* kFrag = R"(#version 300 es
 precision mediump float;
 in vec2 vUv;
 uniform sampler2D uTex;
 uniform int uSwizzleBGR;
+uniform int uFilter;
+uniform float uStrength;
 out vec4 fragColor;
+
+const float PI = 3.14159265;
+
+vec3 applyFilter(vec3 c, vec2 uv, float k) {
+    if (uFilter == 0 || k <= 0.0) return c;
+    vec2 src = vec2(textureSize(uTex, 0));
+    if (uFilter == 1 || uFilter == 2) {
+        // Scanlines: a soft sin^2 across source rows, which aliases far less than a hard step when
+        // the screen is not an exact multiple of the source height.
+        float s = sin(uv.y * src.y * PI);
+        c *= mix(1.0, s * s, k);
+        if (uFilter == 2) {
+            // Aperture grille, in screen pixels: phosphor stripes only read right at screen scale.
+            int col = int(mod(gl_FragCoord.x, 3.0));
+            vec3 m = col == 0 ? vec3(1.0, 0.72, 0.72) : (col == 1 ? vec3(0.72, 1.0, 0.72) : vec3(0.72, 0.72, 1.0));
+            c *= mix(vec3(1.0), m, k);
+        }
+        return c * (1.0 + 0.45 * k); // put back the light the mask took
+    }
+    // LCD grid: a dark gap along both edges of every source pixel.
+    vec2 p = fract(uv * src);
+    vec2 g = smoothstep(vec2(0.0), vec2(0.18), p) * smoothstep(vec2(0.0), vec2(0.18), 1.0 - p);
+    c *= mix(1.0, g.x * g.y, k);
+    return c * (1.0 + 0.35 * k);
+}
+
 void main() {
-    vec4 c = texture(uTex, vUv);
-    fragColor = (uSwizzleBGR == 1) ? vec4(c.b, c.g, c.r, 1.0) : vec4(c.rgb, 1.0);
+    vec4 t = texture(uTex, vUv);
+    vec3 c = (uSwizzleBGR == 1) ? t.bgr : t.rgb;
+    fragColor = vec4(applyFilter(c, vUv, uStrength), 1.0);
 })";
 
 static GLuint compile(GLenum type, const char* src) {
@@ -224,6 +256,8 @@ void VideoGL::ensureProgram() {
     uSwizzleBGR_ = glGetUniformLocation(program_, "uSwizzleBGR");
     uMvp_ = glGetUniformLocation(program_, "uMvp");
     uFlipY_ = glGetUniformLocation(program_, "uFlipY");
+    uFilter_ = glGetUniformLocation(program_, "uFilter");
+    uStrength_ = glGetUniformLocation(program_, "uStrength");
 
     // pos.xy, uv.xy — a unit quad; texture v=0 is the top row (top-down images).
     const float quad[] = {
@@ -431,6 +465,8 @@ void VideoGL::present(const VideoConfig& cfg, float coreAspect, bool hwFrame) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
     glUniform1i(uTex_, 0);
+    glUniform1i(uFilter_, cfg.filter);
+    glUniform1f(uStrength_, cfg.filterStrength);
     glUniformMatrix4fv(uMvp_, 1, GL_FALSE, mvp);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     glBindVertexArray(0);

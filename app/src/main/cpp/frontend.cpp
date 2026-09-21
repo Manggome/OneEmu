@@ -776,9 +776,11 @@ void Frontend::setControllerPortDevice(unsigned port, unsigned device) {
 
 void Frontend::setFastForward(int speed) { fastForward_ = speed; nextFrameNs_ = 0; }
 
-void Frontend::setVideoConfig(bool linear, int aspectMode, int userRotation) {
+void Frontend::setVideoConfig(bool linear, int aspectMode, int userRotation, int filter, float filterStrength) {
     linearFilterPending_ = linear; aspectModePending_ = aspectMode;
-    userRotationPending_ = userRotation & 3; videoCfgDirty_ = true;
+    userRotationPending_ = userRotation & 3;
+    filterPending_ = filter; filterStrengthPending_ = filterStrength;
+    videoCfgDirty_ = true;
     queueCv_.notify_all();
 }
 
@@ -792,6 +794,8 @@ void Frontend::applyPendingVideoConfig() {
     if (videoCfgDirty_.exchange(false)) {
         videoCfg_.linearFilter = linearFilterPending_;
         videoCfg_.aspect = (AspectMode)aspectModePending_;
+        videoCfg_.filter = filterPending_;
+        videoCfg_.filterStrength = filterStrengthPending_;
         userRotation_ = (unsigned)userRotationPending_ & 3u;
         videoCfg_.rotation = (rotation_ + userRotation_) & 3u;
     }

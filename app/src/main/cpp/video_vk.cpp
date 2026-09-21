@@ -446,7 +446,8 @@ bool VideoVK::createPipeline() {
     dp.maxSets = 16; dp.poolSizeCount = 1; dp.pPoolSizes = &ps;
     VK_CHECK(vkCreateDescriptorPool(device_, &dp, nullptr, &descPool_), "vkCreateDescriptorPool");
 
-    VkPushConstantRange pc{ VK_SHADER_STAGE_VERTEX_BIT, 0, 32 };
+    // The filter parameters live at the end of the same block, read by the fragment stage.
+    VkPushConstantRange pc{ VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 48 };
     VkPipelineLayoutCreateInfo pl{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
     pl.setLayoutCount = 1; pl.pSetLayouts = &descLayout_;
     pl.pushConstantRangeCount = 1; pl.pPushConstantRanges = &pc;
@@ -644,8 +645,8 @@ void VideoVK::present(const VideoConfig& cfg, float coreAspect, bool haveFrame) 
         // SET_ROTATION counts counter-clockwise (libretro.h), and clip space is y-up, so the angle is
         // positive. Turning it the other way left vertical arcade boards (Strikers 1945 II) upside down.
         float c = std::cos((float)cfg.rotation * (float)M_PI_2), s = std::sin((float)cfg.rotation * (float)M_PI_2);
-        float pc[8] = { 0.f, 0.f, 1.f, 1.f, c, s, 0.f, 0.f };
-        vkCmdPushConstants(cmd, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof pc, pc);
+        float pc[12] = { 0.f, 0.f, 1.f, 1.f, c, s, 0.f, 0.f, (float)cfg.filter, cfg.filterStrength, 0.f, 0.f };
+        vkCmdPushConstants(cmd, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof pc, pc);
         vkCmdDraw(cmd, 4, 1, 0, 0);
     }
     vkCmdEndRenderPass(cmd);

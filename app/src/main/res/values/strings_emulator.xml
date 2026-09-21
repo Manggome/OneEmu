@@ -42,6 +42,12 @@
     <string name="menu_close">닫기</string>
     <string name="ff_unlimited">무제한</string>
     <string name="ff_speed_x">%1$d배</string>
+    <string name="qs_screen_filter">화면 효과</string>
+    <string name="qs_screen_filter_none">없음</string>
+    <string name="qs_screen_filter_scanline">스캔라인</string>
+    <string name="qs_screen_filter_crt">CRT (브라운관)</string>
+    <string name="qs_screen_filter_lcd">LCD 격자</string>
+    <string name="qs_screen_filter_strength">효과 세기</string>
     <string name="menu_turbo">연사</string>
     <string name="turbo_on">연사 켜짐</string>
     <string name="turbo_off">연사 꺼짐</string>

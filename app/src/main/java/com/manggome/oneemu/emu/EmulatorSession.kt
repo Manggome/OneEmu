@@ -260,6 +260,8 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
             s.get(com.manggome.oneemu.data.Settings.Keys.videoLinearFilter, false),
             s.get(com.manggome.oneemu.data.Settings.Keys.videoAspect, 0),
             s.get(com.manggome.oneemu.data.Settings.Keys.videoRotation(game.id), 0),
+            s.get(com.manggome.oneemu.data.Settings.Keys.videoFilter, com.manggome.oneemu.data.Settings.FILTER_NONE),
+            s.get(com.manggome.oneemu.data.Settings.Keys.videoFilterStrength, com.manggome.oneemu.data.Settings.DEFAULT_FILTER_STRENGTH),
         )
         NativeBridge.setAudioMuted(!s.get(com.manggome.oneemu.data.Settings.Keys.audioEnabled, true))
     }
