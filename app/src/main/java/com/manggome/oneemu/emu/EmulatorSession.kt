@@ -219,9 +219,13 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         // Cores that pick their backend through their own option must agree with the API the frontend offers;
         // the user's explicit override of that option still wins.
         val user = app.settings.coreOptionOverrides(core.id)
+        // Anything set for this one game sits on top of the core-wide settings. A game with none
+        // behaves exactly as before.
+        val perGame = app.settings.gameOptionOverrides(game.id)
         val vulkan = hwApi == "vulkan"
-        BACKEND_OPTIONS[core.id]?.let { (key, vk, gl) -> if (key !in user) merged[key] = if (vulkan) vk else gl }
+        BACKEND_OPTIONS[core.id]?.let { (key, vk, gl) -> if (key !in user && key !in perGame) merged[key] = if (vulkan) vk else gl }
         merged.putAll(user)
+        merged.putAll(perGame)
         return merged.entries.joinToString("\n") { "${it.key}=${it.value}" }
     }
 

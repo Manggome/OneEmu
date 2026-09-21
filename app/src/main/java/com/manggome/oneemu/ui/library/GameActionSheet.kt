@@ -79,6 +79,7 @@ fun GameActionSheet(
     onPlay: (GameEntity) -> Unit,
     onPickThumbnail: (GameEntity) -> Unit,
     onOpenCoreOptions: (coreId: String) -> Unit,
+    onOpenGameCoreOptions: (GameEntity, coreId: String) -> Unit,
     onPickBoxArt: (GameEntity) -> Unit,
     onOpenDetails: ((GameEntity) -> Unit)? = null,
 ) {
@@ -134,7 +135,12 @@ fun GameActionSheet(
 
     when (dialog) {
         "rename" -> RenameDialog(game, onDismiss = { dialog = null }) { vm.rename(game, it) }
-        "core" -> CorePickerDialog(game, vm, onDismiss = { dialog = null }, onOpenCoreOptions = { onDismiss(); onOpenCoreOptions(it) })
+        "core" -> CorePickerDialog(
+            game, vm,
+            onDismiss = { dialog = null },
+            onOpenCoreOptions = { onDismiss(); onOpenCoreOptions(it) },
+            onOpenGameCoreOptions = { onDismiss(); onOpenGameCoreOptions(game, it) },
+        )
         "info" -> FileInfoDialog(game, vm, onDismiss = { dialog = null })
         "remove" -> ConfirmDialog(
             title = stringResource(R.string.lib_remove_title),
@@ -183,7 +189,13 @@ fun RenameDialog(game: GameEntity, onDismiss: () -> Unit, onRename: (String) -> 
 
 /** Radio list of cores that can run this system; the first entry is "use the system default". */
 @Composable
-fun CorePickerDialog(game: GameEntity, vm: LibraryViewModel, onDismiss: () -> Unit, onOpenCoreOptions: (String) -> Unit) {
+fun CorePickerDialog(
+    game: GameEntity,
+    vm: LibraryViewModel,
+    onDismiss: () -> Unit,
+    onOpenCoreOptions: (String) -> Unit,
+    onOpenGameCoreOptions: (String) -> Unit = {},
+) {
     val system = SystemId.fromId(game.system)
     val cores = remember(game.system) { system?.let { vm.cores.coresFor(it) } ?: emptyList() }
     // Arcade: the "default" is whichever MAME core's DAT lists this zip (ArcadeCoreRouter), not just the system default.
@@ -226,7 +238,11 @@ fun CorePickerDialog(game: GameEntity, vm: LibraryViewModel, onDismiss: () -> Un
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
         dismissButton = {
             if (effective != null) {
-                TextButton(onClick = { onOpenCoreOptions(effective.id) }) { Text(stringResource(R.string.lib_core_options)) }
+                Row {
+                    // Left: the core's own settings, shared by every game on it. Right: this game only.
+                    TextButton(onClick = { onOpenCoreOptions(effective.id) }) { Text(stringResource(R.string.lib_core_options)) }
+                    TextButton(onClick = { onOpenGameCoreOptions(effective.id) }) { Text(stringResource(R.string.lib_core_options_game)) }
+                }
             }
         },
     )

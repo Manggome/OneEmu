@@ -56,6 +56,8 @@ class Settings(private val context: Context) {
         val storageGranted = booleanPreferencesKey("storage_granted_once")
 
         fun coreOptions(coreId: String) = stringPreferencesKey("coreopts.$coreId")
+        /** Options set for one game only; they sit on top of that game's core-wide options. */
+        fun gameOptions(gameId: Long) = stringPreferencesKey("gameopts.$gameId")
         /** Per-core graphics API override: "vulkan" or "gles3"; unset = core.json hwRender. */
         fun graphicsApi(coreId: String) = stringPreferencesKey("gfxapi.$coreId")
         fun coreForSystem(systemId: String) = stringPreferencesKey("core.$systemId")
@@ -98,14 +100,26 @@ class Settings(private val context: Context) {
     suspend fun setGraphicsApi(coreId: String, api: String?) = set(Keys.graphicsApi(coreId), api ?: "")
 
     suspend fun coreOptionOverrides(coreId: String): Map<String, String> =
-        get(Keys.coreOptions(coreId), "").lineSequence().filter { '=' in it }
-            .associate { it.substringBefore('=') to it.substringAfter('=') }
+        parseOptions(get(Keys.coreOptions(coreId), ""))
 
-    suspend fun setCoreOptionOverride(coreId: String, key: String, value: String?) {
-        val map = coreOptionOverrides(coreId).toMutableMap()
+    suspend fun setCoreOptionOverride(coreId: String, key: String, value: String?) =
+        editOptions(Keys.coreOptions(coreId), key, value)
+
+    /** Options the user set for this one game; empty for every game they have not customized. */
+    suspend fun gameOptionOverrides(gameId: Long): Map<String, String> =
+        if (gameId <= 0) emptyMap() else parseOptions(get(Keys.gameOptions(gameId), ""))
+
+    suspend fun setGameOptionOverride(gameId: Long, key: String, value: String?) =
+        editOptions(Keys.gameOptions(gameId), key, value)
+
+    private suspend fun editOptions(storage: Preferences.Key<String>, key: String, value: String?) {
+        val map = parseOptions(get(storage, "")).toMutableMap()
         if (value == null) map.remove(key) else map[key] = value
-        set(Keys.coreOptions(coreId), map.entries.joinToString("\n") { "${it.key}=${it.value}" })
+        set(storage, map.entries.joinToString("\n") { "${it.key}=${it.value}" })
     }
+
+    private fun parseOptions(blob: String): Map<String, String> =
+        blob.lineSequence().filter { '=' in it }.associate { it.substringBefore('=') to it.substringAfter('=') }
 
     companion object {
         const val DEFAULT_PAD_OPACITY = 0.85f

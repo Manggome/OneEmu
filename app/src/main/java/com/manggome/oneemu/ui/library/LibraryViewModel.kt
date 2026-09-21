@@ -313,7 +313,7 @@ class LibraryViewModel : ViewModel() {
         for (id in ids) {
             val game = db.games().get(id) ?: continue
             if (game.folderId == null) db.games().delete(game) else db.games().setHidden(game.id, true)
-            deleteOwnedThumbnail(game)
+            forgetGameSettings(game)
             n++
         }
         post(LibraryMessage(R.string.lib_msg_removed_many, listOf(n)))
@@ -321,8 +321,19 @@ class LibraryViewModel : ViewModel() {
 
     fun remove(game: GameEntity) = launchIo {
         if (game.folderId == null) db.games().delete(game) else db.games().setHidden(game.id, true)
-        deleteOwnedThumbnail(game)
+        forgetGameSettings(game)
         post(LibraryMessage(R.string.lib_msg_removed))
+    }
+
+    /**
+     * Everything stored against a row that is going away. Room hands out ids by rowid, which SQLite
+     * reuses after the highest row is deleted, so leaving these behind would apply one game's
+     * settings to the next game added.
+     */
+    private suspend fun forgetGameSettings(game: GameEntity) {
+        deleteOwnedThumbnail(game)
+        settings.remove(Settings.Keys.gameOptions(game.id))
+        settings.remove(Settings.Keys.videoRotation(game.id))
     }
 
     /** Copies the picked image into the thumbnails folder (max 512px, JPEG) and stores its path. */
