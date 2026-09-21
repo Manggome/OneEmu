@@ -46,14 +46,17 @@ class BoxArtFetcher(
         val system = SystemId.fromId(game.system) ?: return@withContext null
         val folders = FOLDERS[system] ?: return@withContext null
         val title = searchName ?: game.title
-        val fileBase = File(game.path).name.substringBeforeLast('.')
+        val fileName = File(game.path).name
+        val fileBase = fileName.substringBeforeLast('.')
         val keys = listOf(normalize(title), normalize(fileBase))
+        // A Korean dump should get the Korean cover, not the American one that happens to sort first.
+        val preferred = regionsOf(title) + regionsOf(fileName)
 
         // Once a folder's listing is in hand every lookup is local, which is what a whole-library
         // run does; the first game of a run still goes through the cheap pass below.
         for (folder in folders) {
             val listing = lookupByFolder[folder] ?: continue
-            val hit = keys.firstNotNullOfOrNull { listing[it] } ?: continue
+            val hit = keys.firstNotNullOfOrNull { listing[it] }?.let { best(it, preferred) } ?: continue
             download(fileUrl(folder, hit))?.let { return@withContext write(game, it) }
         }
 
@@ -73,7 +76,7 @@ class BoxArtFetcher(
         for (folder in folders) {
             coroutineContext.ensureActive()
             val listing = lookup(folder) ?: continue
-            val hit = keys.firstNotNullOfOrNull { listing[it] } ?: continue
+            val hit = keys.firstNotNullOfOrNull { listing[it] }?.let { best(it, preferred) } ?: continue
             download(fileUrl(folder, hit))?.let { return@withContext write(game, it) }
         }
         null
@@ -103,16 +106,18 @@ class BoxArtFetcher(
         return names
     }
 
-    /** Normalized release name → the widest, plainest file that carries it. */
-    private suspend fun lookup(folder: String): Map<String, String>? {
+    /**
+     * Normalized release name → every file that carries it. Which one is best depends on the game
+     * asking, so the choice is made at lookup time rather than baked into the cache.
+     */
+    private suspend fun lookup(folder: String): Map<String, List<String>>? {
         lookupByFolder[folder]?.let { return it }
         val all = names(folder) ?: return null
-        val map = HashMap<String, String>(all.size * 2)
+        val map = HashMap<String, MutableList<String>>(all.size * 2)
         for (name in all) {
             val key = normalize(name)
             if (key.isEmpty()) continue
-            val current = map[key]
-            if (current == null || score(name) < score(current)) map[key] = name
+            map.getOrPut(key) { ArrayList(1) } += name
         }
         lookupByFolder[folder] = map
         return map
@@ -123,7 +128,12 @@ class BoxArtFetcher(
      * ignores case, punctuation and bracketed tags, so "sonic 3" finds "Sonic The Hedgehog 3
      * (USA)"; the plainest, widest releases come first.
      */
-    suspend fun search(systemId: String, query: String, limit: Int = 60): List<BoxArtCandidate> =
+    suspend fun search(
+        systemId: String,
+        query: String,
+        preferredRegions: Set<String> = emptySet(),
+        limit: Int = 60,
+    ): List<BoxArtCandidate> =
         withContext(Dispatchers.IO) {
             val folders = SystemId.fromId(systemId)?.let { FOLDERS[it] } ?: return@withContext emptyList()
             val needle = normalize(query)
@@ -134,7 +144,7 @@ class BoxArtFetcher(
                 val all = names(folder) ?: continue
                 for (name in all) if (normalize(name).contains(needle)) hits += BoxArtCandidate(folder, name)
             }
-            rank(hits, needle, limit)
+            rank(hits, needle, limit, preferredRegions)
         }
 
     /** Where [candidate] can be seen, for the picker's own image loading. */
@@ -188,7 +198,7 @@ class BoxArtFetcher(
 
     /** Listings for this process; the disk copy survives restarts. */
     private val namesByFolder = HashMap<String, List<String>>()
-    private val lookupByFolder = HashMap<String, Map<String, String>>()
+    private val lookupByFolder = HashMap<String, Map<String, List<String>>>()
 
     companion object {
         private const val TAG = "BoxArt"
@@ -246,9 +256,35 @@ class BoxArtFetcher(
          * The order the picker shows matches in: the exact title first, then the release a player is
          * most likely to mean, so "sonic 3" leads with Sonic 3 rather than Sonic 3D Blast.
          */
-        internal fun rank(hits: List<BoxArtCandidate>, normalizedQuery: String, limit: Int): List<BoxArtCandidate> =
-            hits.sortedWith(compareBy({ if (normalize(it.name) == normalizedQuery) 0 else 1 }, { score(it.name) }))
+        internal fun rank(
+            hits: List<BoxArtCandidate>,
+            normalizedQuery: String,
+            limit: Int,
+            preferred: Set<String> = emptySet(),
+        ): List<BoxArtCandidate> =
+            hits.sortedWith(compareBy({ if (normalize(it.name) == normalizedQuery) 0 else 1 }, { score(it.name, preferred) }))
                 .take(limit)
+
+        /** The one to take out of several files sharing a name. */
+        internal fun best(names: List<String>, preferred: Set<String> = emptySet()): String? =
+            names.minByOrNull { score(it, preferred) }
+
+        /**
+         * Regions named in a release's tags, lowercased: "(Japan, Korea) (Ja)" gives japan and korea.
+         * Language codes and version tags are not regions and are left out.
+         */
+        fun regionsOf(name: String): Set<String> =
+            Regex("[(\\[]([^)\\]]*)[)\\]]").findAll(name)
+                .flatMap { it.groupValues[1].splitToSequence(',') }
+                .map { it.trim().lowercase() }
+                .filter { it in KNOWN_REGIONS }
+                .toSet()
+
+        private val KNOWN_REGIONS = setOf(
+            "usa", "world", "europe", "japan", "korea", "asia", "australia", "brazil", "canada",
+            "china", "france", "germany", "hong kong", "italy", "netherlands", "russia", "spain",
+            "sweden", "taiwan",
+        )
 
         /**
          * What to search for first. The server only holds English and romanized release names, so a
@@ -281,15 +317,18 @@ class BoxArtFetcher(
          * Which of several files sharing a normalized name to keep: the widest release first, then
          * the plainest name, so "(USA)" beats "(USA) (Beta)" and a demo.
          */
-        fun score(name: String): Int {
+        fun score(name: String, preferred: Set<String> = emptySet()): Int {
+            // A region the game itself names beats the default order: someone playing a Korean dump
+            // wants the Korean cover, which would otherwise sort below every western release.
+            if (preferred.isNotEmpty() && regionsOf(name).any { it in preferred }) return name.length
             val region = when {
-                "(USA" in name -> 0
-                "(World" in name -> 1
-                "(Europe" in name -> 2
-                "(Japan" in name -> 3
-                else -> 4
+                "(USA" in name -> 1
+                "(World" in name -> 2
+                "(Europe" in name -> 3
+                "(Japan" in name -> 4
+                else -> 5
             }
-            return region * 1000 + name.length
+            return region * 10_000 + name.length
         }
     }
 }
