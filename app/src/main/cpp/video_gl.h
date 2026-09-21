@@ -16,6 +16,10 @@ struct VideoConfig {
     // Viewport the game image is letterboxed into, normalized 0..1 of the surface with a top-left origin
     // (x,y = top-left corner). 0,0,1,1 = the whole surface (legacy behaviour).
     float vpX = 0.f, vpY = 0.f, vpW = 1.f, vpH = 1.f;
+    /** Screen filter: 0 none, 1 scanlines, 2 CRT, 3 LCD grid. */
+    int filter = 0;
+    /** How strongly [filter] is applied, 0..1. */
+    float filterStrength = 0.6f;
 };
 
 // Owns the EGL display/context/surface and presents either a software framebuffer
@@ -89,7 +93,7 @@ private:
     std::string glVersion_, glRenderer_;
 
     GLuint program_ = 0, vbo_ = 0, vao_ = 0;
-    GLint uTex_ = -1, uSwizzleBGR_ = -1, uMvp_ = -1, uFlipY_ = -1;
+    GLint uTex_ = -1, uSwizzleBGR_ = -1, uMvp_ = -1, uFlipY_ = -1, uFilter_ = -1, uStrength_ = -1;
     GLuint swTex_ = 0;
     unsigned swTexW_ = 0, swTexH_ = 0;
     int swFormat_ = -1;

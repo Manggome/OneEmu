@@ -38,6 +38,9 @@ class Settings(private val context: Context) {
         val videoAspect = intPreferencesKey("video_aspect") // 0 core, 1 stretch, 2 integer, 3 square
         /** Extra quarter turns for one game, on top of the core's own rotation. */
         fun videoRotation(gameId: Long) = intPreferencesKey("video_rotation_$gameId")
+        /** Screen filter: 0 none, 1 scanlines, 2 CRT, 3 LCD grid. */
+        val videoFilter = intPreferencesKey("video_screen_filter")
+        val videoFilterStrength = floatPreferencesKey("video_screen_filter_strength")
         val fastForwardSpeed = intPreferencesKey("ff_speed") // 0 unlimited, else N×
         val showFps = booleanPreferencesKey("show_fps")
         val audioEnabled = booleanPreferencesKey("audio_enabled")
@@ -126,6 +129,12 @@ class Settings(private val context: Context) {
         const val DEFAULT_PAD_SCALE = 1.0f
         const val DEFAULT_VIBRATION_MS = 15
         const val DEFAULT_FF_SPEED = 3
+        const val DEFAULT_FILTER_STRENGTH = 0.6f
+        /** Screen filters, in the order the settings list them. */
+        const val FILTER_NONE = 0
+        const val FILTER_SCANLINE = 1
+        const val FILTER_CRT = 2
+        const val FILTER_LCD = 3
 
         /** Autofire defaults: the two face buttons (B|A), ~10 presses a second. */
         const val DEFAULT_TURBO_MASK = (1 shl 0) or (1 shl 8)

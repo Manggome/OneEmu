@@ -19,6 +19,8 @@
     <string name="video_aspect_stretch">꽉 채우기</string>
     <string name="video_aspect_integer">정수 배율</string>
     <string name="video_aspect_square">정사각 픽셀</string>
+    <string name="video_screen_filter">화면 효과</string>
+    <string name="video_screen_filter_desc">브라운관 스캔라인이나 LCD 격자를 씌웁니다. 게임 중에도 빠른 설정에서 바꿀 수 있습니다.</string>
     <string name="video_show_fps">FPS 표시</string>
     <string name="video_show_fps_desc">화면 구석에 초당 프레임 수를 표시합니다</string>
 

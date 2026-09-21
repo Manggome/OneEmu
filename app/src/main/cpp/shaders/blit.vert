@@ -1,6 +1,6 @@
 #version 450
 // Fullscreen quad; the letterbox rectangle is applied through the viewport, rotation via push constant.
-layout(push_constant) uniform PC { vec4 uvRect; vec2 rot; vec2 pad; } pc; // uvRect = u0,v0,u1,v1 ; rot = cos,sin
+layout(push_constant) uniform PC { vec4 uvRect; vec2 rot; vec2 pad; vec4 filterParams; } pc; // uvRect = u0,v0,u1,v1 ; rot = cos,sin ; filterParams = mode,strength
 layout(location = 0) out vec2 vUv;
 void main() {
     vec2 pos = vec2((gl_VertexIndex & 1) == 1 ? 1.0 : -1.0, (gl_VertexIndex & 2) == 2 ? 1.0 : -1.0);

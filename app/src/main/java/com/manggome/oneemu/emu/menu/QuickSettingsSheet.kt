@@ -74,8 +74,20 @@ fun QuickSettingsSheet(session: EmulatorSession, onEditLayout: () -> Unit, onDis
     val vibration by settings.observe(Settings.Keys.padVibration, true).collectAsState(true)
     val showFps by settings.observe(Settings.Keys.showFps, false).collectAsState(false)
     val audio by settings.observe(Settings.Keys.audioEnabled, true).collectAsState(true)
+    val screenFilter by settings.observe(Settings.Keys.videoFilter, Settings.FILTER_NONE).collectAsState(Settings.FILTER_NONE)
+    val filterStrength by settings.observe(Settings.Keys.videoFilterStrength, Settings.DEFAULT_FILTER_STRENGTH)
+        .collectAsState(Settings.DEFAULT_FILTER_STRENGTH)
 
     fun <T> put(key: androidx.datastore.preferences.core.Preferences.Key<T>, value: T) = scope.launch { settings.set(key, value) }
+
+    /** One call so every control pushes the whole video config, not just the field it changed. */
+    fun pushVideo(
+        linearNow: Boolean = linear,
+        aspectNow: Int = aspect,
+        rotationNow: Int = rotation,
+        filterNow: Int = screenFilter,
+        strengthNow: Float = filterStrength,
+    ) = NativeBridge.setVideoConfig(linearNow, aspectNow, rotationNow, filterNow, strengthNow)
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = OneEmuColors.Surface) {
         when (page) {
@@ -85,11 +97,11 @@ fun QuickSettingsSheet(session: EmulatorSession, onEditLayout: () -> Unit, onDis
                 SectionLabel(stringResource(R.string.qs_filter))
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                     SegmentedButton(
-                        selected = linear, onClick = { put(Settings.Keys.videoLinearFilter, true); NativeBridge.setVideoConfig(true, aspect, rotation) },
+                        selected = linear, onClick = { put(Settings.Keys.videoLinearFilter, true); pushVideo(linearNow = true) },
                         shape = SegmentedButtonDefaults.itemShape(0, 2),
                     ) { Text(stringResource(R.string.qs_filter_smooth)) }
                     SegmentedButton(
-                        selected = !linear, onClick = { put(Settings.Keys.videoLinearFilter, false); NativeBridge.setVideoConfig(false, aspect, rotation) },
+                        selected = !linear, onClick = { put(Settings.Keys.videoLinearFilter, false); pushVideo(linearNow = false) },
                         shape = SegmentedButtonDefaults.itemShape(1, 2),
                     ) { Text(stringResource(R.string.qs_filter_pixel)) }
                 }
@@ -99,7 +111,7 @@ fun QuickSettingsSheet(session: EmulatorSession, onEditLayout: () -> Unit, onDis
                     stringResource(R.string.qs_aspect_integer), stringResource(R.string.qs_aspect_square),
                 )
                 DropdownRow(stringResource(R.string.qs_aspect), aspectLabels.getOrElse(aspect) { aspectLabels[0] }, aspectLabels) { idx ->
-                    put(Settings.Keys.videoAspect, idx); NativeBridge.setVideoConfig(linear, idx, rotation)
+                    put(Settings.Keys.videoAspect, idx); pushVideo(aspectNow = idx)
                 }
 
                 val rotationLabels = listOf(
@@ -107,7 +119,22 @@ fun QuickSettingsSheet(session: EmulatorSession, onEditLayout: () -> Unit, onDis
                     stringResource(R.string.qs_rotation_180), stringResource(R.string.qs_rotation_270),
                 )
                 DropdownRow(stringResource(R.string.qs_rotation), rotationLabels.getOrElse(rotation) { rotationLabels[0] }, rotationLabels) { idx ->
-                    put(rotationKey, idx); NativeBridge.setVideoConfig(linear, aspect, idx)
+                    put(rotationKey, idx); pushVideo(rotationNow = idx)
+                }
+
+                val screenFilterLabels = listOf(
+                    stringResource(R.string.qs_screen_filter_none), stringResource(R.string.qs_screen_filter_scanline),
+                    stringResource(R.string.qs_screen_filter_crt), stringResource(R.string.qs_screen_filter_lcd),
+                )
+                DropdownRow(
+                    stringResource(R.string.qs_screen_filter),
+                    screenFilterLabels.getOrElse(screenFilter) { screenFilterLabels[0] },
+                    screenFilterLabels,
+                ) { idx -> put(Settings.Keys.videoFilter, idx); pushVideo(filterNow = idx) }
+                if (screenFilter != Settings.FILTER_NONE) {
+                    SliderRow(stringResource(R.string.qs_screen_filter_strength), filterStrength, 0.1f..1f, "${(filterStrength * 100).toInt()}%") {
+                        put(Settings.Keys.videoFilterStrength, it); pushVideo(strengthNow = it)
+                    }
                 }
 
                 SliderRow(stringResource(R.string.qs_pad_opacity), opacity, 0.15f..1f, "${(opacity * 100).toInt()}%") { put(Settings.Keys.padOpacity, it) }
