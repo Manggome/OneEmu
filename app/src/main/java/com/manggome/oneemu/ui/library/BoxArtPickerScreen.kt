@@ -43,9 +43,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
+import java.io.File
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.db.GameEntity
 import com.manggome.oneemu.library.BoxArtCandidate
+import com.manggome.oneemu.library.BoxArtFetcher
 import com.manggome.oneemu.library.BoxArtKind
 
 /**
@@ -65,11 +67,21 @@ internal fun BoxArtPickerScreen(gameId: Long, vm: LibraryViewModel, onBack: () -
     var failed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    fun search(text: String) {
+    /**
+     * Runs a search, and when the game's own title finds nothing, quietly tries the ROM's file name
+     * instead: a game renamed to Korean has a title the server cannot match, but its file usually
+     * still carries the English name. The box shows whatever was actually searched.
+     */
+    fun search(text: String, fallback: String? = null) {
         val g = game ?: return
         searching = true
         failed = false
         vm.searchBoxArt(g.system, text) { found ->
+            if (found.isEmpty() && !fallback.isNullOrBlank() && fallback != text) {
+                query = fallback
+                search(fallback)
+                return@searchBoxArt
+            }
             results = found
             searching = false
         }
@@ -79,8 +91,10 @@ internal fun BoxArtPickerScreen(gameId: Long, vm: LibraryViewModel, onBack: () -
     LaunchedEffect(gameId) {
         val g = vm.game(gameId) ?: return@LaunchedEffect
         game = g
-        query = g.title
-        search(g.title)
+        val fileBase = File(g.path).name.substringBeforeLast('.')
+        val seed = BoxArtFetcher.searchSeed(g.title, File(g.path).name)
+        query = seed
+        search(seed, fallback = fileBase)
     }
 
     Scaffold(
