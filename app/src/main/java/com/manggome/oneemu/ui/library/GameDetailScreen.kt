@@ -204,6 +204,7 @@ fun GameDetailScreen(nav: NavHostController, gameId: Long, vm: LibraryViewModel 
                 },
                 onPickThumbnail = { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 onOpenCoreOptions = { nav.navigate(Routes.coreOptions(it)) },
+                onPickBoxArt = { nav.navigate(Routes.boxArt(it.id)) },
             )
         }
     }

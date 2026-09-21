@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -78,6 +79,7 @@ fun GameActionSheet(
     onPlay: (GameEntity) -> Unit,
     onPickThumbnail: (GameEntity) -> Unit,
     onOpenCoreOptions: (coreId: String) -> Unit,
+    onPickBoxArt: (GameEntity) -> Unit,
     onOpenDetails: ((GameEntity) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -115,6 +117,7 @@ fun GameActionSheet(
             ) { vm.toggleFavorite(game) }
             SheetItem(Icons.Filled.Image, stringResource(R.string.lib_action_thumbnail)) { onDismiss(); onPickThumbnail(game) }
             SheetItem(Icons.Filled.CloudDownload, stringResource(R.string.lib_action_boxart)) { onDismiss(); vm.fetchBoxArt(game) }
+            SheetItem(Icons.Filled.PhotoLibrary, stringResource(R.string.lib_action_boxart_pick)) { onDismiss(); onPickBoxArt(game) }
             if (game.thumbnail != null) {
                 SheetItem(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.lib_action_thumbnail_reset)) { vm.resetThumbnail(game) }
             }

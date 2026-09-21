@@ -17,6 +17,16 @@ import java.io.File
 import java.io.IOException
 import kotlin.coroutines.coroutineContext
 
+/** The three picture sets the server keeps for every system. */
+enum class BoxArtKind(val folder: String) {
+    BOXART("Named_Boxarts"),
+    TITLE("Named_Titles"),
+    SNAP("Named_Snaps"),
+}
+
+/** One picture the user can choose, as the server names it. */
+data class BoxArtCandidate(val systemFolder: String, val name: String)
+
 /**
  * Box art from the public libretro thumbnail server. Files there are named after the No-Intro /
  * Redump release ("Sonic the Hedgehog 3 (USA).png"), while our titles come from the file name and
@@ -42,14 +52,14 @@ class BoxArtFetcher(
         // Once a folder's listing is in hand every lookup is local, which is what a whole-library
         // run does; the first game of a run still goes through the cheap pass below.
         for (folder in folders) {
-            val listing = memory[folder] ?: continue
+            val listing = lookupByFolder[folder] ?: continue
             val hit = keys.firstNotNullOfOrNull { listing[it] } ?: continue
             download(fileUrl(folder, hit))?.let { return@withContext write(game, it) }
         }
 
         // Cheap pass: the obvious spellings, which hit for most well-named files.
         for (folder in folders) {
-            if (memory[folder] != null) continue
+            if (lookupByFolder[folder] != null) continue
             for (name in candidates(title, File(game.path).name)) {
                 coroutineContext.ensureActive()
                 val url = fileUrl(folder, sanitize(name))
@@ -62,7 +72,7 @@ class BoxArtFetcher(
         // own listing and match on letters and digits alone.
         for (folder in folders) {
             coroutineContext.ensureActive()
-            val listing = index(folder) ?: continue
+            val listing = lookup(folder) ?: continue
             val hit = keys.firstNotNullOfOrNull { listing[it] } ?: continue
             download(fileUrl(folder, hit))?.let { return@withContext write(game, it) }
         }
@@ -70,11 +80,11 @@ class BoxArtFetcher(
     }
 
     /**
-     * Normalized release name → file name for one folder, read from the server's directory listing
-     * and cached on disk: the listings run to a couple of megabytes and barely ever change.
+     * Every release the server has for one folder, read from its directory listing and cached on
+     * disk: the listings run to a couple of megabytes and barely ever change.
      */
-    private suspend fun index(folder: String): Map<String, String>? {
-        memory[folder]?.let { return it }
+    private suspend fun names(folder: String): List<String>? {
+        namesByFolder[folder]?.let { return it }
         val cache = File(dirs.boxArtIndex, "${sanitize(folder).replace(' ', '_')}.txt")
         val fresh = cache.isFile && System.currentTimeMillis() - cache.lastModified() < CACHE_TTL_MS
         val names = if (fresh) {
@@ -89,19 +99,57 @@ class BoxArtFetcher(
             } ?: runCatching { cache.takeIf { it.isFile }?.readLines() }.getOrNull()
         }
         if (names.isNullOrEmpty()) return null
-        val map = HashMap<String, String>(names.size * 2)
-        for (name in names) {
+        namesByFolder[folder] = names
+        return names
+    }
+
+    /** Normalized release name → the widest, plainest file that carries it. */
+    private suspend fun lookup(folder: String): Map<String, String>? {
+        lookupByFolder[folder]?.let { return it }
+        val all = names(folder) ?: return null
+        val map = HashMap<String, String>(all.size * 2)
+        for (name in all) {
             val key = normalize(name)
             if (key.isEmpty()) continue
             val current = map[key]
             if (current == null || score(name) < score(current)) map[key] = name
         }
-        memory[folder] = map
+        lookupByFolder[folder] = map
         return map
     }
 
+    /**
+     * Everything the server has whose name contains [query], for the picker to show. Matching
+     * ignores case, punctuation and bracketed tags, so "sonic 3" finds "Sonic The Hedgehog 3
+     * (USA)"; the plainest, widest releases come first.
+     */
+    suspend fun search(systemId: String, query: String, limit: Int = 60): List<BoxArtCandidate> =
+        withContext(Dispatchers.IO) {
+            val folders = SystemId.fromId(systemId)?.let { FOLDERS[it] } ?: return@withContext emptyList()
+            val needle = normalize(query)
+            if (needle.isEmpty()) return@withContext emptyList()
+            val hits = ArrayList<BoxArtCandidate>()
+            for (folder in folders) {
+                coroutineContext.ensureActive()
+                val all = names(folder) ?: continue
+                for (name in all) if (normalize(name).contains(needle)) hits += BoxArtCandidate(folder, name)
+            }
+            rank(hits, needle, limit)
+        }
+
+    /** Where [candidate] can be seen, for the picker's own image loading. */
+    fun url(candidate: BoxArtCandidate, kind: BoxArtKind = BoxArtKind.BOXART): String =
+        "$BASE/${Uri.encode(candidate.systemFolder)}/${kind.folder}/${Uri.encode(candidate.name)}.png"
+
+    /** Downloads the picture the user chose and stores it as [game]'s thumbnail file. */
+    suspend fun fetchChosen(game: GameEntity, candidate: BoxArtCandidate, kind: BoxArtKind): File? =
+        withContext(Dispatchers.IO) {
+            val bytes = download(url(candidate, kind)) ?: return@withContext null
+            write(game, bytes)
+        }
+
     private fun fileUrl(folder: String, name: String): String =
-        "$BASE/${Uri.encode(folder)}/Named_Boxarts/${Uri.encode(name)}.png"
+        "$BASE/${Uri.encode(folder)}/${BoxArtKind.BOXART.folder}/${Uri.encode(name)}.png"
 
     private fun exists(url: String): Boolean = runCatching {
         client.newCall(Request.Builder().url(url).head().header("User-Agent", UA).build())
@@ -138,8 +186,9 @@ class BoxArtFetcher(
         else Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt().coerceAtLeast(1), (decoded.height * scale).toInt().coerceAtLeast(1), true)
     }.getOrNull()
 
-    /** Parsed listings for this process; the disk copy survives restarts. */
-    private val memory = HashMap<String, Map<String, String>>()
+    /** Listings for this process; the disk copy survives restarts. */
+    private val namesByFolder = HashMap<String, List<String>>()
+    private val lookupByFolder = HashMap<String, Map<String, String>>()
 
     companion object {
         private const val TAG = "BoxArt"
@@ -192,6 +241,14 @@ class BoxArtFetcher(
             }
             return out.toList()
         }
+
+        /**
+         * The order the picker shows matches in: the exact title first, then the release a player is
+         * most likely to mean, so "sonic 3" leads with Sonic 3 rather than Sonic 3D Blast.
+         */
+        internal fun rank(hits: List<BoxArtCandidate>, normalizedQuery: String, limit: Int): List<BoxArtCandidate> =
+            hits.sortedWith(compareBy({ if (normalize(it.name) == normalizedQuery) 0 else 1 }, { score(it.name) }))
+                .take(limit)
 
         /** RetroArch's own rule for turning a release name into a file name. */
         fun sanitize(name: String): String = name.replace(Regex("[&*/:`\"<>?\\\\|]"), "_")

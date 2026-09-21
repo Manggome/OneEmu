@@ -110,6 +110,16 @@
     <string name="lib_msg_rescan_done">다시 스캔했습니다</string>
     <string name="lib_msg_thumbnail_failed">이미지를 불러올 수 없습니다</string>
     <string name="lib_action_boxart">박스아트 받기</string>
+    <string name="lib_action_boxart_pick">박스아트 고르기</string>
+    <string name="boxart_picker_title">박스아트 고르기</string>
+    <string name="boxart_search_label">게임 이름으로 찾기</string>
+    <string name="boxart_search">찾기</string>
+    <string name="boxart_start_hint">게임 이름을 넣고 찾기를 누르세요.</string>
+    <string name="boxart_apply_failed">그림을 받지 못했습니다. 다시 시도해 보세요.</string>
+    <string name="boxart_no_results">찾은 그림이 없습니다. 영어 원제로 찾아보세요.</string>
+    <string name="boxart_kind_box">박스아트</string>
+    <string name="boxart_kind_title">타이틀 화면</string>
+    <string name="boxart_kind_snap">게임 화면</string>
     <string name="lib_menu_boxart_all">박스아트 모두 받기</string>
     <string name="lib_msg_boxart_searching">박스아트를 찾는 중…</string>
     <string name="lib_msg_boxart_set">박스아트를 받았습니다</string>
