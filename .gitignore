@@ -25,3 +25,4 @@ cores/out/
 .DS_Store
 cores/*/src/
 cores/*/build/
+scripts/__pycache__/
