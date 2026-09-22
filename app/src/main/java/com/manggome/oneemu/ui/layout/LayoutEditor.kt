@@ -157,7 +157,7 @@ private fun VectorLayoutEditor(
 
     LaunchedEffect(profile, config) {
         layout = PadLayoutStore.load(profile, config)
-        savedViewport = ViewportStore.loadSaved(system, config)
+        savedViewport = ViewportStore.loadSaved(profile, config)
         viewport = savedViewport
         opacity = settings.get(Settings.Keys.padOpacity, Settings.DEFAULT_PAD_OPACITY)
         globalScale = settings.get(Settings.Keys.padScale, Settings.DEFAULT_PAD_SCALE)
@@ -185,7 +185,7 @@ private fun VectorLayoutEditor(
         val vp = currentViewport
         scope.launch {
             PadLayoutStore.save(profile, config, l)
-            ViewportStore.save(system, config, vp)
+            ViewportStore.save(profile, config, vp)
             settings.set(Settings.Keys.padOpacity, opacity)
             settings.set(PadLayoutStore.Keys.layoutSnapToGrid, snap)
             settings.set(ViewportPrefs.keepAspect, keepAspect)

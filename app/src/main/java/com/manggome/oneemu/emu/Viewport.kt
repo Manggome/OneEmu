@@ -5,6 +5,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.manggome.oneemu.OneEmuApp
+import com.manggome.oneemu.emu.pad.PadProfile
 import com.manggome.oneemu.model.SystemId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -49,9 +50,14 @@ data class ViewportRect(val x: Float = 0f, val y: Float = 0f, val w: Float = 1f,
 }
 
 /**
- * Per-(system, screen configuration) viewport persistence. Key: `viewport.<systemId>.<config.key>` = JSON.
+ * Per-(pad, screen configuration) viewport persistence. Key: `viewport.<padProfile>.<config.key>` = JSON.
  * Unset falls back to [default]: portrait configs anchor the game to the top edge at full width (so the pad
  * area is below it), landscape configs use the whole surface.
+ *
+ * Keyed on the pad rather than the system because the two pads Dolphin can be played with want the picture
+ * in different places: a GameCube game is watched, a Wii game is aimed at, so the image doubles as the
+ * pointer surface and wants a size and a position of its own. [PadProfile.key] is the plain system id for
+ * every other pad, so nothing anyone has already set up moves.
  */
 object ViewportStore {
     object Keys {
@@ -92,14 +98,18 @@ object ViewportStore {
     }
 
     /** Saved viewport or null when the user never customised this configuration. */
-    fun observeSaved(system: SystemId, config: ScreenConfig): Flow<ViewportRect?> =
-        settings.observe(Keys.viewport(system.id, config), "").map { it.takeIf(String::isNotBlank)?.let(ViewportRect::fromJson) }
+    fun observeSaved(profile: PadProfile, config: ScreenConfig): Flow<ViewportRect?> =
+        settings.observe(Keys.viewport(profile.key, config), "").map { it.takeIf(String::isNotBlank)?.let(ViewportRect::fromJson) }
 
-    suspend fun loadSaved(system: SystemId, config: ScreenConfig): ViewportRect? =
-        settings.get(Keys.viewport(system.id, config), "").takeIf(String::isNotBlank)?.let(ViewportRect::fromJson)
+    suspend fun loadSaved(profile: PadProfile, config: ScreenConfig): ViewportRect? =
+        settings.get(Keys.viewport(profile.key, config), "").takeIf(String::isNotBlank)?.let(ViewportRect::fromJson)
 
-    suspend fun save(system: SystemId, config: ScreenConfig, viewport: ViewportRect) =
-        settings.set(Keys.viewport(system.id, config), viewport.normalized().toJson())
+    suspend fun save(profile: PadProfile, config: ScreenConfig, viewport: ViewportRect) =
+        settings.set(Keys.viewport(profile.key, config), viewport.normalized().toJson())
 
-    suspend fun reset(system: SystemId, config: ScreenConfig) = settings.remove(Keys.viewport(system.id, config))
+    suspend fun reset(profile: PadProfile, config: ScreenConfig) = settings.remove(Keys.viewport(profile.key, config))
+
+    fun observeSaved(system: SystemId, config: ScreenConfig): Flow<ViewportRect?> = observeSaved(PadProfile(system), config)
+    suspend fun loadSaved(system: SystemId, config: ScreenConfig): ViewportRect? = loadSaved(PadProfile(system), config)
+    suspend fun save(system: SystemId, config: ScreenConfig, viewport: ViewportRect) = save(PadProfile(system), config, viewport)
 }
