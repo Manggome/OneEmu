@@ -252,21 +252,6 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
 private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavHostController, onShowHidden: () -> Unit) {
     var sortMenu by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
-    var confirmTitles by remember { mutableStateOf(false) }
-
-    if (confirmTitles) {
-        AlertDialog(
-            onDismissRequest = { confirmTitles = false },
-            title = { Text(stringResource(R.string.lib_titles_confirm_title)) },
-            text = { Text(stringResource(R.string.lib_titles_confirm_body)) },
-            confirmButton = {
-                TextButton(onClick = { confirmTitles = false; vm.applyEnglishTitles() }) {
-                    Text(stringResource(R.string.lib_menu_titles_english))
-                }
-            },
-            dismissButton = { TextButton(onClick = { confirmTitles = false }) { Text(stringResource(R.string.cancel)) } },
-        )
-    }
 
     if (state.searching) {
         val focus = remember { FocusRequester() }
@@ -362,10 +347,6 @@ private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavH
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.lib_menu_boxart_all)) },
                         onClick = { moreMenu = false; vm.fetchAllBoxArt() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.lib_menu_titles_english)) },
-                        onClick = { moreMenu = false; confirmTitles = true },
                     )
                     HorizontalDivider()
                     CheckItem(R.string.lib_menu_group_by_system, state.groupBySystem) { vm.setGroupBySystem(!state.groupBySystem) }

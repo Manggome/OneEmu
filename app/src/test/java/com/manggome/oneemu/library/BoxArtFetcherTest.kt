@@ -1,6 +1,10 @@
 package com.manggome.oneemu.library
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -9,6 +13,8 @@ import org.junit.Test
  * exercised here; these are the rules that turn our titles into the server's file names.
  */
 class BoxArtFetcherTest {
+    @get:Rule val tmp = TemporaryFolder()
+
     @Test
     fun `case and region tags do not change the normalized name`() {
         val ours = BoxArtFetcher.normalize("Sonic the Hedgehog 3")
@@ -125,5 +131,45 @@ class BoxArtFetcherTest {
         // Nothing to strip, and a name that is only a tag is left alone rather than emptied.
         assertEquals("Tetris", BoxArtFetcher.releaseTitle("Tetris"))
         assertEquals("(USA)", BoxArtFetcher.releaseTitle("(USA)"))
+    }
+
+    @Test
+    fun `a Mega Drive cartridge carries its English name in the header`() {
+        val rom = ByteArray(0x200)
+        "SEGA MEGA DRIVE ".toByteArray(Charsets.US_ASCII).copyInto(rom, 0x100)
+        "SONIC THE HEDGEHOG 3                            ".toByteArray(Charsets.US_ASCII).copyInto(rom, 0x150)
+        val f = tmp.newFile("소닉3.md").also { it.writeBytes(rom) }
+        assertEquals("SONIC THE HEDGEHOG 3", RomInfo.headerTitle(f, "md"))
+        // Which is what makes the Korean file findable: normalizing hides the case difference.
+        assertEquals(
+            BoxArtFetcher.normalize("Sonic The Hedgehog 3 (USA)"),
+            BoxArtFetcher.normalize(RomInfo.headerTitle(f, "md")!!),
+        )
+    }
+
+    @Test
+    fun `a cartridge from another system is not read as a Mega Drive header`() {
+        val f = tmp.newFile("notmd.md").also { it.writeBytes(ByteArray(0x200) { 0x41 }) }
+        assertNull(RomInfo.headerTitle(f, "md"))
+        assertNull(RomInfo.headerTitle(f, "nes"))
+    }
+
+    @Test
+    fun `the picker searches for the header name when nothing else is in the alphabet`() {
+        assertEquals("Sonic The Hedgehog 3", BoxArtFetcher.searchSeed("소닉 3", "소닉3.md", "Sonic The Hedgehog 3"))
+        // An English title or file name still wins; the header is the last resort, not the first.
+        assertEquals("Sonic 3", BoxArtFetcher.searchSeed("Sonic 3", "소닉3.md", "SONIC THE HEDGEHOG 3"))
+        assertEquals("sonic3", BoxArtFetcher.searchSeed("소닉 3", "sonic3.md", null))
+    }
+
+    @Test
+    fun `a name that normalizes to its digits alone is not a lookup key`() {
+        // "소닉 3" keeping only "3" would match whatever the server files under that.
+        assertFalse(BoxArtFetcher.searchable("소닉 3"))
+        assertFalse(BoxArtFetcher.searchable("드래곤볼"))
+        assertTrue(BoxArtFetcher.searchable("1942"))
+        assertTrue(BoxArtFetcher.searchable("Sonic 3"))
+        assertFalse(BoxArtFetcher.searchable(""))
+        assertFalse(BoxArtFetcher.searchable("(USA)"))
     }
 }
