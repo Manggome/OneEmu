@@ -132,12 +132,16 @@
     <string name="boxart_kind_title">타이틀 화면</string>
     <string name="boxart_kind_snap">게임 화면</string>
     <string name="lib_menu_boxart_all">박스아트 모두 받기</string>
+    <string name="lib_menu_titles_english">제목 영어로 + 박스아트</string>
     <string name="lib_msg_boxart_searching">박스아트를 찾는 중…</string>
     <string name="lib_msg_boxart_set">박스아트를 받았습니다</string>
     <string name="lib_msg_boxart_not_found">박스아트를 찾지 못했습니다. 이름을 바꾸거나 직접 이미지를 넣어 보세요.</string>
     <string name="lib_msg_boxart_unsupported">이 기종은 박스아트를 받을 수 없습니다</string>
     <string name="lib_msg_boxart_nothing_to_do">받을 박스아트가 없습니다</string>
     <string name="lib_msg_boxart_done">박스아트 %1$d/%2$d개를 받았습니다</string>
+    <string name="lib_msg_titles_done">게임 %3$d개 중 제목 %1$d개를 바꾸고 박스아트 %2$d개를 받았습니다</string>
+    <string name="lib_titles_confirm_title">제목을 영어 정식 명칭으로</string>
+    <string name="lib_titles_confirm_body">박스아트 서버가 쓰는 정식 이름(No-Intro/Redump)으로 제목을 바꾸고, 그림이 없는 게임은 박스아트도 함께 받습니다.\n\n서버가 모르는 게임은 지금 제목 그대로 둡니다. 바뀐 제목은 게임마다 다시 바꿀 수 있습니다.</string>
     <string name="lib_boxart_progress">박스아트 %1$d/%2$d</string>
     <string name="lib_msg_thumbnail_set">썸네일을 변경했습니다</string>
     <string name="lib_msg_removed">라이브러리에서 제거했습니다</string>
