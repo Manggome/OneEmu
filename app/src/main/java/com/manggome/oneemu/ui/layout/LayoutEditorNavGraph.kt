@@ -14,6 +14,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavGraphBuilder
@@ -62,6 +64,24 @@ fun LayoutEditorRoute(profile: PadProfile, onClose: () -> Unit) {
     }
     DisposableEffect(Unit) {
         onDispose { activity?.requestedOrientation = previous }
+    }
+
+    /*
+     * The game runs with the system bars hidden, so the pad has the whole screen. This editor is a
+     * normal screen in the main activity, where the navigation bar sits on top of the bottom of that
+     * same pad: a START or SELECT placed low is drawn under the bar and cannot be dragged out of it
+     * again - the bar takes the touch. Hiding the bars here makes the editor the shape the pad will
+     * actually have, which is what it is for.
+     */
+    val window = activity?.window
+    DisposableEffect(window) {
+        val bars = window?.let { WindowInsetsControllerCompat(it, it.decorView) }
+        bars?.apply {
+            // A swipe brings them back for anyone who needs them without leaving the editor.
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { bars?.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
     // Only render the editor once the window actually has the requested orientation, so the

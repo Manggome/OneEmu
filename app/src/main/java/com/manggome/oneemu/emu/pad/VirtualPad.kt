@@ -70,6 +70,9 @@ fun VirtualPad(
     val textMeasurer = rememberTextMeasurer()
 
     // Latest parameters, readable from the long-lived pointer coroutine.
+    // Empty while the bars are hidden (in game); real in the editor opened from 설정.
+    val insets = rememberPadInsets()
+    val insetsState = rememberUpdatedState(insets)
     val layoutState = rememberUpdatedState(layout)
     val scaleState = rememberUpdatedState(globalScale)
     val hapticState = rememberUpdatedState(hapticMs)
@@ -102,7 +105,7 @@ fun VirtualPad(
 
                 fun placedElements(): List<Placed> {
                     val s = Size(this.size.width.toFloat(), this.size.height.toFloat())
-                    return layoutState.value.elements.filter { it.visible }.map { Placed(it, it.rectOn(s, density, scaleState.value)) }
+                    return layoutState.value.elements.filter { it.visible }.map { Placed(it, it.rectOn(s, density, scaleState.value, insetsState.value)) }
                 }
 
                 fun recompute() {
@@ -209,7 +212,7 @@ fun VirtualPad(
             if (size == Size.Zero) return@Canvas
             for (element in layout.elements) {
                 if (!element.visible) continue
-                val rect = element.rectOn(size, density, globalScale)
+                val rect = element.rectOn(size, density, globalScale, insets)
                 val stick = when (element.id) {
                     PadElementId.LEFT_STICK -> leftStick
                     PadElementId.RIGHT_STICK -> rightStick

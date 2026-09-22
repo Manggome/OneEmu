@@ -67,6 +67,7 @@ import com.manggome.oneemu.emu.pad.PadLayoutStore
 import com.manggome.oneemu.emu.pad.drawPadElement
 import com.manggome.oneemu.emu.pad.PadProfile
 import com.manggome.oneemu.emu.pad.rectOn
+import com.manggome.oneemu.emu.pad.rememberPadInsets
 import com.manggome.oneemu.emu.skin.SkinSelection
 import com.manggome.oneemu.emu.skin.SkinStore
 import com.manggome.oneemu.model.SystemId
@@ -221,8 +222,12 @@ private fun VectorLayoutEditor(
     val selectionState = rememberUpdatedState(selection)
     val viewportSelectedState = rememberUpdatedState(viewportSelected)
     val canvasState = rememberUpdatedState(canvasSize)
+    // The editor opened from 설정 runs under the navigation bar: a control dragged into it would be
+    // drawn where the bar is and could not be picked up again, so it stops at the edge of the bar.
+    val padInsets = rememberPadInsets()
+    val insetsState = rememberUpdatedState(padInsets)
 
-    fun PadElement.rect(size: Size = canvasState.value) = rectOn(size, density, scaleState.value)
+    fun PadElement.rect(size: Size = canvasState.value) = rectOn(size, density, scaleState.value, insetsState.value)
     fun viewportRect(size: Size = canvasState.value) = viewportState.value.toRect(size)
 
     val host = remember {
@@ -345,7 +350,7 @@ private fun VectorLayoutEditor(
                 val label = textMeasurer.measure(viewportLabel, TextStyle(color = OneEmuColors.Accent, fontSize = 11.sp))
                 drawViewport(currentViewport.toRect(canvasSize), gameAspect, viewportSelected, filled = showMockGame, density = density, label = label)
                 for (e in l.elements) {
-                    val rect = e.rectOn(canvasSize, density, globalScale)
+                    val rect = e.rectOn(canvasSize, density, globalScale, padInsets)
                     val alpha = if (e.visible) opacity else 0.15f
                     drawContext.canvas.saveLayer(Rect(Offset.Zero, canvasSize), androidx.compose.ui.graphics.Paint().apply { this.alpha = alpha })
                     drawPadElement(e, rect, profile, PadElementVisual(selected = e.id in selection), textMeasurer)
@@ -380,9 +385,9 @@ private fun VectorLayoutEditor(
             var startRect by remember { mutableStateOf(Rect.Zero) }
             var startScale by remember { mutableFloatStateOf(1f) }
             ViewportHandles(
-                rect = handleTarget.rectOn(canvasSize, density, globalScale),
+                rect = handleTarget.rectOn(canvasSize, density, globalScale, padInsets),
                 onDragStart = {
-                    startRect = handleTarget.rectOn(canvasSize, density, globalScale)
+                    startRect = handleTarget.rectOn(canvasSize, density, globalScale, padInsets)
                     startScale = handleTarget.scale
                     snapshot()?.let { history.record(it) }
                 },
