@@ -208,6 +208,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                             MenuAction.FAST_FORWARD -> host.setFastForward(!ui.fastForward)
                             MenuAction.TURBO -> host.toggleTurbo()
                             MenuAction.CHEATS -> sheet = Sheet.CHEATS
+                            MenuAction.LAYOUT -> editorOpen = true
                             MenuAction.SETTINGS -> sheet = Sheet.SETTINGS
                             MenuAction.SCREENSHOT -> scope.launch {
                                 val file = session.saveScreenshot()
