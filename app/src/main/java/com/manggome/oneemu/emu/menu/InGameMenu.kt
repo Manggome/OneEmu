@@ -24,7 +24,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.manggome.oneemu.R
 import com.manggome.oneemu.ui.theme.OneEmuColors
 
-enum class MenuAction { LOAD, SAVE, FAST_FORWARD, TURBO, CHEATS, SETTINGS, SCREENSHOT, COPY_LOG, RESET, CLOSE }
+enum class MenuAction { LOAD, SAVE, FAST_FORWARD, TURBO, CHEATS, LAYOUT, SETTINGS, SCREENSHOT, COPY_LOG, RESET, CLOSE }
 
 /**
  * My Boy-style pause menu: a rounded dark card with a plain vertical list.
@@ -60,6 +60,7 @@ fun InGameMenuDialog(
                 MenuRow(stringResource(R.string.menu_fast_forward), trailing = fastForwardLabel) { onAction(MenuAction.FAST_FORWARD) }
                 MenuRow(stringResource(R.string.menu_turbo), trailing = turboLabel) { onAction(MenuAction.TURBO) }
                 MenuRow(stringResource(R.string.menu_cheats)) { onAction(MenuAction.CHEATS) }
+                MenuRow(stringResource(R.string.menu_layout)) { onAction(MenuAction.LAYOUT) }
                 MenuRow(stringResource(R.string.menu_settings)) { onAction(MenuAction.SETTINGS) }
                 MenuRow(stringResource(R.string.menu_screenshot)) { onAction(MenuAction.SCREENSHOT) }
                 MenuRow(stringResource(R.string.menu_copy_log)) { onAction(MenuAction.COPY_LOG) }

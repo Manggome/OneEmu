@@ -66,6 +66,8 @@ class Settings(private val context: Context) {
         /** Per-core graphics API override: "vulkan" or "gles3"; unset = core.json hwRender. */
         fun graphicsApi(coreId: String) = stringPreferencesKey("gfxapi.$coreId")
         fun coreForSystem(systemId: String) = stringPreferencesKey("core.$systemId")
+        /** [PadProfile.key] of the pad edited last, so 설정 can offer to open it straight away. */
+        val lastPadProfile = stringPreferencesKey("layout_last_profile")
         /** Per-(system, screen configuration) pad layout JSON: `layout.<system>.<port|land|port_wide|land_wide>`. */
         fun layout(systemId: String, config: ScreenConfig) = stringPreferencesKey("layout.$systemId.${config.key}")
         /** Legacy orientation-only accessor; maps to the folded/phone configs so existing saves keep working. */

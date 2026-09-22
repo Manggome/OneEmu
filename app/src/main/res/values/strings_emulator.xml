@@ -35,6 +35,7 @@
     <string name="menu_save">저장</string>
     <string name="menu_fast_forward">빨리감기</string>
     <string name="menu_cheats">치트</string>
+    <string name="menu_layout">레이아웃 편집</string>
     <string name="menu_settings">설정</string>
     <string name="menu_screenshot">스크린샷</string>
     <string name="menu_copy_log">로그 복사</string>

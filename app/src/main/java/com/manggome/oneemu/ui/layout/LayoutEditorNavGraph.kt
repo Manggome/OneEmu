@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,7 +24,9 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
+import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.ScreenConfig
 import com.manggome.oneemu.emu.pad.PadProfile
 import com.manggome.oneemu.model.SystemId
@@ -50,6 +53,10 @@ fun NavGraphBuilder.layoutEditorGraph(nav: NavHostController) {
 @Composable
 fun LayoutEditorRoute(profile: PadProfile, onClose: () -> Unit) {
     val system = profile.system
+    // 설정 offers a one-tap way back to whichever pad was edited last.
+    LaunchedEffect(profile) {
+        OneEmuApp.get().settings.set(Settings.Keys.lastPadProfile, profile.key)
+    }
     val context = LocalContext.current
     val activity = context as? Activity
     val startConfig = ScreenConfig.from(LocalConfiguration.current)

@@ -128,17 +128,32 @@ class OverlayCfg(val overlays: List<Overlay>) {
      * Initial overlay for an orientation: visible, not a menu page, matching orientation (or unspecified),
      * preferring an analog variant when [preferAnalog] and the aspect closest to [screenAspect].
      */
-    fun pick(landscape: Boolean, screenAspect: Float, preferAnalog: Boolean): Overlay? {
+    fun pick(landscape: Boolean, screenAspect: Float, preferAnalog: Boolean): Overlay? =
+        ranked(landscape, screenAspect, preferAnalog).firstOrNull() ?: overlays.firstOrNull()
+
+    /**
+     * Every overlay this orientation can end up on, best first. A skin often ships more than one - an
+     * arcade one with eight buttons and the same cabinet with four, say - and a button on the overlay
+     * itself switches between them while playing, so the editor has to be able to reach each of them.
+     */
+    fun variants(landscape: Boolean): List<Overlay> = oriented(landscape).sortedBy { it.index }
+
+    /** Overlays that belong to this orientation and can be played on, in the order the skin lists them. */
+    private fun oriented(landscape: Boolean): List<Overlay> {
         val wanted = if (landscape) OverlayOrientation.LANDSCAPE else OverlayOrientation.PORTRAIT
         val usable = overlays.filter { it.hasPadButtons && !it.isHidden && !it.isMenuLike }
-        val oriented = usable.filter { it.orientation == wanted }.ifEmpty { usable.filter { it.orientation == null } }.ifEmpty { usable }
-        if (oriented.isEmpty()) return overlays.firstOrNull()
+        return usable.filter { it.orientation == wanted }.ifEmpty { usable.filter { it.orientation == null } }.ifEmpty { usable }
+    }
+
+    private fun ranked(landscape: Boolean, screenAspect: Float, preferAnalog: Boolean): List<Overlay> {
+        val oriented = oriented(landscape)
+        if (oriented.isEmpty()) return emptyList()
         return oriented.sortedWith(
             compareBy<Overlay>({ if (preferAnalog) !it.hasAnalog else it.hasAnalog })
                 .thenBy { "popout" in it.name.lowercase() }
                 .thenBy { abs(it.designAspect(landscape) - screenAspect) }
                 .thenBy { it.index },
-        ).first()
+        )
     }
 
     val isEmpty: Boolean get() = overlays.isEmpty()

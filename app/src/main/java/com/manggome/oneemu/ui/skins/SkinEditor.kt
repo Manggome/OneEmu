@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -190,9 +191,16 @@ fun SkinEditor(
     }
 
     val skin = loaded?.getOrNull()
-    val overlay: Overlay? = remember(skin, landscape, screenAspect) {
+    // Which of the skin's overlays is being edited. A skin often ships several for one orientation - an
+    // arcade cabinet with eight buttons and the same one with four - and in game a button on the overlay
+    // switches between them, so the editor lets the user say which one they mean. Null = the one a game
+    // would start on. Layouts are stored per overlay, so editing one never disturbs another.
+    var variantName by rememberSaveable(skinInfo.id, landscape) { mutableStateOf<String?>(null) }
+    val variants: List<Overlay> = remember(skin, landscape) { skin?.cfg(landscape)?.variants(landscape).orEmpty() }
+    val overlay: Overlay? = remember(skin, landscape, screenAspect, variantName) {
         val cfg = skin?.cfg(landscape) ?: return@remember null
-        cfg.pick(landscape, screenAspect, preferAnalog = system.hasAnalog)?.let { cfg.resolved(it, landscape) }
+        val chosen = cfg.byName(variantName) ?: cfg.pick(landscape, screenAspect, preferAnalog = system.hasAnalog)
+        chosen?.let { cfg.resolved(it, landscape) }
     }
     val currentLayout = layout ?: SkinLayout.EMPTY
     val placement = remember(overlay, canvasSize, currentLayout, globalScale) {
@@ -491,6 +499,17 @@ fun SkinEditor(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (variants.size > 1) {
+                    for (v in variants) {
+                        FilterChip(
+                            selected = v.name == overlay?.name,
+                            // Both variants live in the same SkinLayout under their own keys, so nothing
+                            // needs saving on the way across and unsaved work on either is still there.
+                            onClick = { variantName = v.name; selection = emptyList(); viewportSelected = false },
+                            label = { Text(v.name) },
+                        )
+                    }
+                }
                 FilterChip(
                     selected = viewportSelected,
                     onClick = { viewportSelected = !viewportSelected; if (viewportSelected) selection = emptyList() },
