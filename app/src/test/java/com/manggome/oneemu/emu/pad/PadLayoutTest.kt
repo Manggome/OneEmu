@@ -84,4 +84,36 @@ class PadLayoutTest {
         assertEquals(before.elements.size, after.elements.size)
         assertTrue(after.elements.none { it.visible && it.id == PadElementId.TURBO })
     }
+
+    @Test
+    fun `a button saved under the navigation bar is nudged back into reach`() {
+        val screen = androidx.compose.ui.geometry.Size(1000f, 2000f)
+        val bar = PadInsets(bottom = 150f)
+        val start = PadElement(PadElementId.START, x = 0.5f, y = 0.98f)
+        // 0.98 of 2000 is 1960, and a 34dp pill reaches past 1960: without the bar it sits there,
+        // with the bar it stops at its top edge.
+        val free = start.rectOn(screen, density = 1f, globalScale = 1f)
+        val clamped = start.rectOn(screen, density = 1f, globalScale = 1f, insets = bar)
+        assertTrue(free.bottom > screen.height - bar.bottom)
+        assertTrue(clamped.bottom <= screen.height - bar.bottom + 0.01f)
+        assertEquals(free.width, clamped.width, 1e-3f)
+        assertEquals(free.center.x, clamped.center.x, 1e-3f)
+    }
+
+    @Test
+    fun `a button that already clears the bars is left exactly where it was`() {
+        val screen = androidx.compose.ui.geometry.Size(1000f, 2000f)
+        val middle = PadElement(PadElementId.BUTTON_A, x = 0.5f, y = 0.5f)
+        val free = middle.rectOn(screen, 1f, 1f)
+        val clamped = middle.rectOn(screen, 1f, 1f, PadInsets(bottom = 150f, top = 80f))
+        assertEquals(free, clamped)
+    }
+
+    @Test
+    fun `a control taller than the space left over is centred in it, not pushed off screen`() {
+        val screen = androidx.compose.ui.geometry.Size(1000f, 300f)
+        val huge = PadElement(PadElementId.DPAD, x = 0.5f, y = 0.9f)
+        val r = huge.rectOn(screen, density = 3f, globalScale = 1f, insets = PadInsets(top = 100f, bottom = 100f))
+        assertEquals(150f, r.center.y, 0.01f)
+    }
 }

@@ -1,8 +1,12 @@
 package com.manggome.oneemu.emu.pad
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import com.manggome.oneemu.emu.EmulatorSession
 import com.manggome.oneemu.emu.ViewportRect
@@ -59,11 +63,46 @@ fun computeGameRect(
     return Rect(left, top, left + w, top + h)
 }
 
-/** Pixel rectangle of a pad element for the given screen size and density. */
-fun PadElement.rectOn(screen: Size, density: Float, globalScale: Float): Rect {
+/**
+ * Screen edges a pad control must stay clear of, in pixels.
+ *
+ * A button under the navigation bar cannot be pressed: the bar is on top of it and takes the touch.
+ * The layout editor opens in the main activity, which shows the bars, so a START or SELECT saved near
+ * the bottom edge is unreachable there even though the same layout works in-game, where the bars are
+ * hidden. Positions are stored as fractions of the screen and stay that way - the nudge happens when
+ * the rectangle is worked out, so a layout keeps working on a device with different bars.
+ */
+data class PadInsets(val left: Float = 0f, val top: Float = 0f, val right: Float = 0f, val bottom: Float = 0f) {
+    companion object { val NONE = PadInsets() }
+}
+
+/** Pixel rectangle of a pad element for the given screen size and density, kept out of [insets]. */
+fun PadElement.rectOn(screen: Size, density: Float, globalScale: Float, insets: PadInsets = PadInsets.NONE): Rect {
     val w = id.baseWidthDp * density * globalScale * scale
     val h = id.baseHeightDp * density * globalScale * scale
-    val cx = (x * screen.width).coerceIn(w / 2f, (screen.width - w / 2f).coerceAtLeast(w / 2f))
-    val cy = (y * screen.height).coerceIn(h / 2f, (screen.height - h / 2f).coerceAtLeast(h / 2f))
+    // A control wider than the room left over is centred in it rather than pushed off the other side.
+    fun clamp(center: Float, size: Float, start: Float, end: Float): Float {
+        val lo = start + size / 2f
+        val hi = end - size / 2f
+        return if (hi < lo) (start + end) / 2f else center.coerceIn(lo, hi)
+    }
+    val cx = clamp(x * screen.width, w, insets.left, screen.width - insets.right)
+    val cy = clamp(y * screen.height, h, insets.top, screen.height - insets.bottom)
     return Rect(Offset(cx - w / 2f, cy - h / 2f), Size(w, h))
+}
+
+/**
+ * The bars in the way right now. In game these are hidden and this is empty, so nothing moves; the
+ * layout editor reached from 설정 runs in the main activity, where the navigation bar is real.
+ */
+@Composable
+fun rememberPadInsets(): PadInsets {
+    val density = LocalDensity.current
+    val bars = WindowInsets.systemBars
+    return PadInsets(
+        left = bars.getLeft(density, androidx.compose.ui.unit.LayoutDirection.Ltr).toFloat(),
+        top = bars.getTop(density).toFloat(),
+        right = bars.getRight(density, androidx.compose.ui.unit.LayoutDirection.Ltr).toFloat(),
+        bottom = bars.getBottom(density).toFloat(),
+    )
 }
