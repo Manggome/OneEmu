@@ -72,6 +72,9 @@ internal fun CoreOptionsScreen(coreId: String, onBack: () -> Unit, gameId: Long 
                     if (s.perGame) stringResource(R.string.core_options_per_game_note, s.core.displayName)
                     else stringResource(R.string.core_options_apply_note),
                 )
+                // A game this build knows something about (GameQuirks) says so, so the value it starts from
+                // does not look like it came out of nowhere.
+                s.quirkNote?.let { NoteText(it) }
                 if (hasHidden) {
                     SwitchRow(title = stringResource(R.string.core_options_show_advanced), checked = showAdvanced, onCheckedChange = { showAdvanced = it })
                     SettingsDivider()

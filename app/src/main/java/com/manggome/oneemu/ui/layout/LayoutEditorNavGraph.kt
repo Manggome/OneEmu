@@ -23,18 +23,19 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.manggome.oneemu.R
 import com.manggome.oneemu.emu.ScreenConfig
+import com.manggome.oneemu.emu.pad.PadProfile
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.ui.Routes
 import com.manggome.oneemu.ui.theme.OneEmuColors
 
-/** Registers Routes.LAYOUT_EDITOR ("layout/{systemId}") in the main NavHost. */
+/** Registers Routes.LAYOUT_EDITOR ("layout/{profile}") in the main NavHost. */
 fun NavGraphBuilder.layoutEditorGraph(nav: NavHostController) {
     composable(
         Routes.LAYOUT_EDITOR,
-        arguments = listOf(navArgument("systemId") { type = NavType.StringType }),
+        arguments = listOf(navArgument("profile") { type = NavType.StringType }),
     ) { entry ->
-        val system = SystemId.fromId(entry.arguments?.getString("systemId")) ?: SystemId.GBA
-        LayoutEditorRoute(system, onClose = { nav.popBackStack() })
+        val profile = PadProfile.fromKey(entry.arguments?.getString("profile")) ?: PadProfile(SystemId.GBA)
+        LayoutEditorRoute(profile, onClose = { nav.popBackStack() })
     }
 }
 
@@ -45,7 +46,8 @@ fun NavGraphBuilder.layoutEditorGraph(nav: NavHostController) {
  * panel), so editing e.g. 펼친 세로 on a folded phone shows a note that the shape differs.
  */
 @Composable
-fun LayoutEditorRoute(system: SystemId, onClose: () -> Unit) {
+fun LayoutEditorRoute(profile: PadProfile, onClose: () -> Unit) {
+    val system = profile.system
     val context = LocalContext.current
     val activity = context as? Activity
     val startConfig = ScreenConfig.from(LocalConfiguration.current)
@@ -71,6 +73,7 @@ fun LayoutEditorRoute(system: SystemId, onClose: () -> Unit) {
 
     LayoutEditor(
         system = system,
+        profile = profile,
         config = config,
         showMockGame = true,
         onClose = onClose,

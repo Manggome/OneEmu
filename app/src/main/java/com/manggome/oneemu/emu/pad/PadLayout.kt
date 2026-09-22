@@ -71,36 +71,46 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             else -> baseWidthDp
         }
 
-    /** Label as it appears on the button; PSP/PS2 use the PlayStation glyphs. */
-    fun label(system: SystemId): String = when (this) {
-        BUTTON_A -> if (system.isPlayStation) "○" else "A"
-        BUTTON_B -> if (system.isPlayStation) "×" else "B"
-        BUTTON_X -> if (system.isPlayStation) "△" else "X"
-        BUTTON_Y -> if (system.isPlayStation) "□" else "Y"
-        L -> if (system.isPlayStation) "L1" else "L"
-        R -> if (system.isPlayStation) "R1" else "R"
-        L2 -> "L2"
-        R2 -> if (system == SystemId.NDS) "터치" else "R2"
-        // melonDS DS reads these as its microphone and screen-layout controls.
-        L3 -> if (system == SystemId.NDS) "마이크" else "L3"
-        R3 -> if (system == SystemId.NDS) "화면" else "R3"
-        START -> "START"
-        SELECT -> "SELECT"
-        MENU -> "☰"
-        FAST_FORWARD -> "▶▶"
-        SPEED -> "1×" // replaced with the live speed while a game runs
-        TURBO -> "연사"
-        SAVE_STATE -> "저장"
-        LOAD_STATE -> "불러오기"
-        COIN -> "COIN"
-        ARCADE_1 -> "1"
-        ARCADE_2 -> "2"
-        ARCADE_3 -> "3"
-        ARCADE_4 -> "4"
-        ARCADE_5 -> "5"
-        ARCADE_6 -> "6"
-        DPAD, ABXY_CLUSTER, LEFT_STICK, RIGHT_STICK -> ""
+    /**
+     * Label as it appears on the button. PSP/PS2 use the PlayStation glyphs, and a Wii Remote its own:
+     * Dolphin wires the same retro pad to completely different Wii Remote and nunchuk buttons.
+     */
+    fun label(profile: PadProfile): String {
+        val system = profile.system
+        val wii = profile.isWiimote
+        return when (this) {
+            BUTTON_A -> if (system.isPlayStation) "○" else "A"
+            BUTTON_B -> if (system.isPlayStation) "×" else "B"
+            BUTTON_X -> if (wii) "C" else if (system.isPlayStation) "△" else "X"
+            BUTTON_Y -> if (wii) "Z" else if (system.isPlayStation) "□" else "Y"
+            L -> if (wii) "−" else if (system.isPlayStation) "L1" else "L"
+            R -> if (wii) "+" else if (system.isPlayStation) "R1" else "R"
+            L2 -> if (wii) "눈차크" else "L2"
+            R2 -> if (wii) "흔들기" else if (system == SystemId.NDS) "터치" else "R2"
+            // melonDS DS reads these as its microphone and screen-layout controls.
+            L3 -> if (system == SystemId.NDS) "마이크" else "L3"
+            R3 -> if (wii) "HOME" else if (system == SystemId.NDS) "화면" else "R3"
+            START -> if (wii) "1" else "START"
+            SELECT -> if (wii) "2" else "SELECT"
+            MENU -> "☰"
+            FAST_FORWARD -> "▶▶"
+            SPEED -> "1×" // replaced with the live speed while a game runs
+            TURBO -> "연사"
+            SAVE_STATE -> "저장"
+            LOAD_STATE -> "불러오기"
+            COIN -> "COIN"
+            ARCADE_1 -> "1"
+            ARCADE_2 -> "2"
+            ARCADE_3 -> "3"
+            ARCADE_4 -> "4"
+            ARCADE_5 -> "5"
+            ARCADE_6 -> "6"
+            DPAD, ABXY_CLUSTER, LEFT_STICK, RIGHT_STICK -> ""
+        }
     }
+
+    /** Convenience for the systems whose pad has a single legend. */
+    fun label(system: SystemId): String = label(PadProfile(system))
 
     /** Where the editor drops a control the current layout does not have yet (normalized, top-left origin). */
     val defaultSpot: Pair<Float, Float>
@@ -113,6 +123,22 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             LOAD_STATE -> 0.33f to 0.08f
             else -> 0.5f to 0.5f
         }
+
+    /** Korean name for the layout editor list, spelling out what the control does on [profile]. */
+    fun displayName(profile: PadProfile): String = if (!profile.isWiimote) displayName else when (this) {
+        BUTTON_X -> "C 버튼 (눈차크)"
+        BUTTON_Y -> "Z 버튼 (눈차크)"
+        L -> "− 버튼"
+        R -> "+ 버튼"
+        L2 -> "눈차크 흔들기"
+        R2 -> "위모컨 흔들기"
+        R3 -> "HOME 버튼"
+        START -> "1 버튼"
+        SELECT -> "2 버튼"
+        LEFT_STICK -> "눈차크 스틱"
+        RIGHT_STICK -> "위모컨 기울이기"
+        else -> displayName
+    }
 
     /** Korean name shown in the layout editor list. */
     val displayName: String
@@ -189,7 +215,7 @@ data class PadLayout(val elements: List<PadElement>) {
     }
 }
 
-/** Loads/saves per-(system, screen configuration) layouts through [Settings.Keys.layout]. */
+/** Loads/saves per-(pad profile, screen configuration) layouts through [Settings.Keys.layout]. */
 object PadLayoutStore {
     /** Preferences owned by the emulator package. */
     object Keys {
@@ -198,20 +224,24 @@ object PadLayoutStore {
 
     private val settings get() = OneEmuApp.get().settings
 
-    fun observe(system: SystemId, config: ScreenConfig): Flow<PadLayout> =
-        settings.observe(Settings.Keys.layout(system.id, config), "").map { resolve(system, config, it) }
+    fun observe(profile: PadProfile, config: ScreenConfig): Flow<PadLayout> =
+        settings.observe(Settings.Keys.layout(profile.key, config), "").map { resolve(profile, config, it) }
 
-    suspend fun load(system: SystemId, config: ScreenConfig): PadLayout =
-        resolve(system, config, settings.get(Settings.Keys.layout(system.id, config), ""))
+    suspend fun load(profile: PadProfile, config: ScreenConfig): PadLayout =
+        resolve(profile, config, settings.get(Settings.Keys.layout(profile.key, config), ""))
 
-    suspend fun save(system: SystemId, config: ScreenConfig, layout: PadLayout) =
-        settings.set(Settings.Keys.layout(system.id, config), layout.toJson())
+    suspend fun save(profile: PadProfile, config: ScreenConfig, layout: PadLayout) =
+        settings.set(Settings.Keys.layout(profile.key, config), layout.toJson())
 
-    suspend fun reset(system: SystemId, config: ScreenConfig) = settings.remove(Settings.Keys.layout(system.id, config))
+    suspend fun reset(profile: PadProfile, config: ScreenConfig) = settings.remove(Settings.Keys.layout(profile.key, config))
+
+    fun observe(system: SystemId, config: ScreenConfig): Flow<PadLayout> = observe(PadProfile(system), config)
+    suspend fun load(system: SystemId, config: ScreenConfig): PadLayout = load(PadProfile(system), config)
+    suspend fun save(system: SystemId, config: ScreenConfig, layout: PadLayout) = save(PadProfile(system), config, layout)
 
     /** Saved layout merged with the default so elements added in newer versions still show up. */
-    private fun resolve(system: SystemId, config: ScreenConfig, saved: String): PadLayout {
-        val def = DefaultLayouts.forSystem(system, config)
+    private fun resolve(profile: PadProfile, config: ScreenConfig, saved: String): PadLayout {
+        val def = DefaultLayouts.forProfile(profile, config)
         val stored = saved.takeIf { it.isNotBlank() }?.let { PadLayout.fromJson(it) } ?: return def
         val known = stored.elements.map { it.id }.toSet()
         return PadLayout(stored.elements + def.elements.filter { it.id !in known })

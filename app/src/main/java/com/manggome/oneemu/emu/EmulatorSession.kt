@@ -8,6 +8,9 @@ import com.manggome.oneemu.R
 import com.manggome.oneemu.core.CoreInfo
 import com.manggome.oneemu.data.db.GameEntity
 import com.manggome.oneemu.library.ArcadeRomCheck
+import com.manggome.oneemu.emu.input.WiiController
+import com.manggome.oneemu.emu.pad.PadProfile
+import com.manggome.oneemu.library.RomInfo
 import com.manggome.oneemu.library.ArcadeRomChecker
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.util.AppDirs
@@ -64,6 +67,13 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     /** 0..65535 rumble strength requested by the core (port 0). */
     val rumble: StateFlow<Int> get() = _rumble
 
+    /**
+     * Which on-screen pad this game wants. Usually the system's own, but a Dolphin disc is either a
+     * GameCube pad or a Wii Remote, and that is only known once the disc header has been read.
+     */
+    private val _padProfile = MutableStateFlow(PadProfile(system))
+    val padProfile: StateFlow<PadProfile> get() = _padProfile
+
     private val _geometry = MutableStateFlow(Geometry(0, 0, 0f))
     val geometry: StateFlow<Geometry> get() = _geometry
     data class Geometry(val width: Int, val height: Int, val aspect: Float)
@@ -98,6 +108,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
                 return@withContext false
             }
         }
+        resolveWiiController()
         NativeBridge.openSessionLog(CrashMarker.sessionLogFile(app).absolutePath)
         NativeBridge.sessionLogLine("session: game=\"${game.title}\" path=${game.path} system=${system.id} core=${core.id} app=${com.manggome.oneemu.BuildConfig.VERSION_NAME} device=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} android=${android.os.Build.VERSION.RELEASE}")
         val libPath = app.cores.libraryPath(core)
@@ -151,7 +162,8 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
             NativeBridge.unload()
             return@withContext false
         }
-        if (core.controllerDevice != 0) NativeBridge.setControllerPortDevice(0, core.controllerDevice)
+        val device = if (wiiDevice != 0) wiiDevice else core.controllerDevice
+        if (device != 0) NativeBridge.setControllerPortDevice(0, device)
         applyVideoSettings()
         startedAt = System.currentTimeMillis()
         _state.value = State.Paused
@@ -214,8 +226,27 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         return State.Error(message, detail, kind)
     }
 
+    /** libretro device for port 0 chosen by [WiiController]; 0 = leave the core's own default. */
+    private var wiiDevice = 0
+
+    /**
+     * GameCube disc or Wii disc, and therefore which controller and which on-screen pad. Dolphin starts a
+     * Wii title on a bare Wii Remote, so anything built around the nunchuk stops on "connect the Nunchuk"
+     * until the frontend says otherwise.
+     */
+    private suspend fun resolveWiiController() {
+        if (core.id != "dolphin") return
+        val platform = runCatching { RomInfo.discPlatform(File(game.path)) }.getOrDefault(RomInfo.DiscPlatform.UNKNOWN)
+        val choice = WiiController.fromKey(app.settings.get(com.manggome.oneemu.data.Settings.Keys.wiiController(game.id), ""))
+        wiiDevice = choice.deviceFor(platform)
+        _padProfile.value = choice.padProfile(platform)
+        Log.i("OneEmu", "dolphin: disc=$platform controller=${choice.key} device=$wiiDevice pad=${_padProfile.value.key}")
+    }
+
     private suspend fun buildOptionOverrides(hwApi: String): String {
         val merged = core.defaultOptions.toMutableMap()
+        // Options a specific game needs to behave; the user's own settings still sit on top of them.
+        merged.putAll(GameQuirks.optionsFor(core.id, game))
         // Cores that pick their backend through their own option must agree with the API the frontend offers;
         // the user's explicit override of that option still wins.
         val user = app.settings.coreOptionOverrides(core.id)

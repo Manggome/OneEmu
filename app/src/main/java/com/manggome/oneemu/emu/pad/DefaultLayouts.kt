@@ -18,12 +18,16 @@ object DefaultLayouts {
     /** Arrangements the layout editor can drop onto any system. */
     enum class Preset { DEFAULT, ARCADE }
 
-    fun forSystem(system: SystemId, config: ScreenConfig): PadLayout = forSystem(system, config, Preset.DEFAULT)
+    fun forSystem(system: SystemId, config: ScreenConfig): PadLayout = forProfile(PadProfile(system), config, Preset.DEFAULT)
 
-    fun forSystem(system: SystemId, config: ScreenConfig, preset: Preset): PadLayout {
+    fun forSystem(system: SystemId, config: ScreenConfig, preset: Preset): PadLayout = forProfile(PadProfile(system), config, preset)
+
+    fun forProfile(profile: PadProfile, config: ScreenConfig): PadLayout = forProfile(profile, config, Preset.DEFAULT)
+
+    fun forProfile(profile: PadProfile, config: ScreenConfig, preset: Preset): PadLayout {
         val base = when (preset) {
-            Preset.DEFAULT -> forSystem(system, config.landscape)
-            Preset.ARCADE -> arcadeStyle(system, config.landscape)
+            Preset.DEFAULT -> forProfile(profile, config.landscape)
+            Preset.ARCADE -> arcadeStyle(profile.system, config.landscape)
         }
         return if (config.wide) PadLayout(base.elements.map { it.copy(scale = it.scale * WIDE_SCALE) }) else base
     }
@@ -70,6 +74,10 @@ object DefaultLayouts {
     }
 
     /** Phone / folded default for one orientation. */
+    fun forProfile(profile: PadProfile, landscape: Boolean): PadLayout =
+        if (profile.isWiimote) wiimote(landscape) else forSystem(profile.system, landscape)
+
+    /** Phone / folded default for one orientation. */
     fun forSystem(system: SystemId, landscape: Boolean): PadLayout = when (system) {
         SystemId.NES, SystemId.GB, SystemId.GBC -> twoButton(landscape, shoulders = false)
         SystemId.GBA -> twoButton(landscape, shoulders = true)
@@ -94,6 +102,30 @@ object DefaultLayouts {
     }
 
     private fun e(id: PadElementId, x: Float, y: Float, scale: Float = 1f) = PadElement(id, x, y, scale)
+
+    /**
+     * Wii Remote + Nunchuk, the device Dolphin needs for a Wii disc. The ergonomics are a four-button pad's
+     * - a d-pad and a stick on the left, two big buttons and two small ones on the right - because that is
+     * what a phone screen can do; only the legend changes (X is C, Y is Z, L/R are minus/plus, START is 1,
+     * SELECT is 2, and the triggers shake the two halves). HOME is the one button a GameCube pad has no
+     * room for, so it is added here.
+     */
+    private fun wiimote(landscape: Boolean): PadLayout {
+        val base = fourButton(landscape, shoulders = true, leftStick = true, rightStick = false, triggers = true, lowPortrait = false)
+        if (landscape) return PadLayout(base.elements + e(R3, 0.50f, 0.80f, 0.85f))
+        // Portrait: a four-button pad drops SELECT/START to the very bottom edge to clear the stick, which on a
+        // phone puts them under the navigation bar. 1, 2 and HOME are menu buttons a Wii game needs, so they sit
+        // in a row of their own beside the stick instead.
+        return PadLayout(
+            base.elements.map {
+                when (it.id) {
+                    SELECT -> it.copy(x = 0.45f, y = 0.93f)
+                    START -> it.copy(x = 0.62f, y = 0.93f)
+                    else -> it
+                }
+            } + e(R3, 0.80f, 0.93f, 0.85f),
+        )
+    }
 
     /** The two stick clicks melonDS DS uses, next to the shoulders they sit beside on a real pad. */
     private fun withNdsExtras(base: PadLayout, landscape: Boolean): PadLayout = PadLayout(

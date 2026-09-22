@@ -54,6 +54,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.manggome.oneemu.R
 import com.manggome.oneemu.emu.menu.CheatEditor
+import com.manggome.oneemu.emu.pad.PadProfile
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.ui.Routes
 import com.manggome.oneemu.ui.common.GameThumbnail
@@ -171,6 +172,11 @@ fun GameDetailScreen(nav: NavHostController, gameId: Long, vm: LibraryViewModel 
             if (system == SystemId.ARCADE) {
                 Spacer(Modifier.height(16.dp))
                 ArcadeRomCard(g, onMessage = { cheatMessage = it })
+            }
+            // Dolphin runs both machines off one system entry, so a Wii disc picks its remote here.
+            if (system == SystemId.GC) {
+                Spacer(Modifier.height(16.dp))
+                WiiControllerCard(g, onEditWiiLayout = { nav.navigate(Routes.layoutEditor(PadProfile.WIIMOTE.key)) })
             }
             Spacer(Modifier.height(16.dp))
             Card(Modifier.fillMaxWidth()) {

@@ -25,7 +25,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.rememberTextMeasurer
 import com.manggome.oneemu.emu.EmulatorSession.Buttons
 import com.manggome.oneemu.emu.Haptics
-import com.manggome.oneemu.model.SystemId
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.hypot
@@ -43,7 +42,7 @@ data class PadInput(val mask: Int = 0, val lx: Int = 0, val ly: Int = 0, val rx:
 @Composable
 fun VirtualPad(
     layout: PadLayout,
-    system: SystemId,
+    profile: PadProfile,
     opacity: Float,
     globalScale: Float,
     hapticMs: Int,
@@ -220,7 +219,7 @@ fun VirtualPad(
                     (element.id == PadElementId.TURBO && turboActive)
                 val elements = if (lit) pressedElements + element.id else pressedElements
                 val labelOverride = if (element.id == PadElementId.SPEED) speedLabel else null
-                drawPadElement(element, rect, system, PadElementVisual(pressedMask, elements, stick, labelOverride = labelOverride), textMeasurer)
+                drawPadElement(element, rect, profile, PadElementVisual(pressedMask, elements, stick, labelOverride = labelOverride), textMeasurer)
             }
         }
     }

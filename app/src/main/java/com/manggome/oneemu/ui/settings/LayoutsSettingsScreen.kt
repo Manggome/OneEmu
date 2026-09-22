@@ -32,11 +32,11 @@ import androidx.compose.ui.unit.dp
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.Settings
-import com.manggome.oneemu.model.SystemId
+import com.manggome.oneemu.emu.pad.PadProfile
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun LayoutsSettingsScreen(onBack: () -> Unit, onEdit: (systemId: String) -> Unit, onSkins: (systemId: String) -> Unit = {}) {
+internal fun LayoutsSettingsScreen(onBack: () -> Unit, onEdit: (profileKey: String) -> Unit, onSkins: (systemId: String) -> Unit = {}) {
     val context = LocalContext.current
     val settings = OneEmuApp.get().settings
     val scope = rememberCoroutineScope()
@@ -44,18 +44,23 @@ internal fun LayoutsSettingsScreen(onBack: () -> Unit, onEdit: (systemId: String
 
     SettingsScaffold(title = stringResource(R.string.settings_layouts), onBack = onBack) {
         NoteText(stringResource(R.string.layouts_edit_hint))
-        SystemId.ordered.forEach { system ->
+        // One row per pad, not per system: Dolphin has two (the GameCube pad and the Wii Remote).
+        PadProfile.ordered.forEach { profile ->
+            val system = profile.system
             ListItem(
-                modifier = Modifier.fillMaxWidth().clickable { onEdit(system.id) },
-                headlineContent = { Text(system.displayName) },
-                supportingContent = { Text(system.shortName, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                modifier = Modifier.fillMaxWidth().clickable { onEdit(profile.key) },
+                headlineContent = { Text(profile.displayName) },
+                supportingContent = { Text(profile.shortName, color = MaterialTheme.colorScheme.onSurfaceVariant) },
                 leadingContent = { Box(Modifier.size(22.dp).background(system.color, CircleShape)) },
                 trailingContent = {
-                    // Pad skin picker lives in ui/skins; we only navigate there.
-                    TextButton(onClick = { onSkins(system.id) }) {
-                        Icon(Icons.Outlined.Brush, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.layouts_pad_skin))
+                    // Pad skin picker lives in ui/skins; we only navigate there. Skins are per system and
+                    // carry their own printed legend, so the Wii pad has none (see PadProfile.supportsSkins).
+                    if (profile.supportsSkins) {
+                        TextButton(onClick = { onSkins(system.id) }) {
+                            Icon(Icons.Outlined.Brush, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(stringResource(R.string.layouts_pad_skin))
+                        }
                     }
                 },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
@@ -79,10 +84,10 @@ internal fun LayoutsSettingsScreen(onBack: () -> Unit, onEdit: (systemId: String
             onConfirm = {
                 confirmReset = false
                 scope.launch {
-                    for (system in SystemId.entries) {
+                    for (profile in PadProfile.ordered) {
                         for (config in com.manggome.oneemu.emu.ScreenConfig.entries) {
-                            settings.remove(Settings.Keys.layout(system.id, config))
-                            settings.remove(androidx.datastore.preferences.core.stringPreferencesKey("viewport.${system.id}.${config.key}"))
+                            settings.remove(Settings.Keys.layout(profile.key, config))
+                            settings.remove(androidx.datastore.preferences.core.stringPreferencesKey("viewport.${profile.system.id}.${config.key}"))
                         }
                     }
                     Toast.makeText(context, R.string.layouts_reset_done, Toast.LENGTH_SHORT).show()
