@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.documentfile.provider.DocumentFile
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.emu.ScreenConfig
+import com.manggome.oneemu.emu.pad.PadProfile
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.util.AppDirs
 import kotlinx.coroutines.Dispatchers
@@ -187,10 +188,21 @@ object SkinStore {
         settings.observe(Keys.selected(systemId), "").map { it.ifBlank { SystemId.fromId(systemId)?.let(::defaultSkinId) ?: VECTOR } }
 
     /** Resolved selection; emits [SkinSelection.Vector] when the id is unknown (e.g. a deleted import). */
-    fun observeSelectedSkin(context: Context, system: SystemId): Flow<SkinSelection> =
-        combine(observeSelected(system.id), importedFlow) { id, _ -> id }.map { id ->
+    fun observeSelectedSkin(context: Context, profile: PadProfile): Flow<SkinSelection> =
+        combine(observeSelected(profile.key), importedFlow) { id, _ -> id }.map { id ->
             if (id == VECTOR) SkinSelection.Vector else find(context, id)?.let { SkinSelection.Skin(it) } ?: SkinSelection.Vector
         }
+
+    fun observeSelectedSkin(context: Context, system: SystemId): Flow<SkinSelection> =
+        observeSelectedSkin(context, PadProfile(system))
+
+    /**
+     * What a pad falls back to with nothing chosen. Only a plain system has a skin worth starting on:
+     * the Wii pad's buttons are the nunchuk's, which no GameCube overlay has printed on it, so it starts
+     * on the vector pad until someone picks a Wii skin.
+     */
+    fun defaultSkinId(profile: PadProfile): String =
+        if (profile.variant == PadProfile.Variant.STANDARD) defaultSkinId(profile.system) else VECTOR
 
     suspend fun select(systemId: String, skinId: String) = settings.set(Keys.selected(systemId), skinId)
 

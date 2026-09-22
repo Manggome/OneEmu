@@ -26,9 +26,9 @@ object Routes {
     const val GAME_CORE_OPTIONS = "settings/core/{coreId}/game/{gameId}"
     fun gameCoreOptions(coreId: String, gameId: Long) = "settings/core/$coreId/game/$gameId"
 
-    /** Pad skin picker for a system: settings/skins/{systemId} */
-    const val SKINS = "settings/skins/{systemId}"
-    fun skins(systemId: String) = "settings/skins/$systemId"
+    /** Pad skin picker for one pad: settings/skins/{profile}, a [PadProfile.key] (usually a system id). */
+    const val SKINS = "settings/skins/{profile}"
+    fun skins(profileKey: String) = "settings/skins/$profileKey"
 
     /** Button mapping for one controller: settings/gamepad/{deviceKey} */
     const val GAMEPAD_MAPPING = "settings/gamepad/{deviceKey}"

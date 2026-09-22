@@ -104,12 +104,11 @@ fun LayoutEditor(
     // An image skin selected for this system gets its own editor; the vector pad keeps the original one.
     val context = LocalContext.current
     val selection by produceState<SkinSelection>(SkinSelection.Loading, profile) {
-        if (!profile.supportsSkins) { value = SkinSelection.Vector; return@produceState }
-        SkinStore.observeSelectedSkin(context, system).collect { value = it }
+        SkinStore.observeSelectedSkin(context, profile).collect { value = it }
     }
     when (val sel = selection) {
         SkinSelection.Loading -> Box(modifier.fillMaxSize().background(if (showMockGame) OneEmuColors.Background else Color(0x66000000)))
-        is SkinSelection.Skin -> SkinEditor(system, config, sel.info, showMockGame, onClose, modifier, configSelector, onViewportPreview)
+        is SkinSelection.Skin -> SkinEditor(profile, config, sel.info, showMockGame, onClose, modifier, configSelector, onViewportPreview)
         SkinSelection.Vector -> VectorLayoutEditor(system, profile, config, showMockGame, onClose, modifier, configSelector, onViewportPreview)
     }
 }
