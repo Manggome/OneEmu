@@ -66,6 +66,13 @@
 
     <string name="lib_rename_title">이름 변경</string>
     <string name="lib_rename_label">게임 제목</string>
+    <string name="lib_rename_file">파일 이름도 같이 바꾸기</string>
+    <string name="lib_rename_file_note">세이브와 저장 상태도 새 이름으로 함께 옮깁니다. .cue/.m3u 는 목록 파일만 바뀌고 안에 적힌 파일은 그대로 둡니다.</string>
+    <string name="lib_msg_rename_file_done">파일 이름을 %1$s 로 바꿨습니다</string>
+    <string name="lib_msg_rename_file_invalid">파일 이름으로 쓸 수 없는 이름입니다</string>
+    <string name="lib_msg_rename_file_missing">파일을 찾지 못했습니다</string>
+    <string name="lib_msg_rename_file_exists">%1$s 이(가) 이미 있어서 바꾸지 않았습니다</string>
+    <string name="lib_msg_rename_file_failed">%1$s 로 바꾸지 못했습니다</string>
 
     <string name="lib_core_title">코어 선택</string>
     <string name="lib_core_default">기종 기본값</string>

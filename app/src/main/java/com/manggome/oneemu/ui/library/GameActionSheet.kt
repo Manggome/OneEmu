@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -137,7 +138,7 @@ fun GameActionSheet(
     }
 
     when (dialog) {
-        "rename" -> RenameDialog(game, onDismiss = { dialog = null }) { vm.rename(game, it) }
+        "rename" -> RenameDialog(game, onDismiss = { dialog = null }) { title, alsoFile -> vm.rename(game, title, alsoFile) }
         "core" -> CorePickerDialog(
             game, vm,
             onDismiss = { dialog = null },
@@ -234,22 +235,58 @@ private fun SheetItem(icon: ImageVector, label: String, tint: Color = MaterialTh
 }
 
 @Composable
-fun RenameDialog(game: GameEntity, onDismiss: () -> Unit, onRename: (String) -> Unit) {
+fun RenameDialog(game: GameEntity, onDismiss: () -> Unit, onRename: (title: String, alsoFile: Boolean) -> Unit) {
     var text by rememberSaveable(game.id) { mutableStateOf(game.title) }
+    var alsoFile by rememberSaveable(game.id) { mutableStateOf(false) }
+    val source = remember(game.path) { java.io.File(game.path) }
+    // What the file would end up called, so nobody has to guess what the box does.
+    val preview = remember(text) {
+        val base = com.manggome.oneemu.util.AppDirs.sanitize(text.trim()).trim().trim('.')
+        if (base.isEmpty()) "" else if (source.extension.isEmpty()) base else "$base.${source.extension}"
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.lib_rename_title)) },
         text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                label = { Text(stringResource(R.string.lib_rename_label)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(stringResource(R.string.lib_rename_label)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth().clickable { alsoFile = !alsoFile },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = alsoFile, onCheckedChange = { alsoFile = it })
+                    Spacer(Modifier.width(4.dp))
+                    Column {
+                        Text(stringResource(R.string.lib_rename_file), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            if (alsoFile && preview.isNotEmpty()) preview else source.name,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (alsoFile) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.lib_rename_file_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         },
         confirmButton = {
-            TextButton(enabled = text.isNotBlank(), onClick = { onRename(text); onDismiss() }) { Text(stringResource(R.string.save)) }
+            TextButton(
+                enabled = text.isNotBlank() && (!alsoFile || preview.isNotEmpty()),
+                onClick = { onRename(text, alsoFile); onDismiss() },
+            ) { Text(stringResource(R.string.save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )

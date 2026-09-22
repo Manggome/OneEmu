@@ -185,6 +185,13 @@ data class PadElement(
     val y: Float,
     val scale: Float = 1f,
     val visible: Boolean = true,
+    /**
+     * Sticks only: press the d-pad as well as moving the stick. Plenty of games never read the analog
+     * sticks at all - Tekken on PlayStation is a digital game - and on those the stick does nothing
+     * whatsoever until it also sends a direction. Off by default, because a game that reads both would
+     * then see the same input twice.
+     */
+    val dpadToo: Boolean = false,
 )
 
 @Serializable

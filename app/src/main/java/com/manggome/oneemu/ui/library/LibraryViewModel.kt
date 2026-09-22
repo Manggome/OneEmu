@@ -22,6 +22,7 @@ import com.manggome.oneemu.library.BoxArtCandidate
 import com.manggome.oneemu.library.BoxArtFetcher
 import com.manggome.oneemu.library.BoxArtKind
 import com.manggome.oneemu.library.RomFiles
+import com.manggome.oneemu.library.RomRename
 import com.manggome.oneemu.library.RomScanner
 import com.manggome.oneemu.emu.EmulatorSession
 import com.manggome.oneemu.model.SystemId
@@ -284,9 +285,25 @@ class LibraryViewModel : ViewModel() {
 
     fun toggleFavorite(game: GameEntity) = launchIo { db.games().setFavorite(game.id, !game.favorite) }
 
-    fun rename(game: GameEntity, title: String) = launchIo {
+    /**
+     * Renames the library entry, and with [alsoFile] the ROM on disk as well. The file rename carries the
+     * game's saves and save states across too, so it does not read as having lost them; a name the
+     * filesystem cannot take, or one already in use, is reported and nothing is touched.
+     */
+    fun rename(game: GameEntity, title: String, alsoFile: Boolean = false) = launchIo {
         val t = title.trim()
-        if (t.isNotEmpty()) db.games().setTitle(game.id, t)
+        if (t.isEmpty()) return@launchIo
+        if (!alsoFile) {
+            db.games().setTitle(game.id, t)
+            return@launchIo
+        }
+        when (val r = RomRename.apply(game, t, title = t)) {
+            is RomRename.Result.Done -> post(LibraryMessage(R.string.lib_msg_rename_file_done, listOf(r.file.name)))
+            RomRename.Result.InvalidName -> post(LibraryMessage(R.string.lib_msg_rename_file_invalid))
+            RomRename.Result.SourceMissing -> post(LibraryMessage(R.string.lib_msg_rename_file_missing))
+            is RomRename.Result.TargetExists -> post(LibraryMessage(R.string.lib_msg_rename_file_exists, listOf(r.target.name)))
+            is RomRename.Result.Failed -> post(LibraryMessage(R.string.lib_msg_rename_file_failed, listOf(r.target.name)))
+        }
     }
 
     fun setCore(game: GameEntity, coreId: String?) = launchIo { db.games().setCore(game.id, coreId) }
