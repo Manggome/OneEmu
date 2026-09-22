@@ -131,7 +131,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
             val layout by remember(padProfile, config) { PadLayoutStore.observe(padProfile, config) }
                 .collectAsState(initial = DefaultLayouts.forProfile(padProfile, config))
             // Game viewport for this (system, screen configuration): saved value or the top-anchored default.
-            val savedViewport by remember(session.system, config) { ViewportStore.observeSaved(session.system, config) }.collectAsState(initial = null)
+            val savedViewport by remember(padProfile, config) { ViewportStore.observeSaved(padProfile, config) }.collectAsState(initial = null)
             val viewport = savedViewport ?: ViewportStore.default(session.system, config, Size(surfaceSize.width.toFloat(), surfaceSize.height.toFloat()))
             // Applied on session start and whenever it changes; re-applied after the editor closes because the
             // editor previews its unsaved rectangle live on the paused frame.

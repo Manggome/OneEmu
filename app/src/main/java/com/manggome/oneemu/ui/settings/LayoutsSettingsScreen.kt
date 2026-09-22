@@ -87,7 +87,7 @@ internal fun LayoutsSettingsScreen(onBack: () -> Unit, onEdit: (profileKey: Stri
                     for (profile in PadProfile.ordered) {
                         for (config in com.manggome.oneemu.emu.ScreenConfig.entries) {
                             settings.remove(Settings.Keys.layout(profile.key, config))
-                            settings.remove(androidx.datastore.preferences.core.stringPreferencesKey("viewport.${profile.system.id}.${config.key}"))
+                            settings.remove(androidx.datastore.preferences.core.stringPreferencesKey("viewport.${profile.key}.${config.key}"))
                         }
                     }
                     Toast.makeText(context, R.string.layouts_reset_done, Toast.LENGTH_SHORT).show()
