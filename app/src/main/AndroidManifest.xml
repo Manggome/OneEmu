@@ -34,7 +34,7 @@
             android:name=".ui.MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode">
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|fontScale|layoutDirection|keyboardHidden|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -77,13 +77,16 @@
             </intent-filter>
         </activity>
 
+        <!-- A foldable changes smallestScreenSize (and often density) when it opens or closes. Left
+             undeclared, Android restarts the activity, and the running game would die with it: the
+             session hangs off this activity. Everything listed is read live by Compose and the renderer. -->
         <activity
             android:name=".emu.EmulatorActivity"
             android:exported="false"
             android:launchMode="singleTask"
             android:screenOrientation="sensor"
             android:theme="@style/Theme.OneEmu.Emulator"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode" />
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|fontScale|layoutDirection|keyboardHidden|keyboard|navigation|uiMode" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
