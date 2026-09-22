@@ -48,6 +48,7 @@ import com.manggome.oneemu.R
 import com.manggome.oneemu.data.db.GameEntity
 import com.manggome.oneemu.library.BoxArtCandidate
 import com.manggome.oneemu.library.BoxArtFetcher
+import com.manggome.oneemu.library.RomInfo
 import com.manggome.oneemu.library.BoxArtKind
 
 /**
@@ -70,18 +71,20 @@ internal fun BoxArtPickerScreen(gameId: Long, vm: LibraryViewModel, onBack: () -
     val scope = rememberCoroutineScope()
 
     /**
-     * Runs a search, and when the game's own title finds nothing, quietly tries the ROM's file name
-     * instead: a game renamed to Korean has a title the server cannot match, but its file usually
-     * still carries the English name. The box shows whatever was actually searched.
+     * Runs a search, and when what was asked for finds nothing, quietly tries the next name the game
+     * has: the English one in the dump's own header, then the ROM's file name. A Korean release has a
+     * title the server cannot match and often a file name to go with it, and the header is then the
+     * only English name there is. The box shows whatever was actually searched.
      */
-    fun search(text: String, fallback: String? = null) {
+    fun search(text: String, fallbacks: List<String> = emptyList()) {
         val g = game ?: return
         searching = true
         failed = false
         vm.searchBoxArt(g.system, text, regions) { found ->
-            if (found.isEmpty() && !fallback.isNullOrBlank() && fallback != text) {
-                query = fallback
-                search(fallback)
+            val next = fallbacks.firstOrNull { it.isNotBlank() && it != text }
+            if (found.isEmpty() && next != null) {
+                query = next
+                search(next, fallbacks.drop(fallbacks.indexOf(next) + 1))
                 return@searchBoxArt
             }
             results = found
@@ -95,9 +98,10 @@ internal fun BoxArtPickerScreen(gameId: Long, vm: LibraryViewModel, onBack: () -
         game = g
         val fileBase = File(g.path).name.substringBeforeLast('.')
         regions = BoxArtFetcher.regionsOf(g.title) + BoxArtFetcher.regionsOf(File(g.path).name)
-        val seed = BoxArtFetcher.searchSeed(g.title, File(g.path).name)
+        val header = runCatching { RomInfo.headerTitle(File(g.path), g.system) }.getOrNull()
+        val seed = BoxArtFetcher.searchSeed(g.title, File(g.path).name, header)
         query = seed
-        search(seed, fallback = fileBase)
+        search(seed, fallbacks = listOfNotNull(header?.takeIf { BoxArtFetcher.searchable(it) }, fileBase))
     }
 
     Scaffold(

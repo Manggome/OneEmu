@@ -49,7 +49,12 @@ class BoxArtFetcher(
         val title = searchName ?: game.title
         val fileName = File(game.path).name
         val fileBase = fileName.substringBeforeLast('.')
-        val keys = listOf(normalize(title), normalize(fileBase))
+        // A Korean release is filed under a Korean name both here and on disk, while the server knows
+        // only the English one - so the name the dump carries in its own header is what connects them.
+        // It goes through the listing lookup rather than the URL guesses below: header names are upper
+        // case ("SONIC THE HEDGEHOG 3") and the server is case-sensitive, but normalizing hides that.
+        val header = runCatching { RomInfo.headerTitle(File(game.path), game.system) }.getOrNull()
+        val keys = listOf(title, fileBase, header.orEmpty()).filter { searchable(it) }.map { normalize(it) }
         // A Korean dump should get the Korean cover, not the American one that happens to sort first.
         val preferred = regionsOf(title) + regionsOf(fileName)
 
@@ -297,9 +302,13 @@ class BoxArtFetcher(
          * title with nothing it could ever match — a Korean one, which normalizes to an empty
          * string — is dropped in favour of the ROM's file name, which is usually English.
          */
-        fun searchSeed(title: String, fileName: String): String {
+        fun searchSeed(title: String, fileName: String, headerTitle: String? = null): String {
             val fileBase = fileName.substringBeforeLast('.')
-            return if (normalize(title).isNotEmpty()) title else fileBase
+            if (searchable(title)) return title
+            // Both the title and the file name are Korean: the dump's own header is the only English
+            // name there is, and searching for it beats searching for something the server cannot hold.
+            headerTitle?.takeIf { searchable(it) }?.let { return it }
+            return fileBase
         }
 
         /**
@@ -323,6 +332,19 @@ class BoxArtFetcher(
          * Letters and digits only, with bracketed tags dropped: "Sonic the Hedgehog 3 (USA)" and
          * "Sonic The Hedgehog 3" both become "sonicthehedgehog3".
          */
+        /**
+         * Whether [name] is worth looking up. Normalizing throws away everything that is not a letter
+         * or a digit, so a Korean title with a number in it keeps only the number - "소닉 3" becomes "3",
+         * which would then match whatever the server happens to file under that. A key of digits alone
+         * is trusted only when the name really was all digits ("1942").
+         */
+        fun searchable(name: String): Boolean {
+            val key = normalize(name)
+            if (key.isEmpty()) return false
+            if (key.any { it in 'a'..'z' }) return true
+            return name.none { it.code > 0x7f }
+        }
+
         fun normalize(name: String): String = name.lowercase()
             .replace(Regex("[(\\[][^)\\]]*[)\\]]"), " ")
             .replace(Regex("[^a-z0-9]+"), "")
