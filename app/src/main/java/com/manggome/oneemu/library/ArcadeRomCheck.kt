@@ -514,20 +514,34 @@ object ArcadeRomCheck {
     ): Resolution {
         val shortName = zip.nameWithoutExtension.lowercase()
         val byId = dbs.toMap()
-        routeByName(dbs, shortName)?.let { rt ->
-            val db = byId.getValue(rt.coreId)
-            return Resolution(rt.coreId, check(db, zip, samplesDir(rt.coreId), sibling, chdSupported(rt.coreId)), rt.reason, rt.skippedCoreId)
-        }
-        val crcs = readEntries(zip).values.mapTo(HashSet()) { it.crc }
-        if (crcs.isNotEmpty()) {
+
+        /** The set these entry CRCs really are, checked under that name; null when nothing fits. */
+        fun identified(): Resolution? {
+            val crcs = readEntries(zip).values.mapTo(HashSet()) { it.crc }
+            if (crcs.isEmpty()) return null
             for ((_, db) in dbs) {
                 val name = db.identify(crcs)?.name ?: continue
+                if (name == shortName) continue
                 // The identified name may be rated better in another core: route it like a correctly named zip.
                 val rt = routeByName(dbs, name) ?: continue
                 val r = check(byId.getValue(rt.coreId), zip, samplesDir(rt.coreId), sibling, chdSupported(rt.coreId), asName = name)
                 return Resolution(rt.coreId, r.copy(shortName = shortName, status = Status.RENAME_SUGGESTED, suggestedName = name), rt.reason, rt.skippedCoreId)
             }
+            return null
         }
+
+        routeByName(dbs, shortName)?.let { rt ->
+            val db = byId.getValue(rt.coreId)
+            val report = check(db, zip, samplesDir(rt.coreId), sibling, chdSupported(rt.coreId))
+            if (report.missing.isEmpty()) return Resolution(rt.coreId, report, rt.reason, rt.skippedCoreId)
+            // The name is in the DAT but the contents are not that set's. A sibling revision saved under the
+            // plain name is the usual reason - kof98.zip holding the decrypted kof98n, say - and MAME then
+            // reports exactly the files the two revisions differ in. Only take the CRC answer when checking
+            // the zip under that name leaves nothing missing, so a genuinely incomplete set still says so.
+            identified()?.takeIf { it.report.missing.isEmpty() }?.let { return it }
+            return Resolution(rt.coreId, report, rt.reason, rt.skippedCoreId)
+        }
+        identified()?.let { return it }
         return Resolution(null, Report(shortName, Status.NOT_IN_DAT, null))
     }
 
