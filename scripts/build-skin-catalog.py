@@ -456,10 +456,13 @@ def systems_hint(family: str, stem: str) -> list[str]:
         return ["nds"]
     if has("psp") or "playstationportable" in joined:
         return ["psp"]
+    # A DualShock is the PlayStation pad, and PS1 and PS2 share it. It is not a GameCube controller and
+    # not a PSP, both of which have a shape of their own - offering it for those put a Sony pad on the
+    # wrong machine and left 플레이스테이션 itself with nothing but the universal skins.
     if has("psx", "ps1", "ps", "playstation", "dualshock", "dual") and "portable" not in joined:
-        return ["ps2", "psp", "gc"]
-    if has("gamecube"):
-        return ["ps2", "psp", "gc"]
+        return ["psx", "ps2"]
+    if has("gamecube", "wii") or "gamecube" in joined:
+        return ["gc"]
     if has("gba") or "gameboyadvance" in joined:
         return ["gba"]
     if has("gameboy", "gb", "gbc") or "gameboy" in joined:
@@ -474,8 +477,19 @@ def systems_hint(family: str, stem: str) -> list[str]:
         return []
     if has("arcade", "mame", "neogeo", "fbneo", "cps", "hbmame", "fighter") or "neogeo" in joined:
         return ["arcade"]
-    if has("genesis", "megadrive", "md", "sms", "32x", "saturn", "dreamcast", "gamegear", "mastersystem", "sega"):
-        return []
+    # Sega, one machine at a time: these were all dropped together, so 메가드라이브, 마스터 시스템 and
+    # 게임 기어 never saw a skin of their own. A "genesis and sms" overlay belongs to both.
+    sega = []
+    if "genesis" in joined or "megadrive" in joined or has("md"):
+        sega.append("md")
+    if has("sms") or "mastersystem" in joined or "markiii" in joined:
+        sega.append("sms")
+    if "gamegear" in joined:
+        sega.append("gg")
+    if sega:
+        return sega
+    if has("32x", "saturn", "dreamcast", "sega"):
+        return []  # Sega machines OneEmu has no core for
     if has("retropad", "quadpad", "rgpad", "flip", "phone", "720", "med", "one", "handed", "piixel", "basic", "opium", "box"):
         return ["*"]
     return []  # unknown console: not tied to a system, not universal either
