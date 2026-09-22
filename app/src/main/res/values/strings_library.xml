@@ -279,4 +279,10 @@
     <string name="lib_hidden_loading">불러오는 중…</string>
     <string name="lib_hidden_empty">숨긴 게임이 없습니다</string>
     <string name="lib_hidden_restore">되살리기</string>
+
+    <!-- Wii controller picker on the game detail screen (Dolphin discs only) -->
+    <string name="lib_wii_title">Wii 컨트롤러</string>
+    <string name="lib_wii_desc_wii">이 디스크는 Wii 게임입니다. 눈차크를 붙여 두면 \"눈차크를 연결하세요\" 안내 없이 바로 시작합니다.</string>
+    <string name="lib_wii_desc_unknown">디스크 종류를 읽지 못했습니다. Wii 게임이면 직접 골라 주세요.</string>
+    <string name="lib_wii_edit_layout">Wii 레이아웃 편집</string>
 </resources>

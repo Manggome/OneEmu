@@ -65,6 +65,7 @@ import com.manggome.oneemu.emu.pad.PadElementVisual
 import com.manggome.oneemu.emu.pad.PadLayout
 import com.manggome.oneemu.emu.pad.PadLayoutStore
 import com.manggome.oneemu.emu.pad.drawPadElement
+import com.manggome.oneemu.emu.pad.PadProfile
 import com.manggome.oneemu.emu.pad.rectOn
 import com.manggome.oneemu.emu.skin.SkinSelection
 import com.manggome.oneemu.emu.skin.SkinStore
@@ -96,16 +97,19 @@ fun LayoutEditor(
     modifier: Modifier = Modifier,
     configSelector: (@Composable () -> Unit)? = null,
     onViewportPreview: ((ViewportRect) -> Unit)? = null,
+    /** Which of [system]'s pads is being edited; only Dolphin has more than one (GameCube / Wii). */
+    profile: PadProfile = PadProfile(system),
 ) {
     // An image skin selected for this system gets its own editor; the vector pad keeps the original one.
     val context = LocalContext.current
-    val selection by produceState<SkinSelection>(SkinSelection.Loading, system) {
+    val selection by produceState<SkinSelection>(SkinSelection.Loading, profile) {
+        if (!profile.supportsSkins) { value = SkinSelection.Vector; return@produceState }
         SkinStore.observeSelectedSkin(context, system).collect { value = it }
     }
     when (val sel = selection) {
         SkinSelection.Loading -> Box(modifier.fillMaxSize().background(if (showMockGame) OneEmuColors.Background else Color(0x66000000)))
         is SkinSelection.Skin -> SkinEditor(system, config, sel.info, showMockGame, onClose, modifier, configSelector, onViewportPreview)
-        SkinSelection.Vector -> VectorLayoutEditor(system, config, showMockGame, onClose, modifier, configSelector, onViewportPreview)
+        SkinSelection.Vector -> VectorLayoutEditor(system, profile, config, showMockGame, onClose, modifier, configSelector, onViewportPreview)
     }
 }
 
@@ -115,6 +119,7 @@ private data class VectorEditState(val layout: PadLayout, val viewport: Viewport
 @Composable
 private fun VectorLayoutEditor(
     system: SystemId,
+    profile: PadProfile,
     config: ScreenConfig,
     showMockGame: Boolean,
     onClose: () -> Unit,
@@ -149,8 +154,8 @@ private fun VectorLayoutEditor(
     val chrome = rememberEditorChromeState()
     val drag = remember { EditorDragState() }
 
-    LaunchedEffect(system, config) {
-        layout = PadLayoutStore.load(system, config)
+    LaunchedEffect(profile, config) {
+        layout = PadLayoutStore.load(profile, config)
         savedViewport = ViewportStore.loadSaved(system, config)
         viewport = savedViewport
         opacity = settings.get(Settings.Keys.padOpacity, Settings.DEFAULT_PAD_OPACITY)
@@ -178,7 +183,7 @@ private fun VectorLayoutEditor(
         val l = layout ?: return
         val vp = currentViewport
         scope.launch {
-            PadLayoutStore.save(system, config, l)
+            PadLayoutStore.save(profile, config, l)
             ViewportStore.save(system, config, vp)
             settings.set(Settings.Keys.padOpacity, opacity)
             settings.set(PadLayoutStore.Keys.layoutSnapToGrid, snap)
@@ -343,7 +348,7 @@ private fun VectorLayoutEditor(
                     val rect = e.rectOn(canvasSize, density, globalScale)
                     val alpha = if (e.visible) opacity else 0.15f
                     drawContext.canvas.saveLayer(Rect(Offset.Zero, canvasSize), androidx.compose.ui.graphics.Paint().apply { this.alpha = alpha })
-                    drawPadElement(e, rect, system, PadElementVisual(selected = e.id in selection), textMeasurer)
+                    drawPadElement(e, rect, profile, PadElementVisual(selected = e.id in selection), textMeasurer)
                     drawContext.canvas.restore()
                 }
                 drawGuides(drag.guides, OneEmuColors.Accent, density)
@@ -452,7 +457,7 @@ private fun VectorLayoutEditor(
             } else if (sel != null) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
-                    Text(sel.id.displayName, style = MaterialTheme.typography.labelLarge, color = OneEmuColors.Accent, modifier = Modifier.weight(1f).padding(start = 4.dp))
+                    Text(sel.id.displayName(profile), style = MaterialTheme.typography.labelLarge, color = OneEmuColors.Accent, modifier = Modifier.weight(1f).padding(start = 4.dp))
                     Text(stringResource(R.string.le_visible), style = MaterialTheme.typography.bodyMedium)
                     Switch(
                         checked = sel.visible,
@@ -499,7 +504,7 @@ private fun VectorLayoutEditor(
                 fun applyPreset(preset: DefaultLayouts.Preset) {
                     val before = snapshot()
                     if (before != null) history.record(before)
-                    layout = DefaultLayouts.forSystem(system, config, preset)
+                    layout = DefaultLayouts.forProfile(profile, config, preset)
                     viewport = defaultViewport
                     dirty = true
                     selection = emptyList()
@@ -523,8 +528,8 @@ private fun VectorLayoutEditor(
                 // Every control the pad has, not just the ones this system's default layout happened to place:
                 // the core decides what a button does, so a system whose default shows two buttons (Jazz²) may
                 // still want X and Y. What is already in the layout comes first, the rest follows.
-                val defaults = DefaultLayouts.forSystem(system, config)
-                val ids = remember(l, defaults, system) {
+                val defaults = DefaultLayouts.forProfile(profile, config)
+                val ids = remember(l, defaults, profile) {
                     val arcadeOnly = setOf(
                         PadElementId.COIN, PadElementId.ARCADE_1, PadElementId.ARCADE_2, PadElementId.ARCADE_3,
                         PadElementId.ARCADE_4, PadElementId.ARCADE_5, PadElementId.ARCADE_6,
@@ -545,7 +550,7 @@ private fun VectorLayoutEditor(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Checkbox(checked = placed?.visible == true, onCheckedChange = ::toggle)
-                            Text(id.displayName, style = MaterialTheme.typography.bodyLarge)
+                            Text(id.displayName(profile), style = MaterialTheme.typography.bodyLarge)
                         }
                     }
                 }
@@ -556,7 +561,7 @@ private fun VectorLayoutEditor(
 
     if (showCopyFrom) {
         CopyLayoutDialog(
-            system = system,
+            profile = profile,
             config = config,
             onDismiss = { showCopyFrom = false },
             onPicked = { picked ->
@@ -590,7 +595,7 @@ private const val ELEMENT_SCALE_MAX = 1.8f
  */
 @Composable
 private fun CopyLayoutDialog(
-    system: SystemId,
+    profile: PadProfile,
     config: ScreenConfig,
     onDismiss: () -> Unit,
     onPicked: (PadLayout) -> Unit,
@@ -599,13 +604,13 @@ private fun CopyLayoutDialog(
 
     val scope = rememberCoroutineScope()
     val otherConfigs = ScreenConfig.entries.filter { it != config }
-    val otherSystems = remember(system) { SystemId.entries.filter { it != system } }
+    val otherProfiles = remember(profile) { PadProfile.ordered.filter { it != profile } }
     // stringResource cannot be called from inside buildList, so the labels are resolved first.
     val configLabels = otherConfigs.map { stringResource(it.labelRes) }
-    val sources = remember(system, config, configLabels) {
+    val sources = remember(profile, config, configLabels) {
         buildList {
-            otherConfigs.forEachIndexed { i, c -> add(Source(configLabels[i]) { PadLayoutStore.load(system, c) }) }
-            for (s in otherSystems) add(Source(s.displayName) { PadLayoutStore.load(s, config) })
+            otherConfigs.forEachIndexed { i, c -> add(Source(configLabels[i]) { PadLayoutStore.load(profile, c) }) }
+            for (s in otherProfiles) add(Source(s.displayName) { PadLayoutStore.load(s, config) })
         }
     }
 

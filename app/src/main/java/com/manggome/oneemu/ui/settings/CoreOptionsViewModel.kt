@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.core.CoreInfo
+import com.manggome.oneemu.emu.GameQuirks
 import com.manggome.oneemu.emu.NativeBridge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,6 +54,8 @@ class CoreOptionsViewModel(private val coreId: String, private val gameId: Long 
             val baseline: Map<String, String>,
             /** True while editing one game rather than the core. */
             val perGame: Boolean,
+            /** Explains the options this one game gets by default; null when it has none. */
+            val quirkNote: String? = null,
         ) : State
     }
 
@@ -76,7 +79,10 @@ class CoreOptionsViewModel(private val coreId: String, private val gameId: Long 
         val libPath = app.cores.libraryPath(core)
         if (!libPath.exists()) return State.Error("core library missing: ${libPath.name}")
         val coreOverrides = app.settings.coreOptionOverrides(core.id)
-        val baseline = core.defaultOptions + coreOverrides
+        // Options a specific game needs (GameQuirks) are part of what its rows fall back to, so the screen
+        // shows them as the value in force and the user can still override any of them.
+        val quirk = if (perGame) app.db.games().get(gameId)?.let { GameQuirks.forGame(core.id, it) } else null
+        val baseline = core.defaultOptions + coreOverrides + quirk?.options.orEmpty()
         val overrides = if (perGame) app.settings.gameOptionOverrides(gameId) else coreOverrides
         val merged = baseline.toMutableMap().apply { putAll(overrides) }
         val blob = merged.entries.joinToString("\n") { "${it.key}=${it.value}" }
@@ -87,7 +93,7 @@ class CoreOptionsViewModel(private val coreId: String, private val gameId: Long 
                 return State.Error(NativeBridge.lastError())
             }
             val options = parseOptions(NativeBridge.getOptions())
-            return State.Ready(core, options, overrides, baseline, perGame)
+            return State.Ready(core, options, overrides, baseline, perGame, quirk?.note)
         } catch (t: Throwable) {
             Log.e(TAG, "option probe failed", t)
             return State.Error(t.message ?: t.javaClass.simpleName)

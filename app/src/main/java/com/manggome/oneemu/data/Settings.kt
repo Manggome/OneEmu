@@ -61,6 +61,8 @@ class Settings(private val context: Context) {
         fun coreOptions(coreId: String) = stringPreferencesKey("coreopts.$coreId")
         /** Options set for one game only; they sit on top of that game's core-wide options. */
         fun gameOptions(gameId: Long) = stringPreferencesKey("gameopts.$gameId")
+        /** Which controller Dolphin gives one Wii game; unset or "auto" = [WiiController.AUTO]. */
+        fun wiiController(gameId: Long) = stringPreferencesKey("wiicontroller.$gameId")
         /** Per-core graphics API override: "vulkan" or "gles3"; unset = core.json hwRender. */
         fun graphicsApi(coreId: String) = stringPreferencesKey("gfxapi.$coreId")
         fun coreForSystem(systemId: String) = stringPreferencesKey("core.$systemId")

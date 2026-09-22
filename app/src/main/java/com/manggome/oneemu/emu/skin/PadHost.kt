@@ -12,17 +12,17 @@ import com.manggome.oneemu.emu.pad.PadInput
 import com.manggome.oneemu.emu.pad.PadElementId
 import com.manggome.oneemu.emu.pad.PadLayout
 import com.manggome.oneemu.emu.pad.VirtualPad
-import com.manggome.oneemu.model.SystemId
+import com.manggome.oneemu.emu.pad.PadProfile
 
 /**
  * Drop-in replacement for the `VirtualPad(...)` call in EmulatorScreen: observes the skin selected for
- * [system] and renders either the image [SkinPad] or the vector [VirtualPad] with the same callbacks.
- * An empty [layout] (the "gamepad connected" case) hides both.
+ * [profile]'s system and renders either the image [SkinPad] or the vector [VirtualPad] with the same
+ * callbacks. An empty [layout] (the "gamepad connected" case) hides both.
  */
 @Composable
 fun PadHost(
     layout: PadLayout,
-    system: SystemId,
+    profile: PadProfile,
     opacity: Float,
     globalScale: Float,
     hapticMs: Int,
@@ -44,7 +44,10 @@ fun PadHost(
     val context = LocalContext.current
     val config = rememberScreenConfig()
     val landscape = config.landscape
-    val selection by produceState<SkinSelection>(SkinSelection.Loading, system) {
+    // Skins are per system: a GameCube skin covers the Wii pad too, only the legend differs.
+    val system = profile.system
+    val selection by produceState<SkinSelection>(SkinSelection.Loading, profile) {
+        if (!profile.supportsSkins) { value = SkinSelection.Vector; return@produceState }
         SkinStore.observeSelectedSkin(context, system).collect { value = it }
     }
     val hidden = layout.elements.isEmpty()
@@ -52,7 +55,7 @@ fun PadHost(
     when (val sel = selection) {
         SkinSelection.Loading -> {}
         SkinSelection.Vector -> VirtualPad(
-            layout, system, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive,
+            layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive,
             onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier,
             turboActive, onTurbo, onSaveState, onLoadState,
         )
@@ -67,7 +70,7 @@ fun PadHost(
             val skin = result.getOrNull()
             if (skin == null || skin.cfg(landscape).isEmpty) {
                 // Broken import: fall back to the vector pad rather than leaving the user without controls.
-                VirtualPad(layout, system, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier, turboActive, onTurbo, onSaveState, onLoadState)
+                VirtualPad(layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier, turboActive, onTurbo, onSaveState, onLoadState)
             } else if (!hidden) {
                 SkinPad(
                     skin = skin, layout = skinLayout, system = system, landscape = landscape,
@@ -77,10 +80,10 @@ fun PadHost(
                     modifier = modifier,
                 )
                 // After SkinPad so it sits on top: the skin's pointer handler consumes every touch below it.
-                ExtraOverlay(layout, system, opacity, globalScale, hapticMs, haptics, speedLabel, onSpeedCycle, turboActive, onTurbo, onSaveState, onLoadState, modifier)
+                ExtraOverlay(layout, profile, opacity, globalScale, hapticMs, haptics, speedLabel, onSpeedCycle, turboActive, onTurbo, onSaveState, onLoadState, modifier)
             } else if (gameRect != null) {
                 // Pad hidden (physical gamepad) but the touch screen must still work.
-                VirtualPad(layout, system, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier, turboActive, onTurbo, onSaveState, onLoadState)
+                VirtualPad(layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier, turboActive, onTurbo, onSaveState, onLoadState)
             }
         }
     }
@@ -94,7 +97,7 @@ fun PadHost(
 @Composable
 private fun ExtraOverlay(
     layout: PadLayout,
-    system: SystemId,
+    profile: PadProfile,
     opacity: Float,
     globalScale: Float,
     hapticMs: Int,
@@ -112,7 +115,7 @@ private fun ExtraOverlay(
     if (extras.isEmpty()) return
     VirtualPad(
         layout = PadLayout(extras),
-        system = system,
+        profile = profile,
         opacity = opacity,
         globalScale = globalScale,
         hapticMs = hapticMs,

@@ -58,6 +58,7 @@ import com.manggome.oneemu.emu.menu.SlotPickerSheet
 import com.manggome.oneemu.emu.pad.DefaultLayouts
 import com.manggome.oneemu.emu.pad.PadLayout
 import com.manggome.oneemu.emu.pad.PadLayoutStore
+import com.manggome.oneemu.emu.pad.PadProfile
 import com.manggome.oneemu.emu.skin.PadHost
 import com.manggome.oneemu.emu.pad.computeGameRect
 import com.manggome.oneemu.ui.layout.LayoutEditor
@@ -125,8 +126,10 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
         if (session != null) {
             val state by session.state.collectAsState()
             val geometry by session.geometry.collectAsState()
-            val layout by remember(session.system, config) { PadLayoutStore.observe(session.system, config) }
-                .collectAsState(initial = DefaultLayouts.forSystem(session.system, config))
+            // A Dolphin disc settles on the GameCube pad or the Wii Remote once its header has been read.
+            val padProfile by session.padProfile.collectAsState()
+            val layout by remember(padProfile, config) { PadLayoutStore.observe(padProfile, config) }
+                .collectAsState(initial = DefaultLayouts.forProfile(padProfile, config))
             // Game viewport for this (system, screen configuration): saved value or the top-anchored default.
             val savedViewport by remember(session.system, config) { ViewportStore.observeSaved(session.system, config) }.collectAsState(initial = null)
             val viewport = savedViewport ?: ViewportStore.default(session.system, config, Size(surfaceSize.width.toFloat(), surfaceSize.height.toFloat()))
@@ -135,13 +138,15 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
             LaunchedEffect(session, viewport, editorOpen, surfaceSize) {
                 if (!editorOpen && surfaceSize != IntSize.Zero) NativeBridge.setViewport(viewport.x, viewport.y, viewport.w, viewport.h)
             }
-            val gameRect = if (session.system.hasTouchScreen) computeGameRect(surfaceSize, geometry, aspectMode, viewport = viewport) else null
+            // Touch on the game image is the DS stylus, and on a Wii Remote it is where the remote points.
+            val pointerOnScreen = session.system.hasTouchScreen || padProfile.isWiimote
+            val gameRect = if (pointerOnScreen) computeGameRect(surfaceSize, geometry, aspectMode, viewport = viewport) else null
             val hidePad = hideWithGamepad && ui.gamepadConnected
 
             if (!editorOpen) {
                 PadHost(
                     layout = if (hidePad) PadLayout(emptyList()) else layout,
-                    system = session.system,
+                    profile = padProfile,
                     opacity = padOpacity,
                     globalScale = padScale,
                     hapticMs = if (vibration) vibrationMs else -1,
@@ -251,6 +256,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
             if (editorOpen) {
                 LayoutEditor(
                     system = session.system,
+                    profile = padProfile,
                     config = config,
                     showMockGame = false,
                     onClose = { editorOpen = false },

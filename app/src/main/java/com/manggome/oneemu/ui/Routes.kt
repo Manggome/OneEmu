@@ -37,9 +37,9 @@ object Routes {
     /** Theme picker */
     const val SETTINGS_THEME = "settings/theme"
 
-    /** Virtual pad layout editor: layout/{systemId} */
-    const val LAYOUT_EDITOR = "layout/{systemId}"
-    fun layoutEditor(systemId: String) = "layout/$systemId"
+    /** Virtual pad layout editor: layout/{profile}, where profile is a [PadProfile.key] (usually a system id). */
+    const val LAYOUT_EDITOR = "layout/{profile}"
+    fun layoutEditor(profileKey: String) = "layout/$profileKey"
 
     /** Box art picker for one game: boxart/{gameId} */
     const val BOXART = "boxart/{gameId}"

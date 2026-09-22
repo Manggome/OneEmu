@@ -15,7 +15,6 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.manggome.oneemu.emu.EmulatorSession.Buttons
-import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.ui.theme.OneEmuColors
 
 /** Colours shared by the live pad and the layout editor. */
@@ -43,18 +42,18 @@ data class PadElementVisual(
 fun DrawScope.drawPadElement(
     element: PadElement,
     rect: Rect,
-    system: SystemId,
+    profile: PadProfile,
     visual: PadElementVisual,
     textMeasurer: TextMeasurer,
 ) {
     val id = element.id
     val strokeW = (rect.width * 0.035f).coerceIn(1.5f, 4f)
     val pressed = id in visual.pressedElements || (id.mask != 0 && visual.pressedMask and id.mask == id.mask)
-    val label = visual.labelOverride ?: id.label(system)
+    val label = visual.labelOverride ?: id.label(profile)
     when (id.kind) {
         PadElementId.Kind.DPAD -> drawDpad(rect, visual.pressedMask, strokeW)
         PadElementId.Kind.ROUND -> drawRound(rect, label, pressed, strokeW, textMeasurer)
-        PadElementId.Kind.CLUSTER -> drawCluster(rect, system, visual.pressedMask, strokeW, textMeasurer)
+        PadElementId.Kind.CLUSTER -> drawCluster(rect, profile, visual.pressedMask, strokeW, textMeasurer)
         PadElementId.Kind.PILL -> drawPill(rect, label, pressed, strokeW, textMeasurer, 12.sp.toPx())
         PadElementId.Kind.STICK -> drawStick(rect, visual.stickOffset, pressed, strokeW)
         PadElementId.Kind.SMALL -> drawPill(rect, label, pressed, strokeW, textMeasurer, 13.sp.toPx())
@@ -161,9 +160,9 @@ fun clusterButtonRects(rect: Rect): Map<PadElementId, Rect> {
     )
 }
 
-private fun DrawScope.drawCluster(rect: Rect, system: SystemId, mask: Int, strokeW: Float, textMeasurer: TextMeasurer) {
+private fun DrawScope.drawCluster(rect: Rect, profile: PadProfile, mask: Int, strokeW: Float, textMeasurer: TextMeasurer) {
     for ((id, r) in clusterButtonRects(rect)) {
-        drawRound(r, id.label(system), mask and id.mask != 0, strokeW, textMeasurer)
+        drawRound(r, id.label(profile), mask and id.mask != 0, strokeW, textMeasurer)
     }
 }
 

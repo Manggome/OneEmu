@@ -69,6 +69,7 @@ import com.manggome.oneemu.R
 import com.manggome.oneemu.emu.pad.DefaultLayouts
 import com.manggome.oneemu.emu.pad.PadElementVisual
 import com.manggome.oneemu.emu.pad.drawPadElement
+import com.manggome.oneemu.emu.pad.PadProfile
 import com.manggome.oneemu.emu.pad.rectOn
 import com.manggome.oneemu.emu.skin.LoadedSkin
 import com.manggome.oneemu.emu.skin.SkinInfo
@@ -382,7 +383,7 @@ private fun VectorPreview(system: SystemId, landscape: Boolean, modifier: Modifi
             val previewDensity = minOf(size.width, size.height) / shortDp
             for (e in layout.elements) {
                 if (!e.visible) continue
-                drawPadElement(e, e.rectOn(size, previewDensity, 1f), system, PadElementVisual(), textMeasurer)
+                drawPadElement(e, e.rectOn(size, previewDensity, 1f), PadProfile(system), PadElementVisual(), textMeasurer)
             }
         }
     }
