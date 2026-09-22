@@ -480,6 +480,25 @@ private fun VectorLayoutEditor(
                     )
                     Text("${(sel.scale * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
                 }
+                // A stick that also presses the d-pad. Plenty of games never read the analog sticks -
+                // Tekken on PlayStation is one - and there the stick does nothing until it does this.
+                if (sel.id.kind == PadElementId.Kind.STICK) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.le_stick_dpad), style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                stringResource(R.string.le_stick_dpad_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OneEmuColors.OnSurfaceMuted,
+                            )
+                        }
+                        Switch(
+                            checked = sel.dpadToo,
+                            onCheckedChange = { v -> edit { l -> l.update(sel.id) { it.copy(dpadToo = v) } } },
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.le_opacity), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp))

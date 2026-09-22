@@ -128,6 +128,8 @@
     <string name="le_cancel">취소</string>
     <string name="le_opacity">투명도</string>
     <string name="le_scale">크기</string>
+    <string name="le_stick_dpad">방향키도 함께 입력</string>
+    <string name="le_stick_dpad_desc">아날로그를 읽지 않는 게임(철권 등)에서 스틱을 쓰려면 켜세요</string>
     <string name="le_visible">표시</string>
     <string name="le_elements">요소 표시/숨기기</string>
     <string name="le_snap">격자에 맞추기</string>
