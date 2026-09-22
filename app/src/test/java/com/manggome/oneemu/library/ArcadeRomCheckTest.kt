@@ -60,6 +60,44 @@ class ArcadeRomCheckTest {
         return f
     }
 
+    /**
+     * A zip whose name is in the DAT but whose contents are a sibling revision. Real case: kof98.zip holding
+     * the decrypted kof98n set, where MAME reports exactly the two files the revisions differ in
+     * (yz98-p1.160, 242-m1a.bin) and every other file checks out.
+     */
+    @Test fun nameIsKnownButTheContentsAreAnotherRevision() {
+        val encP1 = "ENC-P1".toByteArray()
+        val decP1 = "DEC-P1".toByteArray()
+        val shared = "SHARED-C1".toByteArray()
+        val revDb = ArcadeRomCheck.Db.parse(
+            (listOf(
+                listOf("revgame", "Rev Game", "", "", "", "", "0", "0", "1",
+                    listOf(rom("enc-p1.bin", encP1), rom("shared-c1.bin", shared)).joinToString(";")),
+                listOf("revgamen", "Rev Game (decrypted)", "revgame", "revgame", "", "", "0", "0", "1",
+                    listOf(rom("dec-p1.bin", decP1), rom("shared-c1.bin", shared, "=")).joinToString(";")),
+            ).joinToString("\n") { it.joinToString("\t") } + "\n").byteInputStream(),
+        )
+        val dbs = listOf("mame2003plus" to revDb)
+        val dir = tmp.newFolder("rev")
+
+        // The decrypted set saved under the parent's name: the rename is what makes it run.
+        val r = ArcadeRomCheck.resolve(dbs, zip(dir, "revgame", "dec-p1.bin" to decP1, "shared-c1.bin" to shared))
+        assertEquals(Status.RENAME_SUGGESTED, r.status)
+        assertEquals("revgamen", r.report.suggestedName)
+        assertEquals("revgame", r.report.shortName)
+        assertTrue(r.report.missing.isEmpty())
+
+        // A correctly named set still checks as itself, without being second-guessed.
+        val ok = ArcadeRomCheck.resolve(dbs, zip(dir, "revgame2", "enc-p1.bin" to encP1, "shared-c1.bin" to shared))
+        assertEquals(Status.RENAME_SUGGESTED, ok.status) // unknown name → identified as revgame
+        assertEquals("revgame", ok.report.suggestedName)
+
+        // Genuinely incomplete: no other set fits, so it keeps saying what is missing rather than inventing a rename.
+        val short = ArcadeRomCheck.resolve(dbs, zip(dir, "revgame", "shared-c1.bin" to shared))
+        assertEquals(Status.MISSING_FILES, short.status)
+        assertEquals(listOf("enc-p1.bin"), short.report.missing.map { it.name })
+    }
+
     @Test fun parsesGamesAndRomFlags() {
         assertEquals(6, db.size)
         val clone = db["clone"]!!
