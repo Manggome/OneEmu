@@ -92,7 +92,10 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SkinPickerScreen(system: SystemId, onBack: () -> Unit, onEdit: () -> Unit) {
+fun SkinPickerScreen(profile: PadProfile, onBack: () -> Unit, onEdit: () -> Unit) {
+    // Previews and "which skin suits this" are about the console; the choice itself is stored per pad,
+    // so the Wii Remote can wear a Wii skin while the GameCube pad keeps its own.
+    val system = profile.system
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -100,7 +103,7 @@ fun SkinPickerScreen(system: SystemId, onBack: () -> Unit, onEdit: () -> Unit) {
     val bundled by produceState<List<SkinInfo>>(emptyList()) { value = SkinStore.bundled(context) }
     val imported by SkinStore.imported().collectAsState()
     LaunchedEffect(Unit) { SkinStore.refreshImported(context) }
-    val selectedId by SkinStore.observeSelected(system.id).collectAsState(initial = null)
+    val selectedId by SkinStore.observeSelected(profile.key).collectAsState(initial = null)
 
     var importDialog by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
@@ -117,7 +120,7 @@ fun SkinPickerScreen(system: SystemId, onBack: () -> Unit, onEdit: () -> Unit) {
             importing = false
             val info = result.getOrNull()
             if (info != null) {
-                SkinStore.select(system.id, info.id)
+                SkinStore.select(profile.key, info.id)
                 snackbar.showSnackbar(importedMsg.replace("%1\$s", info.name))
             } else {
                 snackbar.showSnackbar(failedMsg)
@@ -134,7 +137,7 @@ fun SkinPickerScreen(system: SystemId, onBack: () -> Unit, onEdit: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.skins_title_for, system.shortName)) },
+                title = { Text(stringResource(R.string.skins_title_for, profile.shortName)) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) } },
             )
         },
@@ -162,14 +165,14 @@ fun SkinPickerScreen(system: SystemId, onBack: () -> Unit, onEdit: () -> Unit) {
             }
             if (tab == 1) {
                 OnlineSkinsTab(
-                    system = system,
+                    profile = profile,
                     selectedId = selectedId,
                     imported = imported.orEmpty(),
                     onDelete = { deleteTarget = it },
                     onInstalled = { id -> scope.launch { snackbar.showSnackbar(onlineDoneMsg.replace("%1\$s", id)) } },
                     contentPadding = PaddingValues(0.dp),
                 )
-            } else MySkinsList(bundled, imported, system, selectedId, scope, onEdit, onDeleteRequest = { deleteTarget = it })
+            } else MySkinsList(bundled, imported, profile, selectedId, scope, onEdit, onDeleteRequest = { deleteTarget = it })
         }
     }
 
@@ -195,7 +198,7 @@ fun SkinPickerScreen(system: SystemId, onBack: () -> Unit, onEdit: () -> Unit) {
             text = stringResource(R.string.skins_delete_confirm, target.name),
             onConfirm = {
                 scope.launch {
-                    if (selectedId == target.id) SkinStore.select(system.id, SkinStore.defaultSkinId(system))
+                    if (selectedId == target.id) SkinStore.select(profile.key, SkinStore.defaultSkinId(profile))
                     SkinStore.delete(context, target)
                 }
             },
@@ -211,30 +214,33 @@ fun SkinPickerScreen(system: SystemId, onBack: () -> Unit, onEdit: () -> Unit) {
 private fun MySkinsList(
     bundled: List<SkinInfo>,
     imported: List<SkinInfo>?,
-    system: SystemId,
+    profile: PadProfile,
     selectedId: String?,
     scope: kotlinx.coroutines.CoroutineScope,
     onEdit: () -> Unit,
     onDeleteRequest: (SkinInfo) -> Unit,
 ) {
-    val recommended = bundled.filter { it.suits(system) }
+    val system = profile.system
+    // Every skin that ships with the app is a console pad. None of them is a Wii Remote, so the Wii pad
+    // has nothing to recommend - its skins come from 온라인 - and they fall under 다른 기종용 instead.
+    val recommended = if (profile.variant == PadProfile.Variant.STANDARD) bundled.filter { it.suits(system) } else emptyList()
     val universal = bundled.filter { it.neutral }
-    val other = bundled.filter { !it.suits(system) && !it.neutral }
+    val other = bundled.filter { it !in recommended && !it.neutral }
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item(key = "vector") {
-            VectorCard(system, selected = selectedId == SkinStore.VECTOR, onSelect = { scope.launch { SkinStore.select(system.id, SkinStore.VECTOR) } }, onEdit = onEdit)
+            VectorCard(profile, selected = selectedId == SkinStore.VECTOR, onSelect = { scope.launch { SkinStore.select(profile.key, SkinStore.VECTOR) } }, onEdit = onEdit)
         }
         if (recommended.isNotEmpty()) {
             item(key = "h-rec") { SectionHeader(stringResource(R.string.skins_section_recommended)) }
-            items(recommended, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, null) }
+            items(recommended, key = { it.id }) { SkinCardRow(it, profile, selectedId, scope, onEdit, null) }
         }
         if (universal.isNotEmpty()) {
             item(key = "h-uni") { SectionHeader(stringResource(R.string.skins_section_universal)) }
-            items(universal, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, null) }
+            items(universal, key = { it.id }) { SkinCardRow(it, profile, selectedId, scope, onEdit, null) }
         }
         item(key = "h-imp") { SectionHeader(stringResource(R.string.skins_section_imported)) }
         val imp = imported.orEmpty()
@@ -243,11 +249,11 @@ private fun MySkinsList(
                 Text(stringResource(R.string.skins_no_imported), style = MaterialTheme.typography.bodyMedium, color = OneEmuColors.OnSurfaceMuted, modifier = Modifier.padding(horizontal = 4.dp))
             }
         } else {
-            items(imp, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, onDelete = { onDeleteRequest(it) }) }
+            items(imp, key = { it.id }) { SkinCardRow(it, profile, selectedId, scope, onEdit, onDelete = { onDeleteRequest(it) }) }
         }
         if (other.isNotEmpty()) {
             item(key = "h-other") { SectionHeader(stringResource(R.string.skins_section_other)) }
-            items(other, key = { it.id }) { SkinCardRow(it, system, selectedId, scope, onEdit, null) }
+            items(other, key = { it.id }) { SkinCardRow(it, profile, selectedId, scope, onEdit, null) }
         }
         item(key = "footer") {
             Text(
@@ -267,18 +273,19 @@ private fun SectionHeader(text: String) {
 @Composable
 private fun SkinCardRow(
     info: SkinInfo,
-    system: SystemId,
+    profile: PadProfile,
     selectedId: String?,
     scope: kotlinx.coroutines.CoroutineScope,
     onEdit: () -> Unit,
     onDelete: ((SkinInfo) -> Unit)?,
 ) {
+    val system = profile.system
     val context = LocalContext.current
     val loaded by produceState<LoadedSkin?>(null, info.id) { value = runCatching { SkinLoader.load(context, info) }.getOrNull() }
     val selected = selectedId == info.id
     SkinCard(
         selected = selected,
-        onSelect = { scope.launch { SkinStore.select(system.id, info.id) } },
+        onSelect = { scope.launch { SkinStore.select(profile.key, info.id) } },
         previews = {
             SkinPreview(loaded, landscape = false, system, Modifier.size(width = 44.dp, height = 92.dp))
             Spacer(Modifier.width(8.dp))
@@ -295,14 +302,14 @@ private fun SkinCardRow(
 }
 
 @Composable
-private fun VectorCard(system: SystemId, selected: Boolean, onSelect: () -> Unit, onEdit: () -> Unit) {
+private fun VectorCard(profile: PadProfile, selected: Boolean, onSelect: () -> Unit, onEdit: () -> Unit) {
     SkinCard(
         selected = selected,
         onSelect = onSelect,
         previews = {
-            VectorPreview(system, landscape = false, Modifier.size(width = 44.dp, height = 92.dp))
+            VectorPreview(profile, landscape = false, Modifier.size(width = 44.dp, height = 92.dp))
             Spacer(Modifier.width(8.dp))
-            VectorPreview(system, landscape = true, Modifier.size(width = 92.dp, height = 44.dp))
+            VectorPreview(profile, landscape = true, Modifier.size(width = 92.dp, height = 44.dp))
         },
         title = stringResource(R.string.skins_vector_name),
         subtitle = stringResource(R.string.skins_vector_desc),
@@ -371,19 +378,19 @@ fun SkinPreview(skin: LoadedSkin?, landscape: Boolean, system: SystemId, modifie
 
 /** Thumbnail of the default vector layout, drawn with the same code as the live pad at preview density. */
 @Composable
-private fun VectorPreview(system: SystemId, landscape: Boolean, modifier: Modifier) {
+private fun VectorPreview(profile: PadProfile, landscape: Boolean, modifier: Modifier) {
     val config = LocalConfiguration.current
     val shortDp = minOf(config.screenWidthDp, config.screenHeightDp).coerceAtLeast(320)
     val textMeasurer = rememberTextMeasurer()
     val shape = RoundedCornerShape(6.dp)
-    val layout = remember(system, landscape) { DefaultLayouts.forSystem(system, landscape) }
+    val layout = remember(profile, landscape) { DefaultLayouts.forProfile(profile, landscape) }
     Box(modifier.clip(shape).background(Color(0xFF151515)).border(1.dp, OneEmuColors.Divider, shape)) {
         Canvas(Modifier.fillMaxSize()) {
             drawMockGame(landscape)
             val previewDensity = minOf(size.width, size.height) / shortDp
             for (e in layout.elements) {
                 if (!e.visible) continue
-                drawPadElement(e, e.rectOn(size, previewDensity, 1f), PadProfile(system), PadElementVisual(), textMeasurer)
+                drawPadElement(e, e.rectOn(size, previewDensity, 1f), profile, PadElementVisual(), textMeasurer)
             }
         }
     }

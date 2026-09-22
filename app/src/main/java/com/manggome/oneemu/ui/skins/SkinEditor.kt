@@ -61,6 +61,7 @@ import com.manggome.oneemu.emu.skin.DescAction
 import com.manggome.oneemu.emu.skin.LoadedSkin
 import com.manggome.oneemu.emu.skin.Overlay
 import com.manggome.oneemu.emu.skin.PlacedDesc
+import com.manggome.oneemu.emu.pad.PadProfile
 import com.manggome.oneemu.emu.skin.SkinInfo
 import com.manggome.oneemu.emu.pad.DefaultLayouts
 import com.manggome.oneemu.emu.pad.PadElementId
@@ -114,7 +115,7 @@ private data class SkinEditState(val layout: SkinLayout, val viewport: ViewportR
  */
 @Composable
 fun SkinEditor(
-    system: SystemId,
+    profile: PadProfile,
     config: ScreenConfig,
     skinInfo: SkinInfo,
     showMockGame: Boolean,
@@ -123,6 +124,7 @@ fun SkinEditor(
     configSelector: (@Composable () -> Unit)? = null,
     onViewportPreview: ((ViewportRect) -> Unit)? = null,
 ) {
+    val system = profile.system
     val context = LocalContext.current
     val settings = remember { OneEmuApp.get().settings }
     val scope = rememberCoroutineScope()
@@ -135,7 +137,7 @@ fun SkinEditor(
 
     val loaded by produceState<Result<LoadedSkin>?>(null, skinInfo.id) { value = runCatching { SkinLoader.load(context, skinInfo) } }
     // The 배속 button lives in the vector layout even while a skin is active (PadHost draws it on top).
-    val padLayout by remember(system, config) { PadLayoutStore.observe(system, config) }.collectAsState(initial = null)
+    val padLayout by remember(system, config) { PadLayoutStore.observe(profile, config) }.collectAsState(initial = null)
     // Controls a RetroArch overlay has no concept of; PadHost draws them over the skin.
     val overlayExtras = listOf(
         PadElementId.SPEED, PadElementId.TURBO, PadElementId.SAVE_STATE, PadElementId.LOAD_STATE,
@@ -156,8 +158,8 @@ fun SkinEditor(
     val drag = remember { EditorDragState() }
 
     LaunchedEffect(skinInfo.id, system, config) {
-        layout = SkinStore.loadLayout(skinInfo.id, system.id, config)
-        viewport = ViewportStore.loadSaved(system, config)
+        layout = SkinStore.loadLayout(skinInfo.id, profile.key, config)
+        viewport = ViewportStore.loadSaved(profile, config)
         opacity = settings.get(Settings.Keys.padOpacity, Settings.DEFAULT_PAD_OPACITY)
         globalScale = settings.get(Settings.Keys.padScale, Settings.DEFAULT_PAD_SCALE)
         keepAspect = settings.get(ViewportPrefs.keepAspect, true)
@@ -180,8 +182,8 @@ fun SkinEditor(
         val l = layout ?: return
         val vp = currentViewport
         scope.launch {
-            SkinStore.saveLayout(skinInfo.id, system.id, config, l)
-            ViewportStore.save(system, config, vp)
+            SkinStore.saveLayout(skinInfo.id, profile.key, config, l)
+            ViewportStore.save(profile, config, vp)
             settings.set(Settings.Keys.padOpacity, opacity)
             settings.set(ViewportPrefs.keepAspect, keepAspect)
             Toast.makeText(context, R.string.se_saved, Toast.LENGTH_SHORT).show()
@@ -522,7 +524,7 @@ fun SkinEditor(
                             val cur = padLayout ?: PadLayout(emptyList())
                             val next = if (cur[id]?.visible == true) cur.update(id) { it.copy(visible = false) }
                             else cur.withElement(id, id.defaultSpot.first, id.defaultSpot.second)
-                            scope.launch { PadLayoutStore.save(system, config, next) }
+                            scope.launch { PadLayoutStore.save(profile, config, next) }
                         },
                         label = { Text(id.displayName) },
                     )
@@ -539,7 +541,7 @@ fun SkinEditor(
                 TextButton(onClick = {
                     scope.launch {
                         PadLayoutStore.save(system, config, DefaultLayouts.forSystem(system, config, DefaultLayouts.Preset.ARCADE))
-                        SkinStore.select(system.id, SkinStore.VECTOR)
+                        SkinStore.select(profile.key, SkinStore.VECTOR)
                     }
                 }) { Text(stringResource(R.string.le_preset_arcade), maxLines = 1) }
             }

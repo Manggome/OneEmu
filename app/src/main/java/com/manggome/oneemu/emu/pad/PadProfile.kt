@@ -27,13 +27,6 @@ data class PadProfile(val system: SystemId, val variant: Variant = Variant.STAND
 
     val isWiimote: Boolean get() = variant == Variant.WIIMOTE
 
-    /**
-     * Image skins are chosen per system, and a RetroArch overlay has its button names printed on it. A
-     * GameCube overlay in front of a Wii Remote would therefore label the nunchuk's C button "X", so the
-     * Wii pad is drawn with the vector pad, which reads its legend from [PadElementId.label].
-     */
-    val supportsSkins: Boolean get() = variant == Variant.STANDARD
-
     companion object {
         /** The Wii Remote + Nunchuk pad Dolphin offers for Wii discs. */
         val WIIMOTE = PadProfile(SystemId.GC, Variant.WIIMOTE)

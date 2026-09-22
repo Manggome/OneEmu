@@ -461,7 +461,12 @@ def systems_hint(family: str, stem: str) -> list[str]:
     # wrong machine and left 플레이스테이션 itself with nothing but the universal skins.
     if has("psx", "ps1", "ps", "playstation", "dualshock", "dual") and "portable" not in joined:
         return ["psx", "ps2"]
-    if has("gamecube", "wii") or "gamecube" in joined:
+    # OneEmu draws two pads for Dolphin, and a "Nintendo - Wii" overlay is a Wii Remote: 1, 2, C, Z and
+    # a nunchuk variant, none of which a GameCube controller has. It belongs to the Wii pad (PadProfile
+    # key "gc-wii"), which keeps its own skin, and would be unusable on the GameCube one.
+    if has("wii") and "wiiu" not in joined:
+        return ["gc-wii"]
+    if has("gamecube", "wiiu") or "gamecube" in joined:
         return ["gc"]
     if has("gba") or "gameboyadvance" in joined:
         return ["gba"]

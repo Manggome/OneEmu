@@ -70,6 +70,7 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.manggome.oneemu.R
 import com.manggome.oneemu.emu.skin.CatalogSkin
+import com.manggome.oneemu.emu.pad.PadProfile
 import com.manggome.oneemu.emu.skin.SkinCatalogManager
 import com.manggome.oneemu.emu.skin.SkinCatalogState
 import com.manggome.oneemu.emu.skin.SkinDownloadState
@@ -81,9 +82,9 @@ import com.manggome.oneemu.ui.theme.OneEmuColors
 import kotlinx.coroutines.launch
 
 /** Family filter chips of the online tab. [matches] decides membership from the catalog entry. */
-private enum class SkinFilter(val label: Int, val matches: (CatalogSkin, SystemId) -> Boolean) {
+private enum class SkinFilter(val label: Int, val matches: (CatalogSkin, PadProfile) -> Boolean) {
     ALL(R.string.skins_online_filter_all, { _, _ -> true }),
-    FOR_SYSTEM(R.string.skins_online_filter_system, { s, sys -> s.suits(sys.id) }),
+    FOR_SYSTEM(R.string.skins_online_filter_system, { s, pad -> s.suits(pad.key) }),
     UNIVERSAL(R.string.skins_online_filter_universal, { s, _ -> s.universal }),
     FLAT(R.string.skins_online_filter_flat, { s, _ -> s.family == "flat" || s.family == "named" }),
     NEO(R.string.skins_online_filter_neo, { s, _ -> s.family.startsWith("neo") || s.family == "piixel" || s.family == "rgpad" }),
@@ -99,7 +100,7 @@ private enum class SkinFilter(val label: Int, val matches: (CatalogSkin, SystemI
  */
 @Composable
 fun OnlineSkinsTab(
-    system: SystemId,
+    profile: PadProfile,
     selectedId: String?,
     imported: List<SkinInfo>,
     onDelete: (SkinInfo) -> Unit,
@@ -148,7 +149,7 @@ fun OnlineSkinsTab(
                 FilterChip(
                     selected = filter == f,
                     onClick = { filter = f },
-                    label = { Text(if (f == SkinFilter.FOR_SYSTEM) stringResource(f.label, system.shortName) else stringResource(f.label)) },
+                    label = { Text(if (f == SkinFilter.FOR_SYSTEM) stringResource(f.label, profile.shortName) else stringResource(f.label)) },
                 )
             }
         }
@@ -170,10 +171,10 @@ fun OnlineSkinsTab(
             is SkinCatalogState.Loaded -> {
                 val q = query.trim().lowercase()
                 val installedIds = remember(imported) { imported.map { it.id }.toSet() }
-                val list = remember(s, q, filter, system) {
+                val list = remember(s, q, filter, profile) {
                     s.catalog.skins.filter { sk ->
-                        filter.matches(sk, system) && (q.isEmpty() || listOf(sk.name, sk.family, sk.id, sk.author).any { it.lowercase().contains(q) })
-                    }.sortedWith(compareBy<CatalogSkin>({ !it.suits(system.id) }, { !it.universal }, { it.family }, { it.name }))
+                        filter.matches(sk, profile) && (q.isEmpty() || listOf(sk.name, sk.family, sk.id, sk.author).any { it.lowercase().contains(q) })
+                    }.sortedWith(compareBy<CatalogSkin>({ !it.suits(profile.key) }, { !it.universal }, { it.family }, { it.name }))
                 }
                 if (list.isEmpty()) {
                     CenterMessage { Text(stringResource(R.string.skins_online_empty), color = OneEmuColors.OnSurfaceMuted) }
@@ -194,7 +195,7 @@ fun OnlineSkinsTab(
                                 installed = installedInfo,
                                 selected = selectedId == skin.installedId,
                                 onDownload = { SkinCatalogManager.download(context, skin) },
-                                onSelect = { scope.launch { SkinStore.select(system.id, skin.installedId) } },
+                                onSelect = { scope.launch { SkinStore.select(profile.key, skin.installedId) } },
                                 onDelete = { installedInfo?.let(onDelete) },
                             )
                         }

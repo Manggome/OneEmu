@@ -44,11 +44,9 @@ fun PadHost(
     val context = LocalContext.current
     val config = rememberScreenConfig()
     val landscape = config.landscape
-    // Skins are per system: a GameCube skin covers the Wii pad too, only the legend differs.
     val system = profile.system
     val selection by produceState<SkinSelection>(SkinSelection.Loading, profile) {
-        if (!profile.supportsSkins) { value = SkinSelection.Vector; return@produceState }
-        SkinStore.observeSelectedSkin(context, system).collect { value = it }
+        SkinStore.observeSelectedSkin(context, profile).collect { value = it }
     }
     val hidden = layout.elements.isEmpty()
 
@@ -64,7 +62,7 @@ fun PadHost(
                 value = runCatching { SkinLoader.load(context, sel.info) }
             }
             val skinLayout by produceState(SkinLayout.EMPTY, sel.info.id, config) {
-                SkinStore.observeLayout(sel.info.id, system.id, config).collect { value = it }
+                SkinStore.observeLayout(sel.info.id, profile.key, config).collect { value = it }
             }
             val result = loaded ?: return
             val skin = result.getOrNull()

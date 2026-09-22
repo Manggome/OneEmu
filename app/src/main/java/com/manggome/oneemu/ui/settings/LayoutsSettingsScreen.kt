@@ -53,14 +53,12 @@ internal fun LayoutsSettingsScreen(onBack: () -> Unit, onEdit: (profileKey: Stri
                 supportingContent = { Text(profile.shortName, color = MaterialTheme.colorScheme.onSurfaceVariant) },
                 leadingContent = { Box(Modifier.size(22.dp).background(system.color, CircleShape)) },
                 trailingContent = {
-                    // Pad skin picker lives in ui/skins; we only navigate there. Skins are per system and
-                    // carry their own printed legend, so the Wii pad has none (see PadProfile.supportsSkins).
-                    if (profile.supportsSkins) {
-                        TextButton(onClick = { onSkins(system.id) }) {
-                            Icon(Icons.Outlined.Brush, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.layouts_pad_skin))
-                        }
+                    // Pad skin picker lives in ui/skins; we only navigate there. Each pad has its own
+                    // selection, so the Wii pad can wear a Wii Remote skin without touching GameCube's.
+                    TextButton(onClick = { onSkins(profile.key) }) {
+                        Icon(Icons.Outlined.Brush, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.layouts_pad_skin))
                     }
                 },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),

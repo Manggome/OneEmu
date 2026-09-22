@@ -36,7 +36,11 @@ data class CatalogSkin(
     val family: String = "",
     val author: String = "",
     val license: String = "CC BY 4.0",
-    /** System ids this skin suits; `"*"` = universal, empty = a console without a core (SNES, N64 …). */
+    /**
+     * Pads this skin suits, as [PadProfile.key] - a plain system id for almost every one, and "gc-wii"
+     * for a Wii Remote overlay, which is a different pad from the GameCube controller on the same core.
+     * `"*"` = universal, empty = a console without a core (SNES, N64 …).
+     */
     val systems: List<String> = emptyList(),
     val source: String = "",
     val previewPortrait: String = "",
