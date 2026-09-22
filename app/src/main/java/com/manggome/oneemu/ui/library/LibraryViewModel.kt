@@ -430,6 +430,55 @@ class LibraryViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Renames every game to the release the thumbnail server files it under and fills in any missing
+     * box art on the way.
+     *
+     * The server's names are the No-Intro / Redump ones, so the official English title comes free with
+     * the picture: one listing answers both, and a Korean dump that was only ever a file name in the
+     * library ends up reading the way the box does. Games the server does not know keep their title.
+     */
+    fun applyEnglishTitles() {
+        if (boxArtJob?.isActive == true) return
+        boxArtJob = viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val games = db.games().allOnce().filter { !it.hidden && BoxArtFetcher.isSupported(it) }
+                if (games.isEmpty()) {
+                    post(LibraryMessage(R.string.lib_msg_boxart_nothing_to_do))
+                    return@withContext
+                }
+                var renamed = 0
+                var found = 0
+                _boxArtProgress.value = BoxArtProgress(running = true, total = games.size)
+                try {
+                    games.forEachIndexed { i, game ->
+                        val candidate = runCatching { boxArt.locate(game) }.getOrNull()
+                        if (candidate != null) {
+                            // Only games without a picture pay for a download; the rename is free either way.
+                            if (game.thumbnail == null) {
+                                val file = runCatching { boxArt.fetchChosen(game, candidate, BoxArtKind.BOXART) }.getOrNull()
+                                if (file != null) {
+                                    deleteOwnedThumbnail(game)
+                                    db.games().setThumbnail(game.id, file.absolutePath)
+                                    found++
+                                }
+                            }
+                            val title = BoxArtFetcher.releaseTitle(candidate.name)
+                            if (title.isNotBlank() && title != game.title) {
+                                db.games().setTitle(game.id, title)
+                                renamed++
+                            }
+                        }
+                        _boxArtProgress.value = BoxArtProgress(true, i + 1, games.size, found)
+                    }
+                    post(LibraryMessage(R.string.lib_msg_titles_done, listOf(renamed, found, games.size)))
+                } finally {
+                    _boxArtProgress.value = BoxArtProgress()
+                }
+            }
+        }
+    }
+
     suspend fun game(id: Long): GameEntity? = withContext(Dispatchers.IO) { db.games().get(id) }
 
     /** What the server has for [query], for the picker to show. */

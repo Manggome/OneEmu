@@ -39,10 +39,11 @@ class BoxArtFetcher(
     private val client: OkHttpClient = UpdateChecker.defaultClient(),
 ) {
     /**
-     * Downloads the box art for [game] and returns the file it was written to, or null when the
-     * server has no picture under any of the names we can guess.
+     * The release the server files [game] under, without downloading anything. The name is a
+     * No-Intro / Redump one ("Sonic the Hedgehog 3 (USA)"), so it doubles as the game's official
+     * English title; [releaseTitle] strips the tags off it.
      */
-    suspend fun fetch(game: GameEntity, searchName: String? = null): File? = withContext(Dispatchers.IO) {
+    suspend fun locate(game: GameEntity, searchName: String? = null): BoxArtCandidate? = withContext(Dispatchers.IO) {
         val system = SystemId.fromId(game.system) ?: return@withContext null
         val folders = FOLDERS[system] ?: return@withContext null
         val title = searchName ?: game.title
@@ -57,17 +58,15 @@ class BoxArtFetcher(
         for (folder in folders) {
             val listing = lookupByFolder[folder] ?: continue
             val hit = keys.firstNotNullOfOrNull { listing[it] }?.let { best(it, preferred) } ?: continue
-            download(fileUrl(folder, hit))?.let { return@withContext write(game, it) }
+            return@withContext BoxArtCandidate(folder, hit)
         }
 
         // Cheap pass: the obvious spellings, which hit for most well-named files.
         for (folder in folders) {
             if (lookupByFolder[folder] != null) continue
-            for (name in candidates(title, File(game.path).name)) {
+            for (name in candidates(title, fileName)) {
                 coroutineContext.ensureActive()
-                val url = fileUrl(folder, sanitize(name))
-                if (!exists(url)) continue
-                download(url)?.let { return@withContext write(game, it) }
+                if (exists(fileUrl(folder, sanitize(name)))) return@withContext BoxArtCandidate(folder, sanitize(name))
             }
         }
 
@@ -77,10 +76,17 @@ class BoxArtFetcher(
             coroutineContext.ensureActive()
             val listing = lookup(folder) ?: continue
             val hit = keys.firstNotNullOfOrNull { listing[it] }?.let { best(it, preferred) } ?: continue
-            download(fileUrl(folder, hit))?.let { return@withContext write(game, it) }
+            return@withContext BoxArtCandidate(folder, hit)
         }
         null
     }
+
+    /**
+     * Downloads the box art for [game] and returns the file it was written to, or null when the
+     * server has no picture under any of the names we can guess.
+     */
+    suspend fun fetch(game: GameEntity, searchName: String? = null): File? =
+        locate(game, searchName)?.let { fetchChosen(game, it, BoxArtKind.BOXART) }
 
     /**
      * Every release the server has for one folder, read from its directory listing and cached on
@@ -295,6 +301,14 @@ class BoxArtFetcher(
             val fileBase = fileName.substringBeforeLast('.')
             return if (normalize(title).isNotEmpty()) title else fileBase
         }
+
+        /**
+         * A release name without its bracketed tags: "Sonic the Hedgehog 3 (USA)" -> "Sonic the Hedgehog 3".
+         * Unlike [RomInfo.cleanTitle] this never touches dots, which belong to plenty of real titles
+         * ("Super Mario Bros. 3").
+         */
+        fun releaseTitle(name: String): String =
+            name.replace(Regex("\\s*[(\\[][^)\\]]*[)\\]]"), "").replace(Regex("\\s+"), " ").trim().ifEmpty { name }
 
         /** RetroArch's own rule for turning a release name into a file name. */
         fun sanitize(name: String): String = name.replace(Regex("[&*/:`\"<>?\\\\|]"), "_")

@@ -115,4 +115,15 @@ class BoxArtFetcherTest {
         assertEquals("Ratchet _ Clank", BoxArtFetcher.sanitize("Ratchet & Clank"))
         assertEquals("Spy vs. Spy_ The Island Caper", BoxArtFetcher.sanitize("Spy vs. Spy: The Island Caper"))
     }
+
+    @Test
+    fun `a release name becomes the title the box shows`() {
+        assertEquals("Sonic the Hedgehog 3", BoxArtFetcher.releaseTitle("Sonic the Hedgehog 3 (USA)"))
+        assertEquals("Pokemon HeartGold Version", BoxArtFetcher.releaseTitle("Pokemon HeartGold Version (Korea) [Rev 1]"))
+        // Dots belong to real titles; RomInfo.cleanTitle would cut this one short.
+        assertEquals("Super Mario Bros. 3", BoxArtFetcher.releaseTitle("Super Mario Bros. 3 (USA) (Rev 1)"))
+        // Nothing to strip, and a name that is only a tag is left alone rather than emptied.
+        assertEquals("Tetris", BoxArtFetcher.releaseTitle("Tetris"))
+        assertEquals("(USA)", BoxArtFetcher.releaseTitle("(USA)"))
+    }
 }
