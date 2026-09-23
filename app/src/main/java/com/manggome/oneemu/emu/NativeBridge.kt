@@ -74,6 +74,10 @@ object NativeBridge {
     external fun setFastForward(speed: Int)
 
     /** Autofire: [mask] buttons are released for half of every [framesPerCycle]-frame cycle. */
+    /** Keep about [seconds] of history for 되감기 (0 = off). */
+    external fun setRewind(seconds: Int)
+    /** While true the game plays backwards through that history. */
+    external fun setRewinding(on: Boolean)
     external fun setTurbo(mask: Int, framesPerCycle: Int)
     /** aspect: 0 core, 1 stretch, 2 integer, 3 square pixels. rotation: extra quarter turns (0..3) on top
      *  of what the core asked for, counter-clockwise. */

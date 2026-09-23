@@ -59,6 +59,7 @@ import com.manggome.oneemu.emu.pad.DefaultLayouts
 import com.manggome.oneemu.emu.pad.PadLayout
 import com.manggome.oneemu.emu.pad.PadLayoutStore
 import com.manggome.oneemu.emu.pad.PadProfile
+import com.manggome.oneemu.emu.pad.PadActions
 import com.manggome.oneemu.emu.skin.PadHost
 import com.manggome.oneemu.emu.pad.computeGameRect
 import com.manggome.oneemu.ui.layout.LayoutEditor
@@ -166,12 +167,18 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     onPointer = { x, y, pressed -> session.setPointer(x, y, pressed) },
                     onMenu = { ui.menuOpen = true },
                     onFastForward = host::setFastForward,
-                    speedLabel = if (!ui.fastForward) "1×" else if (ffSpeed <= 0) "∞" else "${ffSpeed}×",
-                    onSpeedCycle = host::cycleSpeed,
-                    turboActive = ui.turbo,
-                    onTurbo = host::toggleTurbo,
-                    onSaveState = { sheet = Sheet.SAVE },
-                    onLoadState = { sheet = Sheet.LOAD },
+                    actions = PadActions(
+                        speedLabel = if (!ui.fastForward) "1×" else if (ffSpeed <= 0) "∞" else "${ffSpeed}×",
+                        onSpeedCycle = host::cycleSpeed,
+                        turboActive = ui.turbo,
+                        onTurbo = host::toggleTurbo,
+                        onSaveState = { sheet = Sheet.SAVE },
+                        onLoadState = { sheet = Sheet.LOAD },
+                        onQuickSave = host::quickSave,
+                        onQuickLoad = host::quickLoad,
+                        onRewind = host::setRewinding,
+                        rewinding = ui.rewinding,
+                    ),
                 )
             }
 

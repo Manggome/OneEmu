@@ -3,6 +3,7 @@
 #include "crash_handler.h"
 #include <EGL/egl.h>
 #include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
@@ -495,6 +496,11 @@ void Frontend::unload() {
             hwContextReady_ = false;
             core_.retro_unload_game();
             gameLoaded_ = false;
+            rewindRing_.clear();
+            rewindRing_.shrink_to_fit();
+            rewindCount_ = rewindHead_ = 0;
+            rewindConfiguredSeconds_ = -1;
+            rewinding_ = false;
         }
         audio_.stop();
         if (core_.loaded()) {
@@ -613,7 +619,9 @@ void Frontend::runFrame() {
     if (hwRender_ && !vulkan) video_.waitPresentFence();
     frames_++;
     advanceTurbo();
-    core_.retro_run();
+    const bool runCore = rewindBeforeRun();
+    if (runCore) core_.retro_run();
+    rewindAfterRun();
     if (hwRender_ && !vulkan) { video_.logGlErrors("retro_run (core context)"); video_.fenceCoreFrame(); }
 
     // Present at most 60ish frames/sec while fast forwarding to keep the GPU free.
@@ -695,8 +703,70 @@ void Frontend::audioSample(int16_t l, int16_t r) {
 }
 
 size_t Frontend::audioSampleBatch(const int16_t* data, size_t frames) {
-    audio_.write(data, frames);
+    if (!rewindMuted_) audio_.write(data, frames);
     return frames;
+}
+
+// ---------------------------------------------------------------- rewind
+// A ring of save states taken every few frames. Holding 되감기 steps back through them, one every
+// [rewindPopEvery_] frames, running the core once on each so the screen shows where the game now is.
+// The interval is chosen so the whole span fits a fixed memory budget: a NES state is ~10 KB and takes
+// one every 2 frames; a GBA state is ~400 KB and gets fewer, further apart.
+static constexpr size_t kRewindBudgetBytes = 96u * 1024u * 1024u;
+
+void Frontend::setRewind(int seconds) { rewindSeconds_ = std::max(0, seconds); rewindClear_ = true; }
+void Frontend::setRewinding(bool on) { rewinding_ = on; }
+
+void Frontend::rewindConfigure() {
+    int seconds = rewindSeconds_.load();
+    rewindConfiguredSeconds_ = seconds;
+    rewindRing_.clear();
+    rewindHead_ = rewindCount_ = 0;
+    rewindStateSize_ = 0;
+    if (seconds <= 0 || !gameLoaded_) return;
+    size_t size = core_.retro_serialize_size();
+    if (size == 0) return;
+    const double fps = avInfo_.timing.fps > 1.0 ? avInfo_.timing.fps : 60.0;
+    double framesWanted = seconds * fps;
+    int interval = (int)std::ceil(framesWanted * (double)size / (double)kRewindBudgetBytes);
+    interval = std::clamp(interval, 2, 30);
+    size_t capacity = (size_t)std::ceil(framesWanted / interval) + 1;
+    rewindInterval_ = interval;
+    rewindPopEvery_ = std::max(1, interval / 2);
+    rewindStateSize_ = size;
+    rewindRing_.resize(capacity);
+    LOGI("rewind: %d s, state %zu KB, every %d frames, %zu states (%zu MB)", seconds, size / 1024, interval, capacity,
+         capacity * size / (1024 * 1024));
+}
+
+bool Frontend::rewindBeforeRun() {
+    if (rewindClear_.exchange(false) || rewindConfiguredSeconds_ != rewindSeconds_.load()) rewindConfigure();
+    rewindMuted_ = false;
+    if (!rewinding_.load() || rewindRing_.empty()) return true;
+    rewindMuted_ = true;
+    if (rewindCount_ == 0) return false;          // at the start of the history: hold the frame
+    if (++rewindCounter_ < rewindPopEvery_) return false;
+    rewindCounter_ = 0;
+    size_t cap = rewindRing_.size();
+    size_t idx = (rewindHead_ + cap - 1) % cap;
+    auto& st = rewindRing_[idx];
+    if (!st.empty()) core_.retro_unserialize(st.data(), st.size());
+    rewindHead_ = idx;
+    rewindCount_--;
+    return true;
+}
+
+void Frontend::rewindAfterRun() {
+    if (rewindRing_.empty() || rewinding_.load()) return;
+    if (++rewindCounter_ < rewindInterval_) return;
+    rewindCounter_ = 0;
+    size_t size = core_.retro_serialize_size();
+    if (size != rewindStateSize_) { rewindConfigure(); if (rewindRing_.empty()) return; }
+    auto& slot = rewindRing_[rewindHead_];
+    slot.resize(size);
+    if (!core_.retro_serialize(slot.data(), size)) return;
+    rewindHead_ = (rewindHead_ + 1) % rewindRing_.size();
+    rewindCount_ = std::min(rewindCount_ + 1, rewindRing_.size());
 }
 
 void Frontend::advanceTurbo() {
@@ -1208,6 +1278,7 @@ bool Frontend::loadState(const std::string& path) {
         std::vector<uint8_t> buf;
         if (!readFile(path, buf)) return;
         ok = core_.retro_unserialize(buf.data(), buf.size());
+        if (ok) rewindClear_ = true;
     });
     return ok;
 }

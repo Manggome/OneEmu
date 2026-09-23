@@ -205,4 +205,9 @@
     <string name="menu_gyro_center">자이로 가운데 맞추기</string>
     <string name="gyro_center_hold">폰을 화면 가운데로 향하게 들고 잠깐 멈추세요…</string>
     <string name="gyro_center_done">지금 폰 방향을 화면 가운데로 맞췄습니다</string>
+    <string name="quick_saved">빠른 저장했습니다</string>
+    <string name="quick_loaded">빠른 저장을 불러왔습니다</string>
+    <string name="quick_none">빠른 저장이 아직 없습니다</string>
+    <string name="slot_quick">빠른 저장</string>
+    <string name="rewind_unsupported">되감기는 가벼운 기종(패미컴·게임보이·GBA·메가드라이브·마스터 시스템·게임 기어)에서만 됩니다</string>
 </resources>

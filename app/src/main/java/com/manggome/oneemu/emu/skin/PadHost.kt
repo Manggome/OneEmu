@@ -34,6 +34,7 @@ import com.manggome.oneemu.emu.pad.PadElementId
 import com.manggome.oneemu.emu.pad.PadLayout
 import com.manggome.oneemu.emu.pad.VirtualPad
 import com.manggome.oneemu.emu.pad.PadProfile
+import com.manggome.oneemu.emu.pad.PadActions
 
 /**
  * Drop-in replacement for the `VirtualPad(...)` call in EmulatorScreen: observes the skin selected for
@@ -54,12 +55,7 @@ fun PadHost(
     onPointer: (x: Float, y: Float, pressed: Boolean) -> Unit,
     onMenu: () -> Unit,
     onFastForward: (Boolean) -> Unit,
-    speedLabel: String = "1×",
-    onSpeedCycle: () -> Unit = {},
-    turboActive: Boolean = false,
-    onTurbo: () -> Unit = {},
-    onSaveState: () -> Unit = {},
-    onLoadState: () -> Unit = {},
+    actions: PadActions = PadActions(),
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -75,8 +71,7 @@ fun PadHost(
         SkinSelection.Loading -> {}
         SkinSelection.Vector -> VirtualPad(
             layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive,
-            onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier,
-            turboActive, onTurbo, onSaveState, onLoadState,
+            onInput, onPointer, onMenu, onFastForward, modifier, actions,
         )
         is SkinSelection.Skin -> {
             val loaded by produceState<Result<LoadedSkin>?>(null, sel.info.id) {
@@ -89,7 +84,7 @@ fun PadHost(
             val skin = result.getOrNull()
             if (skin == null || skin.cfg(landscape).isEmpty) {
                 // Broken import: fall back to the vector pad rather than leaving the user without controls.
-                VirtualPad(layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier, turboActive, onTurbo, onSaveState, onLoadState)
+                VirtualPad(layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, modifier, actions)
             } else if (!hidden) {
                 SkinPad(
                     skin = skin, layout = skinLayout, system = system, landscape = landscape,
@@ -99,10 +94,10 @@ fun PadHost(
                     modifier = modifier,
                 )
                 // After SkinPad so it sits on top: the skin's pointer handler consumes every touch below it.
-                ExtraOverlay(layout, profile, opacity, globalScale, hapticMs, haptics, speedLabel, onSpeedCycle, turboActive, onTurbo, onSaveState, onLoadState, modifier)
+                ExtraOverlay(layout, profile, opacity, globalScale, hapticMs, haptics, actions, modifier)
             } else if (gameRect != null) {
                 // Pad hidden (physical gamepad) but the touch screen must still work.
-                VirtualPad(layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, speedLabel, onSpeedCycle, modifier, turboActive, onTurbo, onSaveState, onLoadState)
+                VirtualPad(layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, modifier, actions)
             }
         }
     }
@@ -124,15 +119,10 @@ private fun ExtraOverlay(
     globalScale: Float,
     hapticMs: Int,
     haptics: Haptics?,
-    speedLabel: String,
-    onSpeedCycle: () -> Unit,
-    turboActive: Boolean,
-    onTurbo: () -> Unit,
-    onSaveState: () -> Unit,
-    onLoadState: () -> Unit,
+    actions: PadActions,
     modifier: Modifier,
 ) {
-    val extras = listOf(PadElementId.SPEED, PadElementId.TURBO, PadElementId.SAVE_STATE, PadElementId.LOAD_STATE)
+    val extras = OVERLAY_EXTRAS
         .mapNotNull { layout[it]?.takeIf { e -> e.visible } }
     if (extras.isEmpty()) return
     val density = LocalDensity.current
@@ -145,10 +135,10 @@ private fun ExtraOverlay(
         // Drawing only: a Canvas has no pointer handler, so touches go straight through to the skin.
         Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = opacity.coerceIn(0.05f, 1f) }) {
             for ((e, r) in placed) {
-                val lit = (e.id == PadElementId.TURBO && turboActive) || e.id == pressed
+                val lit = (e.id == PadElementId.TURBO && actions.turboActive) || (e.id == PadElementId.REWIND && actions.rewinding) || e.id == pressed
                 drawPadElement(
                     e, r, profile,
-                    PadElementVisual(pressedElements = if (lit) setOf(e.id) else emptySet(), labelOverride = if (e.id == PadElementId.SPEED) speedLabel else null),
+                    PadElementVisual(pressedElements = if (lit) setOf(e.id) else emptySet(), labelOverride = if (e.id == PadElementId.SPEED) actions.speedLabel else null),
                     textMeasurer,
                 )
             }
@@ -166,15 +156,19 @@ private fun ExtraOverlay(
                             onPress = {
                                 pressed = e.id
                                 if (hapticMs >= 0) haptics?.tick(hapticMs)
+                                if (e.id == PadElementId.REWIND) actions.onRewind(true)
                                 tryAwaitRelease()
+                                if (e.id == PadElementId.REWIND) actions.onRewind(false)
                                 pressed = null
                             },
                             onTap = {
                                 when (e.id) {
-                                    PadElementId.SPEED -> onSpeedCycle()
-                                    PadElementId.TURBO -> onTurbo()
-                                    PadElementId.SAVE_STATE -> onSaveState()
-                                    PadElementId.LOAD_STATE -> onLoadState()
+                                    PadElementId.SPEED -> actions.onSpeedCycle()
+                                    PadElementId.TURBO -> actions.onTurbo()
+                                    PadElementId.SAVE_STATE -> actions.onSaveState()
+                                    PadElementId.LOAD_STATE -> actions.onLoadState()
+                                    PadElementId.QUICK_SAVE -> actions.onQuickSave()
+                                    PadElementId.QUICK_LOAD -> actions.onQuickLoad()
                                     else -> {}
                                 }
                             },
@@ -184,3 +178,9 @@ private fun ExtraOverlay(
         }
     }
 }
+
+/** App buttons a RetroArch overlay has no idea of, drawn by [ExtraOverlay] and placed by the skin editor. */
+val OVERLAY_EXTRAS = listOf(
+    PadElementId.SPEED, PadElementId.TURBO, PadElementId.SAVE_STATE, PadElementId.LOAD_STATE,
+    PadElementId.QUICK_SAVE, PadElementId.QUICK_LOAD, PadElementId.REWIND,
+)

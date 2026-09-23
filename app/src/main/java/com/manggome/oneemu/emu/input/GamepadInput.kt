@@ -47,7 +47,7 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
      * binding, just with more than one bit in the mask.
      */
     val combos: List<Pair<Int, Int>>
-        get() = keys.entries.filter { (_, v) -> v !in ACTIONS && Integer.bitCount(v) > 1 }
+        get() = keys.entries.filter { (_, v) -> v and PAD_BITS.inv() == 0 && Integer.bitCount(v) > 1 }
             .map { it.key to it.value }.sortedBy { it.first }
 
     fun withoutKey(keyCode: Int): GamepadMapping = GamepadMapping(keys - keyCode)
@@ -68,6 +68,11 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
         /** Opens the save / load slot list, as the on-screen 저장 / 불러오기 buttons do. */
         const val SAVE_STATE = 1 shl 26
         const val LOAD_STATE = 1 shl 25
+        /** 빠른 저장 / 빠른 불러오기: the quick slot, no list. */
+        const val QUICK_SAVE = 1 shl 24
+        const val QUICK_LOAD = 1 shl 23
+        /** 되감기: held, not tapped. */
+        const val REWIND = 1 shl 22
 
         /**
          * PlayStation games take the face buttons by position: a pad's bottom button is ×, right ○, left □,
@@ -117,7 +122,11 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
         }
 
         /** Pseudo-buttons: app actions rather than buttons of the emulated pad. */
-        val ACTIONS = setOf(MENU, TURBO, FAST_FORWARD, SPEED, SAVE_STATE, LOAD_STATE)
+        val ACTIONS = setOf(MENU, TURBO, FAST_FORWARD, SPEED, SAVE_STATE, LOAD_STATE, QUICK_SAVE, QUICK_LOAD, REWIND)
+        /** Actions that last as long as the key is held, reported on press and on release. */
+        val HOLD_ACTIONS = setOf(REWIND)
+        /** Pad-button bits: a binding with anything above them is an action or a macro, never a combination. */
+        const val PAD_BITS = 0xFFFF
 
         val buttonNames: Map<String, Int> = mapOf(
             "A" to Buttons.A, "B" to Buttons.B, "X" to Buttons.X, "Y" to Buttons.Y,
@@ -126,6 +135,7 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
             "UP" to Buttons.UP, "DOWN" to Buttons.DOWN, "LEFT" to Buttons.LEFT, "RIGHT" to Buttons.RIGHT,
             "MENU" to MENU, "TURBO" to TURBO, "FAST_FORWARD" to FAST_FORWARD, "SPEED" to SPEED,
             "SAVE_STATE" to SAVE_STATE, "LOAD_STATE" to LOAD_STATE,
+            "QUICK_SAVE" to QUICK_SAVE, "QUICK_LOAD" to QUICK_LOAD, "REWIND" to REWIND,
         )
 
         /** Buttons the mapping screen offers, in the order it lists them. */
@@ -137,12 +147,13 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
             "UP" to Buttons.UP, "DOWN" to Buttons.DOWN, "LEFT" to Buttons.LEFT, "RIGHT" to Buttons.RIGHT,
             "MENU" to MENU, "TURBO" to TURBO, "FAST_FORWARD" to FAST_FORWARD, "SPEED" to SPEED,
             "SAVE_STATE" to SAVE_STATE, "LOAD_STATE" to LOAD_STATE,
+            "QUICK_SAVE" to QUICK_SAVE, "QUICK_LOAD" to QUICK_LOAD, "REWIND" to REWIND,
         )
 
         /** "A", "MENU", or "A+B" for a combination. */
         fun nameOf(button: Int): String {
             buttonNames.entries.firstOrNull { it.value == button }?.let { return it.key }
-            if (button !in ACTIONS && Integer.bitCount(button) > 1) {
+            if (button and PAD_BITS.inv() == 0 && Integer.bitCount(button) > 1) {
                 val parts = COMBO_BUTTONS.filter { (_, bit) -> button and bit != 0 }
                 if (parts.fold(0) { acc, (_, bit) -> acc or bit } == button) return parts.joinToString("+") { it.first }
             }
@@ -235,8 +246,10 @@ class GamepadInput(
     private val onChanged: (port: Int, mask: Int, lx: Int, ly: Int, rx: Int, ry: Int) -> Unit,
     private val onMenu: () -> Unit,
     private val onTurbo: () -> Unit = {},
-    /** The other [GamepadMapping.ACTIONS] (빨리감기, 배속, 저장, 불러오기). */
+    /** The other [GamepadMapping.ACTIONS] (빨리감기, 배속, 저장, 불러오기, 빠른 저장...). */
     private val onAction: (Int) -> Unit = {},
+    /** [GamepadMapping.HOLD_ACTIONS]: true on press, false on release. */
+    private val onHold: (Int, Boolean) -> Unit = { _, _ -> },
 ) {
     private class DeviceState {
         var keyMask = 0
@@ -328,6 +341,10 @@ class GamepadInput(
     fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.repeatCount > 0 && event.action == KeyEvent.ACTION_DOWN) return isMapped(event)
         val button = mappingFor(event.deviceId).buttonFor(event.keyCode) ?: return false
+        if (button in GamepadMapping.HOLD_ACTIONS) {
+            onHold(button, event.action == KeyEvent.ACTION_DOWN)
+            return true
+        }
         if (button in GamepadMapping.ACTIONS) {
             // Pseudo-buttons fire once, on release, whichever player pressed them.
             if (event.action == KeyEvent.ACTION_UP) {

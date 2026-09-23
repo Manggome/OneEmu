@@ -182,6 +182,8 @@ class AppDirs(private val context: Context) {
 
         fun sanitize(name: String): String = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(120)
         const val AUTO_SLOT = 0
+        /** 빠른 저장: one slot of its own, written and read without the slot list. */
+        const val QUICK_SLOT = 99
         const val SLOT_COUNT = 9
     }
 }

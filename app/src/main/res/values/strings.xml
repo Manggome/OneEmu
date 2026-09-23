@@ -20,6 +20,6 @@
     <string name="settings_input">화면 패드</string>
     <string name="settings_layouts">패드 레이아웃 · 스킨</string>
     <string name="settings_cores">코어 / BIOS</string>
-    <string name="settings_misc">연사 · 빨리감기</string>
+    <string name="settings_misc">연사 · 빨리감기 · 되감기</string>
     <string name="settings_about">정보 · 업데이트</string>
 </resources>

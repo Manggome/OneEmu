@@ -52,6 +52,8 @@ class EmulatorUiState {
     /** 연사: the buttons chosen in the settings are tapped for you while this is on. */
     var turbo by mutableStateOf(false)
     var toast by mutableStateOf<String?>(null)
+    /** 되감기 is held right now. */
+    var rewinding by mutableStateOf(false)
     /** A pad button asked for the save / load slot list; the screen opens it and clears this. */
     var slotRequest by mutableStateOf<SlotRequest?>(null)
 }
@@ -118,8 +120,11 @@ class EmulatorActivity : ComponentActivity() {
                     GamepadMapping.SPEED -> cycleSpeed()
                     GamepadMapping.SAVE_STATE -> if (ui.session != null) ui.slotRequest = SlotRequest.SAVE
                     GamepadMapping.LOAD_STATE -> if (ui.session != null) ui.slotRequest = SlotRequest.LOAD
+                    GamepadMapping.QUICK_SAVE -> quickSave()
+                    GamepadMapping.QUICK_LOAD -> quickLoad()
                 }
             },
+            onHold = { action, down -> if (action == GamepadMapping.REWIND) setRewinding(down) },
         )
         gamepad.startWatching { ui.gamepadConnected = gamepad.isGamepadConnected() }
         ui.gamepadConnected = gamepad.isGamepadConnected()
@@ -191,6 +196,7 @@ class EmulatorActivity : ComponentActivity() {
         CrashMarker.write(this, game.title, game.path, core.id)
         if (session.load()) {
             session.applyCheats()
+            NativeBridge.setRewind(if (Rewind.supports(session.system)) settings.get(Rewind.SECONDS, Rewind.DEFAULT_SECONDS) else 0)
             updateRunning()
             if (settings.get(MotionSensors.AUTO_CENTER, true)) recenterGyro(announce = true)
         }
@@ -316,6 +322,38 @@ class EmulatorActivity : ComponentActivity() {
             if (rightFromPad) p.rx else g.rx,
             if (rightFromPad) p.ry else g.ry,
         )
+    }
+
+    /** 빠른 저장: the quick slot, straight away. */
+    fun quickSave() {
+        val s = ui.session ?: return
+        lifecycleScope.launch {
+            ui.toast = getString(if (s.saveState(AppDirs.QUICK_SLOT)) R.string.quick_saved else R.string.slot_save_failed)
+        }
+    }
+
+    fun quickLoad() {
+        val s = ui.session ?: return
+        lifecycleScope.launch {
+            ui.toast = getString(
+                when {
+                    !s.hasState(AppDirs.QUICK_SLOT) -> R.string.quick_none
+                    s.loadState(AppDirs.QUICK_SLOT) -> R.string.quick_loaded
+                    else -> R.string.slot_load_failed
+                },
+            )
+        }
+    }
+
+    /** 되감기 held (true) or let go (false). */
+    fun setRewinding(on: Boolean) {
+        val s = ui.session ?: return
+        if (on && !Rewind.supports(s.system)) {
+            ui.toast = getString(R.string.rewind_unsupported)
+            return
+        }
+        ui.rewinding = on
+        NativeBridge.setRewinding(on)
     }
 
     /** 연사 on/off. The core does the tapping itself, so the rate holds however the game runs. */

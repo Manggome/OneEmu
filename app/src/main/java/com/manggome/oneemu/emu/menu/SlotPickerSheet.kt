@@ -74,7 +74,7 @@ fun SlotPickerSheet(
 
     val slots by produceState(initialValue = emptyList<SlotInfo>(), refresh) {
         value = withContext(Dispatchers.IO) {
-            (0..AppDirs.SLOT_COUNT).map { slot ->
+            (listOf(AppDirs.QUICK_SLOT) + (0..AppDirs.SLOT_COUNT)).map { slot ->
                 val f = session.statePath(slot)
                 val t = session.stateThumbPath(slot)
                 SlotInfo(slot, f.exists(), f.lastModified(), if (t.exists()) t.lastModified() else 0L)
@@ -82,7 +82,11 @@ fun SlotPickerSheet(
         }
     }
 
-    fun slotName(slot: Int) = if (slot == AppDirs.AUTO_SLOT) context.getString(R.string.slot_auto) else context.getString(R.string.slot_n, slot)
+    fun slotName(slot: Int) = when (slot) {
+        AppDirs.AUTO_SLOT -> context.getString(R.string.slot_auto)
+        AppDirs.QUICK_SLOT -> context.getString(R.string.slot_quick)
+        else -> context.getString(R.string.slot_n, slot)
+    }
 
     fun perform(slot: Int) {
         if (busy) return
@@ -90,11 +94,11 @@ fun SlotPickerSheet(
         scope.launch {
             val msg = if (mode == SlotMode.SAVE) {
                 if (session.saveState(slot)) {
-                    if (slot == AppDirs.AUTO_SLOT) context.getString(R.string.slot_saved_auto) else context.getString(R.string.slot_saved, slot)
+                    when (slot) { AppDirs.AUTO_SLOT -> context.getString(R.string.slot_saved_auto); AppDirs.QUICK_SLOT -> context.getString(R.string.quick_saved); else -> context.getString(R.string.slot_saved, slot) }
                 } else context.getString(R.string.slot_save_failed)
             } else {
                 if (session.loadState(slot)) {
-                    if (slot == AppDirs.AUTO_SLOT) context.getString(R.string.slot_loaded_auto) else context.getString(R.string.slot_loaded, slot)
+                    when (slot) { AppDirs.AUTO_SLOT -> context.getString(R.string.slot_loaded_auto); AppDirs.QUICK_SLOT -> context.getString(R.string.quick_loaded); else -> context.getString(R.string.slot_loaded, slot) }
                 } else context.getString(R.string.slot_load_failed)
             }
             busy = false

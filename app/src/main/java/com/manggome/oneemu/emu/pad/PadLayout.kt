@@ -46,7 +46,11 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
     ARCADE_3(Buttons.Y, Kind.ROUND),
     ARCADE_4(Buttons.X, Kind.ROUND),
     ARCADE_5(Buttons.L, Kind.ROUND),
-    ARCADE_6(Buttons.R, Kind.ROUND);
+    ARCADE_6(Buttons.R, Kind.ROUND),
+    QUICK_SAVE(0, Kind.SMALL),
+    QUICK_LOAD(0, Kind.SMALL),
+    /** Held: the game runs backwards (light systems only, see Rewind). */
+    REWIND(0, Kind.SMALL);
 
     enum class Kind { DPAD, ROUND, CLUSTER, PILL, STICK, SMALL }
 
@@ -62,7 +66,11 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             Kind.PILL -> if (this == L || this == R || this == L2 || this == R2 || this == L3 || this == R3) 84f else 72f
             Kind.STICK -> 120f
             // The state buttons carry a word rather than a glyph, so they need the room for it.
-            Kind.SMALL -> if (this == SAVE_STATE || this == LOAD_STATE) 64f else 40f
+            Kind.SMALL -> when (this) {
+                SAVE_STATE, LOAD_STATE, REWIND -> 64f
+                QUICK_SAVE, QUICK_LOAD -> 72f
+                else -> 40f
+            }
         }
     val baseHeightDp: Float
         get() = when (kind) {
@@ -99,6 +107,9 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             TURBO -> "연사"
             SAVE_STATE -> "저장"
             LOAD_STATE -> "불러오기"
+            QUICK_SAVE -> "빠른저장"
+            QUICK_LOAD -> "빠른로드"
+            REWIND -> "◀ 되감기"
             COIN -> "COIN"
             ARCADE_1 -> "1"
             ARCADE_2 -> "2"
@@ -122,6 +133,9 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             MENU -> 0.04f to 0.08f
             SAVE_STATE -> 0.13f to 0.08f
             LOAD_STATE -> 0.33f to 0.08f
+            QUICK_SAVE -> 0.13f to 0.18f
+            QUICK_LOAD -> 0.33f to 0.18f
+            REWIND -> 0.13f to 0.28f
             else -> 0.5f to 0.5f
         }
 
@@ -167,6 +181,9 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             TURBO -> "연사 버튼"
             SAVE_STATE -> "저장 버튼"
             LOAD_STATE -> "불러오기 버튼"
+            QUICK_SAVE -> "빠른 저장 버튼"
+            QUICK_LOAD -> "빠른 불러오기 버튼"
+            REWIND -> "되감기 버튼 (누르고 있는 동안)"
             COIN -> "코인"
             ARCADE_1 -> "버튼 1"
             ARCADE_2 -> "버튼 2"

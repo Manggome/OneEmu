@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.FastForward
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Speed
 import com.manggome.oneemu.emu.EmulatorSession.Buttons
 import androidx.compose.material.icons.outlined.Save
@@ -65,5 +66,19 @@ internal fun MiscSettingsScreen(onBack: () -> Unit) {
             onSelect = { ffSpeed.set(FF_SPEEDS[it]) },
             icon = Icons.Outlined.FastForward,
         )
+        SettingsDivider()
+
+        SectionHeader(stringResource(R.string.settings_section_rewind))
+        val rewindSeconds = rememberPref(com.manggome.oneemu.emu.Rewind.SECONDS, com.manggome.oneemu.emu.Rewind.DEFAULT_SECONDS)
+        val choices = com.manggome.oneemu.emu.Rewind.CHOICES
+        val off = stringResource(R.string.rewind_off)
+        ChoiceRow(
+            title = stringResource(R.string.rewind_seconds),
+            options = choices.map { if (it == 0) off else stringResource(R.string.rewind_seconds_value, it) },
+            selectedIndex = choices.indexOf(rewindSeconds.value).let { if (it < 0) choices.indexOf(com.manggome.oneemu.emu.Rewind.DEFAULT_SECONDS) else it },
+            onSelect = { rewindSeconds.set(choices[it]) },
+            icon = Icons.Outlined.History,
+        )
+        NoteText(stringResource(R.string.rewind_note))
     }
 }
