@@ -1,0 +1,167 @@
+diff --git a/Source/Core/DolphinLibretro/Common/Options.cpp b/Source/Core/DolphinLibretro/Common/Options.cpp
+index 7d27a1e..d071cc7 100644
+--- a/Source/Core/DolphinLibretro/Common/Options.cpp
++++ b/Source/Core/DolphinLibretro/Common/Options.cpp
+@@ -1535,6 +1535,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
+       { "0", "Right Stick controls pointer (relative)" },
+       { "1", "Right Stick controls pointer (absolute)" },
+       { "2", "Mouse controls pointer" },
++      { "3", "Gyroscope controls pointer" },
+       { nullptr, nullptr }
+     },
+     "1"
+diff --git a/Source/Core/DolphinLibretro/Input.cpp b/Source/Core/DolphinLibretro/Input.cpp
+index 5250054..75be259 100644
+--- a/Source/Core/DolphinLibretro/Input.cpp
++++ b/Source/Core/DolphinLibretro/Input.cpp
+@@ -981,6 +981,13 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned
+           wmSwing->SetControlExpression(3, "");
+         }
+       }
++      else if (irMode == 3 && sensor_enabled[port][SENSOR_GYRO])
++      {
++        // Gyro controls IR: the IMU cursor below does the pointing, so the stick and the touch
++        // pointer are unbound rather than fighting it.
++        for (int i = 0; i < 4; i++)
++          wmIR->SetControlExpression(i, "");
++      }
+       else
+       {
+         // Mouse controls IR
+@@ -994,6 +1001,16 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned
+           ->SetValue(false);                                          // Auto hide
+       }
+ 
++      // Dolphin builds IMUCursor disabled on Android so touch keeps working; IR mode 3 is the explicit
++      // request for the phone's own motion to point the remote. L3 recentres it - a gyro drifts, and
++      // "point at the middle of the screen and press" is how the real remote is recentred too.
++      if (auto* wmImuIR = wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUPoint))
++      {
++        const bool gyroPoint = irMode == 3 && sensor_enabled[port][SENSOR_GYRO];
++        wmImuIR->enabled.SetValue(gyroPoint);
++        wmImuIR->SetControlExpression(0, gyroPoint ? "L3" : "");  // Recenter
++      }
++
+       if (f.irMode && device == RETRO_DEVICE_WIIMOTE_NC)
+       {
+         // mouse
+@@ -1429,6 +1446,57 @@ void retro_set_controller_port_device_gc(unsigned port, unsigned device)
+     return Pad::GetConfig()->SaveConfig();
+ }
+ 
++
++// Binds the phone's accelerometer and gyroscope to the remote's IMU, when the frontend offers them.
++// Shared by every remote variant: the nunchuk one used to skip it, so the remote a Wii disc actually
++// gets never saw the motion sensors at all. Returns whether anything was bound.
++static bool BindImu(WiimoteEmu::Wiimote* wm, unsigned port)
++{
++  if (!Libretro::Input::sensor_enabled[port][SENSOR_ACCELEROMETER] &&
++      !Libretro::Input::sensor_enabled[port][SENSOR_GYRO])
++    return false;
++
++  std::string devSensor = Libretro::Input::GetQualifiedNameSensor(port);
++
++  if (Libretro::Input::sensor_enabled[port][SENSOR_ACCELEROMETER])
++  {
++    // Accelerometer (6 inputs: Up, Down, Left, Right, Forward, Backward)
++    // Indices must match WiimoteEmu::LoadDefaults ordering (0..5)
++    auto* wmAccel = static_cast<ControllerEmu::IMUAccelerometer*>(
++      wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUAccelerometer));
++    if (wmAccel)
++    {
++      wmAccel->SetControlExpression(0, "`" + devSensor + ":AccelZ+`");  // Up
++      wmAccel->SetControlExpression(1, "`" + devSensor + ":AccelZ-`");  // Down
++      wmAccel->SetControlExpression(2, "`" + devSensor + ":AccelX+`");  // Left
++      wmAccel->SetControlExpression(3, "`" + devSensor + ":AccelX-`");  // Right
++      wmAccel->SetControlExpression(4, "`" + devSensor + ":AccelY-`");  // Forward
++      wmAccel->SetControlExpression(5, "`" + devSensor + ":AccelY+`");  // Backward
++    }
++  }
++
++  // A sibling, not a child: nested, gyro-without-accelerometer bound neither.
++  if (Libretro::Input::sensor_enabled[port][SENSOR_GYRO])
++  {
++    // Gyroscope (6 inputs: PitchUp/Down, RollLeft/Right, YawLeft/Right)
++    auto* wmGyro = static_cast<ControllerEmu::IMUGyroscope*>(
++      wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUGyroscope));
++    if (wmGyro)
++    {
++      // Right-hand rule about +X left, +Y back, +Z up: +X is pitch down,
++      // +Y rolls the top left, +Z swings the nose left. GetRawState()
++      // reads these as [1]-[0], [2]-[3], [4]-[5].
++      wmGyro->SetControlExpression(0, "`" + devSensor + ":GyroX-`");  // Pitch Up
++      wmGyro->SetControlExpression(1, "`" + devSensor + ":GyroX+`");  // Pitch Down
++      wmGyro->SetControlExpression(2, "`" + devSensor + ":GyroY+`");  // Roll Left
++      wmGyro->SetControlExpression(3, "`" + devSensor + ":GyroY-`");  // Roll Right
++      wmGyro->SetControlExpression(4, "`" + devSensor + ":GyroZ+`");  // Yaw Left
++      wmGyro->SetControlExpression(5, "`" + devSensor + ":GyroZ-`");  // Yaw Right
++    }
++  }
++  return true;
++}
++
+ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
+ {
+   std::string devJoypad = Libretro::Input::GetQualifiedName(port, RETRO_DEVICE_JOYPAD);
+@@ -1559,6 +1627,10 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
+       wmButtons->SetControlExpression(4, "L");                             // -
+       wmButtons->SetControlExpression(5, "R");                             // +
+ 
++      // The nunchuk's stick already has the left analog, so there is no tilt fallback here: without
++      // sensors the remote simply does not tilt, as before.
++      BindImu(wm, port);
++
+       f.irMode = true;
+     }
+     else
+@@ -1579,49 +1651,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
+       }
+ 
+       // Map accel data to tilt expressions
+-      if (Libretro::Input::sensor_enabled[port][SENSOR_ACCELEROMETER] ||
+-          Libretro::Input::sensor_enabled[port][SENSOR_GYRO])
+-      {
+-        std::string devSensor = Libretro::Input::GetQualifiedNameSensor(port);
+-
+-        if (Libretro::Input::sensor_enabled[port][SENSOR_ACCELEROMETER])
+-        {
+-          // Accelerometer (6 inputs: Up, Down, Left, Right, Forward, Backward)
+-          // Indices must match WiimoteEmu::LoadDefaults ordering (0..5)
+-          auto* wmAccel = static_cast<ControllerEmu::IMUAccelerometer*>(
+-            wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUAccelerometer));
+-          if (wmAccel)
+-          {
+-            wmAccel->SetControlExpression(0, "`" + devSensor + ":AccelZ+`");  // Up
+-            wmAccel->SetControlExpression(1, "`" + devSensor + ":AccelZ-`");  // Down
+-            wmAccel->SetControlExpression(2, "`" + devSensor + ":AccelX+`");  // Left
+-            wmAccel->SetControlExpression(3, "`" + devSensor + ":AccelX-`");  // Right
+-            wmAccel->SetControlExpression(4, "`" + devSensor + ":AccelY-`");  // Forward
+-            wmAccel->SetControlExpression(5, "`" + devSensor + ":AccelY+`");  // Backward
+-          }
+-        }
+-
+-        // A sibling, not a child: nested, gyro-without-accelerometer bound neither.
+-        if (Libretro::Input::sensor_enabled[port][SENSOR_GYRO])
+-        {
+-          // Gyroscope (6 inputs: PitchUp/Down, RollLeft/Right, YawLeft/Right)
+-          auto* wmGyro = static_cast<ControllerEmu::IMUGyroscope*>(
+-            wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUGyroscope));
+-          if (wmGyro)
+-          {
+-            // Right-hand rule about +X left, +Y back, +Z up: +X is pitch down,
+-            // +Y rolls the top left, +Z swings the nose left. GetRawState()
+-            // reads these as [1]-[0], [2]-[3], [4]-[5].
+-            wmGyro->SetControlExpression(0, "`" + devSensor + ":GyroX-`");  // Pitch Up
+-            wmGyro->SetControlExpression(1, "`" + devSensor + ":GyroX+`");  // Pitch Down
+-            wmGyro->SetControlExpression(2, "`" + devSensor + ":GyroY+`");  // Roll Left
+-            wmGyro->SetControlExpression(3, "`" + devSensor + ":GyroY-`");  // Roll Right
+-            wmGyro->SetControlExpression(4, "`" + devSensor + ":GyroZ+`");  // Yaw Left
+-            wmGyro->SetControlExpression(5, "`" + devSensor + ":GyroZ-`");  // Yaw Right
+-          }
+-        }
+-      }
+-      else
++      if (!BindImu(wm, port))
+       {
+         wmTilt->SetControlExpression(0, "`" + devAnalog + ":Y0-`");  // Forward
+         wmTilt->SetControlExpression(1, "`" + devAnalog + ":Y0+`");  // Backward
