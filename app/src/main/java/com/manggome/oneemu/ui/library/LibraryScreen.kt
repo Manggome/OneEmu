@@ -117,6 +117,12 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
     var fabExpanded by rememberSaveable { mutableStateOf(false) }
     var thumbnailTarget by rememberSaveable { mutableStateOf(-1L) }
 
+    // 세이브 가져오기: the game first, then the file from the system picker (Download folder and the like).
+    var importGame by remember { mutableStateOf<GameEntity?>(null) }
+    var importUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    val pickSave = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) importGame = null else importUri = uri
+    }
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         val target = thumbnailTarget
         thumbnailTarget = -1L
@@ -207,6 +213,12 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
         }
     }
 
+    val importing = importGame
+    val importFile = importUri
+    if (importing != null && importFile != null) {
+        SaveImportDialog(importing, importFile, onDismiss = { importGame = null; importUri = null })
+    }
+
     // Resolve the live row so favorite/thumbnail changes made from the sheet show immediately.
     val liveSelected = selected?.let { sel -> state.sections.asSequence().flatMap { it.games.asSequence() }.firstOrNull { it.id == sel.id } ?: sel }
     liveSelected?.let { game ->
@@ -223,6 +235,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
             onOpenGameCoreOptions = { g, coreId -> nav.navigate(Routes.gameCoreOptions(coreId, g.id)) },
             onPickBoxArt = { nav.navigate(Routes.boxArt(it.id)) },
             onOpenDetails = { nav.navigate(Routes.game(it.id)) },
+            onImportSave = { g -> importGame = g; pickSave.launch(arrayOf("*/*")) },
         )
     }
     if (confirmRemoveMany) {

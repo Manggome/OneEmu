@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.AddToHomeScreen
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Info
@@ -86,6 +87,8 @@ fun GameActionSheet(
     onOpenGameCoreOptions: (GameEntity, coreId: String) -> Unit,
     onPickBoxArt: (GameEntity) -> Unit,
     onOpenDetails: ((GameEntity) -> Unit)? = null,
+    /** 세이브 가져오기: pick a downloaded save and put it where this game reads it. */
+    onImportSave: ((GameEntity) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
@@ -120,6 +123,9 @@ fun GameActionSheet(
                 if (game.favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
                 stringResource(if (game.favorite) R.string.lib_action_favorite_remove else R.string.lib_action_favorite_add),
             ) { vm.toggleFavorite(game) }
+            if (onImportSave != null) {
+                SheetItem(Icons.Filled.FileOpen, stringResource(R.string.save_import_action)) { onDismiss(); onImportSave(game) }
+            }
             val shortcutFailed = stringResource(R.string.lib_shortcut_unsupported)
             val context = androidx.compose.ui.platform.LocalContext.current
             SheetItem(Icons.Filled.AddToHomeScreen, stringResource(R.string.lib_action_shortcut)) {
