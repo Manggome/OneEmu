@@ -49,6 +49,13 @@ internal fun GamepadSettingsScreen(onBack: () -> Unit, onMapping: (deviceKey: St
             checked = stickDpad.value,
             onCheckedChange = stickDpad.set,
         )
+        val psPositional = rememberPref(GamepadMapping.PS_POSITIONAL, true)
+        SwitchRow(
+            title = stringResource(R.string.gamepad_ps_positional),
+            subtitle = stringResource(R.string.gamepad_ps_positional_desc),
+            checked = psPositional.value,
+            onCheckedChange = psPositional.set,
+        )
         SettingsDivider()
         if (devices.isEmpty()) {
             NoteText(stringResource(R.string.gamepad_none))

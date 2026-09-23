@@ -8,6 +8,7 @@ import android.view.MotionEvent
 import android.view.Surface
 import com.manggome.oneemu.emu.input.MotionSensors
 import com.manggome.oneemu.emu.input.StickDpad
+import com.manggome.oneemu.emu.pad.isPlayStation
 import kotlinx.coroutines.flow.flatMapLatest
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -90,6 +91,9 @@ class EmulatorActivity : ComponentActivity() {
     private var padInput = PadInput()
     /** [StickDpad] for the pad being played; read on every input push. */
     @Volatile private var stickDpad = false
+    /** [GamepadMapping.PS_POSITIONAL] applies: a PlayStation game with the setting on. */
+    @Volatile private var psPositional = false
+    private var psPositionalJob: kotlinx.coroutines.Job? = null
     private var stickDpadJob: kotlinx.coroutines.Job? = null
     /** One entry per player; pads publish on the port they were assigned. */
     private val gamepadInputs = Array(GamepadDevices.MAX_PLAYERS) { PadInput() }
@@ -176,6 +180,14 @@ class EmulatorActivity : ComponentActivity() {
                 for (port in gamepadInputs.indices) pushInput(port)
             }
         }
+        psPositionalJob?.cancel()
+        psPositionalJob = if (!session.system.isPlayStation) null else lifecycleScope.launch {
+            settings.observe(GamepadMapping.PS_POSITIONAL, true).collect { on ->
+                psPositional = on
+                for (port in gamepadInputs.indices) pushInput(port)
+            }
+        }
+        psPositional = false
         CrashMarker.write(this, game.title, game.path, core.id)
         if (session.load()) {
             session.applyCheats()
@@ -285,7 +297,9 @@ class EmulatorActivity : ComponentActivity() {
     /** The on-screen pad is always player 1; every other port is whatever its controller reports. */
     private fun pushInput(port: Int) {
         val s = ui.session ?: return
-        val g = gamepadInputs[port]
+        val raw = gamepadInputs[port]
+        // Only the physical pad: the on-screen PlayStation pad already draws ×○□△ where they belong.
+        val g = if (psPositional) raw.copy(mask = GamepadMapping.toPositional(raw.mask)) else raw
         if (port != 0) {
             s.setInput(g.mask or (if (stickDpad) StickDpad.mask(g.lx, g.ly) else 0), g.lx, g.ly, g.rx, g.ry, port)
             return

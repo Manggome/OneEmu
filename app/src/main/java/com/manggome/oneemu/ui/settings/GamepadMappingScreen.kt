@@ -47,6 +47,7 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
     var resetting by remember { mutableStateOf(false) }
 
     val devices = rememberPadDevices()
+    val psPositional = rememberPref(GamepadMapping.PS_POSITIONAL, true).value
     val device = devices.firstOrNull { it.key == deviceKey }
 
     LaunchedEffect(deviceKey) { mapping = loadMapping(deviceKey) }
@@ -66,8 +67,11 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
                 SectionHeader(stringResource(R.string.gamepad_actions))
             }
             val keys = mapping.keysFor(button)
+            // What the same row presses in a PlayStation game, so the game's own ×○□△ key settings can be
+            // matched up without guessing.
+            val ps = psGlyph(button, psPositional)
             SettingsRow(
-                title = buttonLabel(name),
+                title = if (ps != null) stringResource(R.string.gamepad_ps_hint, buttonLabel(name), ps) else buttonLabel(name),
                 subtitle = if (keys.isEmpty()) stringResource(R.string.gamepad_unbound) else keys.joinToString(" · ") { GamepadCapture.keyName(it) },
                 enabled = device != null,
                 // + adds a second (third...) button for the same job - a back paddle that also presses A.
@@ -224,3 +228,20 @@ private fun ComboDialog(keyName: String, initial: Int, onSave: (Int) -> Unit, on
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
+
+/** The PlayStation button a RetroPad face button ends up as, with or without the position mapping. */
+private fun psGlyph(button: Int, positional: Boolean): String? {
+    val b = if (positional) GamepadMapping.toPositional(button) else button
+    return when (b) {
+        com.manggome.oneemu.emu.EmulatorSession.Buttons.B -> "×"
+        com.manggome.oneemu.emu.EmulatorSession.Buttons.A -> "○"
+        com.manggome.oneemu.emu.EmulatorSession.Buttons.Y -> "□"
+        com.manggome.oneemu.emu.EmulatorSession.Buttons.X -> "△"
+        else -> null
+    }.takeIf { button in FACE }
+}
+
+private val FACE = setOf(
+    com.manggome.oneemu.emu.EmulatorSession.Buttons.A, com.manggome.oneemu.emu.EmulatorSession.Buttons.B,
+    com.manggome.oneemu.emu.EmulatorSession.Buttons.X, com.manggome.oneemu.emu.EmulatorSession.Buttons.Y,
+)
