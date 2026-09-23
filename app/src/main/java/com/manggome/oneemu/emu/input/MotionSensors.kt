@@ -62,6 +62,12 @@ class MotionSensors(context: Context, private val rotation: () -> Int) : SensorE
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     companion object {
+        /** Point the phone's current direction at the screen centre when a game starts and when it turns. */
+        val AUTO_CENTER = androidx.datastore.preferences.core.booleanPreferencesKey("wii_gyro_autocenter")
+        /** Core option for how far the pointer moves per turn of the phone (percent, core r6+). */
+        const val SENSITIVITY_OPTION = "dolphin_ir_gyro_sensitivity"
+        val SENSITIVITIES = listOf(50, 75, 100, 150, 200, 300)
+
         const val KIND_ACCEL = 0
         const val KIND_GYRO = 1
 

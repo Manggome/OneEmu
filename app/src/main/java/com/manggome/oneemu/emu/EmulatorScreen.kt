@@ -208,6 +208,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     title = ui.title,
                     fastForwardLabel = ffLabel,
                     turboLabel = turboLabel,
+                    showGyroCenter = host.gyroAiming,
                     onDismiss = { ui.menuOpen = false },
                     onAction = { action ->
                         ui.menuOpen = false
@@ -216,6 +217,8 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                             MenuAction.SAVE -> sheet = Sheet.SAVE
                             MenuAction.FAST_FORWARD -> host.setFastForward(!ui.fastForward)
                             MenuAction.TURBO -> host.toggleTurbo()
+                            // A moment after the menu closes, so the phone can be pointed first.
+                            MenuAction.GYRO_CENTER -> host.recenterGyro(delayMs = 1500, announce = true)
                             MenuAction.CHEATS -> sheet = Sheet.CHEATS
                             MenuAction.LAYOUT -> editorOpen = true
                             MenuAction.SETTINGS -> sheet = Sheet.SETTINGS

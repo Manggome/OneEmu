@@ -81,4 +81,16 @@ class GamepadMappingTest {
         assertEquals(GamepadMapping.FAST_FORWARD, back.buttonFor(KeyEvent.KEYCODE_BUTTON_2))
         assertEquals(GamepadMapping.SAVE_STATE, back.buttonFor(KeyEvent.KEYCODE_BUTTON_3))
     }
+
+    @Test
+    fun comboBindingRoundTrips() {
+        val ab = Buttons.A or Buttons.B
+        val m = GamepadMapping.DEFAULT.addKey(ab, KeyEvent.KEYCODE_BUTTON_1)
+        assertEquals(listOf(KeyEvent.KEYCODE_BUTTON_1 to ab), m.combos)
+        assertEquals("A+B", GamepadMapping.nameOf(ab))
+        val back = GamepadMapping.parse(m.overridesOf())
+        assertEquals(ab, back.buttonFor(KeyEvent.KEYCODE_BUTTON_1))
+        // Plain buttons are not combos.
+        assert(GamepadMapping.DEFAULT.combos.isEmpty())
+    }
 }

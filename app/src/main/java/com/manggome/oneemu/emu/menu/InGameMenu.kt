@@ -24,7 +24,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.manggome.oneemu.R
 import com.manggome.oneemu.ui.theme.OneEmuColors
 
-enum class MenuAction { LOAD, SAVE, FAST_FORWARD, TURBO, CHEATS, LAYOUT, SETTINGS, SCREENSHOT, COPY_LOG, RESET, CLOSE }
+enum class MenuAction { LOAD, SAVE, FAST_FORWARD, TURBO, GYRO_CENTER, CHEATS, LAYOUT, SETTINGS, SCREENSHOT, COPY_LOG, RESET, CLOSE }
 
 /**
  * My Boy-style pause menu: a rounded dark card with a plain vertical list.
@@ -38,6 +38,8 @@ fun InGameMenuDialog(
     onAction: (MenuAction) -> Unit,
     onDismiss: () -> Unit,
     turboLabel: String = "",
+    /** Shown only while the phone's motion aims a Wii Remote. */
+    showGyroCenter: Boolean = false,
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
@@ -59,6 +61,7 @@ fun InGameMenuDialog(
                 MenuRow(stringResource(R.string.menu_save)) { onAction(MenuAction.SAVE) }
                 MenuRow(stringResource(R.string.menu_fast_forward), trailing = fastForwardLabel) { onAction(MenuAction.FAST_FORWARD) }
                 MenuRow(stringResource(R.string.menu_turbo), trailing = turboLabel) { onAction(MenuAction.TURBO) }
+                if (showGyroCenter) MenuRow(stringResource(R.string.menu_gyro_center)) { onAction(MenuAction.GYRO_CENTER) }
                 MenuRow(stringResource(R.string.menu_cheats)) { onAction(MenuAction.CHEATS) }
                 MenuRow(stringResource(R.string.menu_layout)) { onAction(MenuAction.LAYOUT) }
                 MenuRow(stringResource(R.string.menu_settings)) { onAction(MenuAction.SETTINGS) }

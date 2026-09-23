@@ -42,6 +42,16 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
      */
     fun addKey(button: Int, keyCode: Int): GamepadMapping = GamepadMapping(keys + (keyCode to button))
 
+    /**
+     * Keys that press several pad buttons at once - a 조합 버튼 (macro) such as L4 = A+B. Stored like any
+     * binding, just with more than one bit in the mask.
+     */
+    val combos: List<Pair<Int, Int>>
+        get() = keys.entries.filter { (_, v) -> v !in ACTIONS && Integer.bitCount(v) > 1 }
+            .map { it.key to it.value }.sortedBy { it.first }
+
+    fun withoutKey(keyCode: Int): GamepadMapping = GamepadMapping(keys - keyCode)
+
     /** Only the differences from [base], in the format [parse] reads back. */
     fun overridesOf(base: GamepadMapping = DEFAULT): String = buildList {
         for (k in base.keys.keys) if (k !in keys) add("$k=")
@@ -82,7 +92,23 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
             "SAVE_STATE" to SAVE_STATE, "LOAD_STATE" to LOAD_STATE,
         )
 
-        fun nameOf(button: Int): String = buttonNames.entries.firstOrNull { it.value == button }?.key ?: button.toString()
+        /** "A", "MENU", or "A+B" for a combination. */
+        fun nameOf(button: Int): String {
+            buttonNames.entries.firstOrNull { it.value == button }?.let { return it.key }
+            if (button !in ACTIONS && Integer.bitCount(button) > 1) {
+                val parts = COMBO_BUTTONS.filter { (_, bit) -> button and bit != 0 }
+                if (parts.fold(0) { acc, (_, bit) -> acc or bit } == button) return parts.joinToString("+") { it.first }
+            }
+            return button.toString()
+        }
+
+        /** Pad buttons a combination can be made of, in the order they are listed and named. */
+        val COMBO_BUTTONS: List<Pair<String, Int>> = listOf(
+            "A" to Buttons.A, "B" to Buttons.B, "X" to Buttons.X, "Y" to Buttons.Y,
+            "L" to Buttons.L, "R" to Buttons.R, "L2" to Buttons.L2, "R2" to Buttons.R2,
+            "L3" to Buttons.L3, "R3" to Buttons.R3, "START" to Buttons.START, "SELECT" to Buttons.SELECT,
+            "UP" to Buttons.UP, "DOWN" to Buttons.DOWN, "LEFT" to Buttons.LEFT, "RIGHT" to Buttons.RIGHT,
+        )
 
         val DEFAULT = GamepadMapping(
             mapOf(
@@ -117,6 +143,17 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
         )
 
         /** Parses override lines on top of [base]; unknown names are ignored. */
+        /** "A+B" → A|B; null unless every part is a pad button. */
+        private fun parseCombo(value: String): Int? {
+            if ('+' !in value) return null
+            var mask = 0
+            for (part in value.split('+')) {
+                val bit = COMBO_BUTTONS.firstOrNull { it.first == part.trim().uppercase() }?.second ?: return null
+                mask = mask or bit
+            }
+            return mask
+        }
+
         fun parse(text: String, base: GamepadMapping = DEFAULT): GamepadMapping {
             if (text.isBlank()) return base
             val map = base.keys.toMutableMap()
@@ -124,7 +161,8 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
                 val key = line.substringBefore('=').trim().toIntOrNull() ?: continue
                 val value = line.substringAfter('=', "").trim()
                 if (value.isEmpty()) { map.remove(key); continue }
-                val button = buttonNames[value.uppercase()] ?: value.toIntOrNull()?.let { if (it < 16) 1 shl it else it } ?: continue
+                val button = buttonNames[value.uppercase()] ?: parseCombo(value)
+                    ?: value.toIntOrNull()?.let { if (it < 16) 1 shl it else it } ?: continue
                 map[key] = button
             }
             return GamepadMapping(map)
@@ -155,6 +193,8 @@ class GamepadInput(
 ) {
     private class DeviceState {
         var keyMask = 0
+        /** Keys held down right now, with what each presses; [keyMask] is their union. */
+        val held = HashMap<Int, Int>()
         var hatMask = 0
         var triggerMask = 0
         var lx = 0; var ly = 0; var rx = 0; var ry = 0
@@ -253,7 +293,10 @@ class GamepadInput(
             return true
         }
         val st = stateFor(event.deviceId)
-        st.keyMask = if (event.action == KeyEvent.ACTION_DOWN) st.keyMask or button else st.keyMask and button.inv()
+        // Rebuilt from every held key: with 조합 buttons two keys can share a bit (L4 = A+B while A is held),
+        // and letting go of one must not release the other.
+        if (event.action == KeyEvent.ACTION_DOWN) st.held[event.keyCode] = button else st.held.remove(event.keyCode)
+        st.keyMask = st.held.values.fold(0) { acc, b -> acc or b }
         publish(portFor(event.deviceId))
         return true
     }

@@ -180,7 +180,7 @@ class EmulatorActivity : ComponentActivity() {
         if (session.load()) {
             session.applyCheats()
             updateRunning()
-            recenterGyroSoon()
+            if (settings.get(MotionSensors.AUTO_CENTER, true)) recenterGyro(announce = true)
         }
     }
 
@@ -238,7 +238,9 @@ class EmulatorActivity : ComponentActivity() {
         super.onConfigurationChanged(newConfig)
         val before = displayRotation
         readDisplayRotation()
-        if (displayRotation != before) recenterGyroSoon()
+        if (displayRotation != before) lifecycleScope.launch {
+            if (settings.get(MotionSensors.AUTO_CENTER, true)) recenterGyro(announce = true)
+        }
     }
 
     /** Held into port 0 on top of everything else, for presses the app makes itself. */
@@ -251,18 +253,23 @@ class EmulatorActivity : ComponentActivity() {
      * pointer started below the screen and simply never appeared. Pressing 재조준 once, shortly after the game
      * is running and again whenever the screen turns, makes however the phone is held right now the middle.
      */
-    private fun recenterGyroSoon() {
+    fun recenterGyro(delayMs: Long = 1500, announce: Boolean = false) {
         if (ui.session?.irMode != EmulatorSession.IR_MODE_GYRO) return
         recenterJob?.cancel()
         recenterJob = lifecycleScope.launch {
-            kotlinx.coroutines.delay(1500)
+            if (announce) ui.toast = getString(R.string.gyro_center_hold)
+            kotlinx.coroutines.delay(delayMs)
             syntheticMask = EmulatorSession.Buttons.L3
             pushInput(0)
             kotlinx.coroutines.delay(150)
             syntheticMask = 0
             pushInput(0)
+            if (announce) ui.toast = getString(R.string.gyro_center_done)
         }
     }
+
+    /** True while the Wii Remote points with the phone's motion, which is when 자이로 가운데 맞추기 means anything. */
+    val gyroAiming: Boolean get() = ui.session?.irMode == EmulatorSession.IR_MODE_GYRO
 
     private fun toggleMenu() {
         if (closed || ui.session == null) return
