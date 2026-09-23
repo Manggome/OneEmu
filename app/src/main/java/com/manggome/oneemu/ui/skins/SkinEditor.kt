@@ -97,6 +97,19 @@ import com.manggome.oneemu.ui.layout.editorGestures
 import com.manggome.oneemu.ui.layout.rememberEditorChromeState
 import com.manggome.oneemu.ui.layout.resizeViewport
 import com.manggome.oneemu.ui.theme.OneEmuColors
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AspectRatio
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.ui.text.style.TextAlign
+import com.manggome.oneemu.ui.layout.EditorSettingsDialog
+import com.manggome.oneemu.ui.layout.EditorTool
+import com.manggome.oneemu.ui.layout.EditorToolRow
+import com.manggome.oneemu.ui.layout.MenuLine
+import com.manggome.oneemu.ui.layout.PercentSlider
+import com.manggome.oneemu.ui.layout.SelectionHeader
+import com.manggome.oneemu.ui.layout.SwitchLine
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -152,6 +165,8 @@ fun SkinEditor(
     var globalScale by remember { mutableStateOf(Settings.DEFAULT_PAD_SCALE) }
     var vibrate by remember { mutableStateOf(true) }
     var confirmDiscard by remember { mutableStateOf(false) }
+    var showLayoutMenu by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
     val history = remember { UndoHistory<SkinEditState>(50) }
     val chrome = rememberEditorChromeState()
@@ -436,114 +451,145 @@ fun SkinEditor(
             val placed = placement?.second
             val ov = overlay
             val single = selection.singleOrNull()
-            if (viewportSelected) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
-                    Text(
-                        stringResource(R.string.vp_size_readout, (currentViewport.w * 100).roundToInt(), (currentViewport.h * 100).roundToInt()),
-                        style = MaterialTheme.typography.bodySmall, color = OneEmuColors.OnSurfaceMuted, modifier = Modifier.padding(start = 8.dp),
+            val members = if (single != null && placed != null) single.mapNotNull { placed.getOrNull(it) } else emptyList()
+            when {
+                viewportSelected -> {
+                    SelectionHeader(
+                        stringResource(R.string.le_viewport_title, (currentViewport.w * 100).roundToInt(), (currentViewport.h * 100).roundToInt()),
+                        onDone = { viewportSelected = false },
+                    ) { NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() }) }
+                    ViewportToolbar(
+                        keepAspect = keepAspect,
+                        onKeepAspect = { keepAspect = it; dirty = true },
+                        onTop = { editViewport { ViewportQuick.top(it) } },
+                        onCenter = { editViewport { ViewportQuick.center(it) } },
+                        onFull = { editViewport { ViewportQuick.full() } },
+                        onDefault = { editViewport { defaultViewport } },
                     )
                 }
-                ViewportToolbar(
-                    keepAspect = keepAspect,
-                    onKeepAspect = { keepAspect = it; dirty = true },
-                    onTop = { editViewport { ViewportQuick.top(it) } },
-                    onCenter = { editViewport { ViewportQuick.center(it) } },
-                    onFull = { editViewport { ViewportQuick.full() } },
-                    onDefault = { editViewport { defaultViewport } },
-                )
-            } else if (selection.size >= 2) {
-                AlignToolbar(
-                    count = selection.size,
-                    onAlignRow = { align(AlignOps::alignRow) },
-                    onAlignColumn = { align(AlignOps::alignColumn) },
-                    onDistributeH = { align(AlignOps::distributeHorizontally) },
-                    onDistributeV = { align(AlignOps::distributeVertically) },
-                    onMirror = { align { AlignOps.mirrorHorizontally(it, canvasSize.width) } },
-                )
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
-                }
-            } else if (single != null && placed != null && ov != null) {
-                val members = single.mapNotNull { placed.getOrNull(it) }
-                val first = members.firstOrNull()
-                val visible = members.any { it.visible }
-                val scale = first?.let { currentLayout[ov, it.desc]?.scale } ?: 1f
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
-                    Text(groupLabel(members), style = MaterialTheme.typography.labelLarge, color = OneEmuColors.Accent, modifier = Modifier.weight(1f).padding(start = 4.dp))
-                    Text(stringResource(R.string.le_visible), style = MaterialTheme.typography.bodyMedium)
-                    Switch(
-                        checked = visible,
-                        onCheckedChange = { v -> edit { l -> members.fold(l) { acc, m -> acc.update(ov, m.desc) { it.copy(visible = v) } } } },
-                        modifier = Modifier.padding(start = 8.dp),
+                selection.size >= 2 -> {
+                    SelectionHeader(stringResource(R.string.le_selected_n, selection.size), onDone = { selection = emptyList() }) {
+                        NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
+                    }
+                    AlignToolbar(
+                        count = selection.size,
+                        onAlignRow = { align(AlignOps::alignRow) },
+                        onAlignColumn = { align(AlignOps::alignColumn) },
+                        onDistributeH = { align(AlignOps::distributeHorizontally) },
+                        onDistributeV = { align(AlignOps::distributeVertically) },
+                        onMirror = { align { AlignOps.mirrorHorizontally(it, canvasSize.width) } },
                     )
                 }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.le_scale), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp))
-                    Slider(
-                        value = scale,
-                        onValueChange = { s -> edit("scale") { l -> members.fold(l) { acc, m -> acc.update(ov, m.desc) { it.copy(scale = s) } } } },
-                        onValueChangeFinished = { history.endCoalesce() },
-                        valueRange = 0.6f..1.8f,
-                        modifier = Modifier.weight(1f),
+                members.isNotEmpty() && ov != null -> {
+                    val visible = members.any { it.visible }
+                    val scale = currentLayout[ov, members.first().desc]?.scale ?: 1f
+                    SelectionHeader(groupLabel(members), onDone = { selection = emptyList() }) {
+                        NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
+                    }
+                    PercentSlider(
+                        stringResource(R.string.le_scale),
+                        scale,
+                        { s -> edit("scale") { l -> members.fold(l) { acc, m -> acc.update(ov, m.desc) { it.copy(scale = s) } } } },
+                        0.6f..1.8f,
+                        onFinished = { history.endCoalesce() },
                     )
-                    Text("${(scale * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
+                    SwitchLine(
+                        stringResource(R.string.le_visible),
+                        visible,
+                        { v -> edit { l -> members.fold(l) { acc, m -> acc.update(ov, m.desc) { it.copy(visible = v) } } } },
+                    )
                 }
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.le_opacity), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp))
-                Slider(value = opacity, onValueChange = { opacity = it; dirty = true }, valueRange = 0.15f..1f, modifier = Modifier.weight(1f))
-                Text("${(opacity * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
-            }
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (variants.size > 1) {
-                    for (v in variants) {
-                        FilterChip(
-                            selected = v.name == overlay?.name,
-                            // Both variants live in the same SkinLayout under their own keys, so nothing
-                            // needs saving on the way across and unsaved work on either is still there.
-                            onClick = { variantName = v.name; selection = emptyList(); viewportSelected = false },
-                            label = { Text(v.name) },
+                else -> {
+                    // A skin's variants (portrait/landscape art, a second button set...) are what is being
+                    // edited, not a setting, so they stay in view. Both live in the same SkinLayout under
+                    // their own keys: nothing needs saving on the way across.
+                    if (variants.size > 1) {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        ) {
+                            for (v in variants) {
+                                FilterChip(
+                                    selected = v.name == overlay?.name,
+                                    onClick = { variantName = v.name; selection = emptyList(); viewportSelected = false },
+                                    label = { Text(v.name) },
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            stringResource(R.string.le_idle_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OneEmuColors.OnSurfaceMuted,
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                            textAlign = TextAlign.Center,
                         )
                     }
-                }
-                FilterChip(
-                    selected = viewportSelected,
-                    onClick = { viewportSelected = !viewportSelected; if (viewportSelected) selection = emptyList() },
-                    label = { Text(stringResource(R.string.vp_select)) },
-                )
-                for (id in overlayExtras) {
-                    FilterChip(
-                        selected = padLayout?.get(id)?.visible == true,
-                        onClick = {
-                            val cur = padLayout ?: PadLayout(emptyList())
-                            val next = if (cur[id]?.visible == true) cur.update(id) { it.copy(visible = false) }
-                            else cur.withElement(id, id.defaultSpot.first, id.defaultSpot.second)
-                            scope.launch { PadLayoutStore.save(profile, config, next) }
-                        },
-                        label = { Text(id.displayName) },
+                    EditorToolRow(
+                        listOf(
+                            EditorTool(Icons.Outlined.AspectRatio, stringResource(R.string.le_tool_screen)) {
+                                viewportSelected = true
+                                selection = emptyList()
+                            },
+                            EditorTool(Icons.Outlined.Dashboard, stringResource(R.string.le_tool_layout)) { showLayoutMenu = true },
+                            EditorTool(Icons.Outlined.Settings, stringResource(R.string.le_tool_settings)) { showSettings = true },
+                        ),
                     )
                 }
-                TextButton(onClick = {
-                    history.record(snapshot())
-                    layout = SkinLayout.EMPTY
-                    viewport = defaultViewport
-                    dirty = true
-                    selection = emptyList()
-                }) { Text(stringResource(R.string.se_reset)) }
-                // An image skin cannot be rearranged into a cabinet, so this drops the skin for this system
-                // and hands the vector pad the arcade preset instead (stick left, six flat buttons right).
-                TextButton(onClick = {
-                    scope.launch {
-                        PadLayoutStore.save(system, config, DefaultLayouts.forSystem(system, config, DefaultLayouts.Preset.ARCADE))
-                        SkinStore.select(profile.key, SkinStore.VECTOR)
+            }
+        }
+    }
+
+    if (showLayoutMenu) {
+        AlertDialog(
+            onDismissRequest = { showLayoutMenu = false },
+            title = { Text(stringResource(R.string.le_layout_menu_title)) },
+            text = {
+                Column {
+                    MenuLine(stringResource(R.string.se_reset), stringResource(R.string.se_reset_desc)) {
+                        showLayoutMenu = false
+                        history.record(snapshot())
+                        layout = SkinLayout.EMPTY
+                        viewport = defaultViewport
+                        dirty = true
+                        selection = emptyList()
                     }
-                }) { Text(stringResource(R.string.le_preset_arcade), maxLines = 1) }
+                    // An image skin cannot be rearranged into a cabinet, so this drops the skin for this
+                    // pad and hands the vector pad the arcade preset instead (stick left, six flat buttons right).
+                    MenuLine(stringResource(R.string.le_preset_arcade), stringResource(R.string.se_arcade_desc)) {
+                        showLayoutMenu = false
+                        scope.launch {
+                            PadLayoutStore.save(profile, config, DefaultLayouts.forProfile(profile, config, DefaultLayouts.Preset.ARCADE))
+                            SkinStore.select(profile.key, SkinStore.VECTOR)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showLayoutMenu = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    if (showSettings) {
+        EditorSettingsDialog(
+            opacity = opacity,
+            onOpacity = { opacity = it; dirty = true },
+            snap = null,
+            onSnap = {},
+            chrome = chrome,
+            onDismiss = { showSettings = false },
+        ) {
+            // Buttons the skin's art does not have (fast-forward, menu...), drawn by the vector pad on top.
+            for (id in overlayExtras) {
+                SwitchLine(
+                    stringResource(R.string.se_extra_button, id.displayName),
+                    padLayout?.get(id)?.visible == true,
+                    { on ->
+                        val cur = padLayout ?: PadLayout(emptyList())
+                        val next = if (!on) cur.update(id) { it.copy(visible = false) }
+                        else cur.withElement(id, id.defaultSpot.first, id.defaultSpot.second)
+                        scope.launch { PadLayoutStore.save(profile, config, next) }
+                    },
+                )
             }
         }
     }

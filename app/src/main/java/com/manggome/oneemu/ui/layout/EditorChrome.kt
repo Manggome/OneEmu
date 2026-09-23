@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.Button
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -142,21 +145,37 @@ fun BoxScope.EditorChrome(
     val panelAlpha by animateFloatAsState(if (panelShown) 1f else 0f, tween(if (panelShown) 200 else 120), label = "panelAlpha")
 
     Column(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.padding(start = 8.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, color = OneEmuColors.OnSurface)
-                if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.labelSmall, color = OneEmuColors.OnSurfaceMuted)
+        // One slim bar: leave, what is being edited, undo/redo (they apply to everything, so they live here
+        // rather than in the panel), save. The screen-shape selector gets its own line under it, so neither
+        // has to be squeezed until the text is cut off.
+        Surface(color = OneEmuColors.Surface.copy(alpha = 0.92f)) {
+            Column(Modifier.fillMaxWidth().statusBarsPadding()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SmallIconButton(Icons.Filled.Close, stringResource(R.string.le_cancel), onCancel, size = 44.dp)
+                    Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                        Text(title, style = MaterialTheme.typography.titleMedium, color = OneEmuColors.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (subtitle != null) {
+                            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = OneEmuColors.OnSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    SmallIconButton(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.le_undo), onUndo, enabled = canUndo, size = 44.dp)
+                    SmallIconButton(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.le_redo), onRedo, enabled = canRedo, size = 44.dp)
+                    Spacer(Modifier.width(4.dp))
+                    Button(onClick = onSave, enabled = saveEnabled, contentPadding = PaddingValues(horizontal = 18.dp)) {
+                        Text(stringResource(R.string.le_save))
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
+                if (orientationToggle != null) {
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 6.dp)) { orientationToggle() }
+                }
             }
-            Spacer(Modifier.width(12.dp))
-            Box(Modifier.weight(1f)) { orientationToggle?.invoke() }
-            TextButton(onClick = onCancel) { Text(stringResource(R.string.le_cancel)) }
-            TextButton(onClick = onSave, enabled = saveEnabled) { Text(stringResource(R.string.le_save)) }
         }
         if (state.atTop) {
-            ToolPanel(state, panelAlpha, canUndo, canRedo, onUndo, onRedo, panel)
+            ToolPanel(state, panelAlpha, panel)
         }
         if (!state.hintDismissed) HintChip(hint, panelAlpha, onDismiss = { state.dismissHint() })
         if (readout != null && state.atTop) Readout(readout)
@@ -167,7 +186,7 @@ fun BoxScope.EditorChrome(
     }
     if (!state.atTop) {
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            ToolPanel(state, panelAlpha, canUndo, canRedo, onUndo, onRedo, panel)
+            ToolPanel(state, panelAlpha, panel)
         }
     }
 }
@@ -184,42 +203,25 @@ private fun Modifier.fadeAndPassThrough(alpha: Float): Modifier = layout { measu
 private fun ToolPanel(
     state: EditorChromeState,
     alpha: Float,
-    canUndo: Boolean,
-    canRedo: Boolean,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
     panel: @Composable ColumnScope.() -> Unit,
 ) {
-    val shape = if (state.atTop) RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp) else RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    val shape = if (state.atTop) RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp) else RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     Surface(
         Modifier.fillMaxWidth().fadeAndPassThrough(alpha),
-        color = OneEmuColors.Surface.copy(alpha = 0.92f),
+        color = OneEmuColors.Surface.copy(alpha = 0.95f),
         shape = shape,
+        shadowElevation = 6.dp,
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                val collapseIcon = if (state.collapsed == state.atTop) Icons.Filled.ExpandMore else Icons.Filled.ExpandLess
-                SmallIconButton(
-                    icon = collapseIcon,
-                    description = stringResource(if (state.collapsed) R.string.le_panel_expand else R.string.le_panel_collapse),
-                    onClick = { state.collapsed = !state.collapsed },
-                )
-                FilterChip(
-                    selected = state.axisLock,
-                    onClick = { state.axisLock = !state.axisLock },
-                    label = { Text(stringResource(R.string.le_axis_lock)) },
-                    modifier = Modifier.padding(start = 4.dp),
-                )
-                Spacer(Modifier.weight(1f))
-                SmallIconButton(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.le_undo), onUndo, enabled = canUndo)
-                SmallIconButton(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.le_redo), onRedo, enabled = canRedo)
-                SmallIconButton(
-                    icon = if (state.atTop) Icons.Filled.VerticalAlignBottom else Icons.Filled.VerticalAlignTop,
-                    description = stringResource(R.string.le_panel_edge),
-                    onClick = { state.toggleEdge() },
+        Column(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            // A grab-bar, so the panel reads as a sheet over the pad rather than part of it.
+            if (!state.atTop) {
+                Box(
+                    Modifier.align(Alignment.CenterHorizontally).padding(bottom = 6.dp)
+                        .size(width = 36.dp, height = 4.dp)
+                        .background(OneEmuColors.OnSurfaceMuted.copy(alpha = 0.4f), RoundedCornerShape(50)),
                 )
             }
-            if (!state.collapsed) Column(Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) { panel() }
+            panel()
         }
     }
 }
@@ -306,7 +308,6 @@ fun AlignToolbar(
     onMirror: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(R.string.le_selected_count, count), style = MaterialTheme.typography.labelLarge, color = OneEmuColors.Accent, modifier = Modifier.padding(end = 8.dp))
         TextButton(onClick = onAlignRow) { Text(stringResource(R.string.le_align_row)) }
         TextButton(onClick = onAlignColumn) { Text(stringResource(R.string.le_align_column)) }
         TextButton(onClick = onDistributeH, enabled = count >= 3) { Text(stringResource(R.string.le_distribute_h)) }

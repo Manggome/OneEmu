@@ -19,6 +19,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.AspectRatio
+import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -148,6 +154,8 @@ private fun VectorLayoutEditor(
     var vibrate by remember { mutableStateOf(true) }
     var showElementList by remember { mutableStateOf(false) }
     var showCopyFrom by remember { mutableStateOf(false) }
+    var showLayoutMenu by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
     val history = remember { UndoHistory<VectorEditState>(50) }
@@ -430,116 +438,128 @@ private fun VectorLayoutEditor(
             readout = readout,
         ) {
             val sel = selection.singleOrNull()?.let { id -> layout?.get(id) }
-            if (viewportSelected) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
-                    Text(
-                        stringResource(R.string.vp_size_readout, (currentViewport.w * 100).roundToInt(), (currentViewport.h * 100).roundToInt()),
-                        style = MaterialTheme.typography.bodySmall, color = OneEmuColors.OnSurfaceMuted, modifier = Modifier.padding(start = 8.dp),
+            // One job at a time: the thing that is selected, or - with nothing selected - the tools.
+            when {
+                viewportSelected -> {
+                    SelectionHeader(
+                        stringResource(R.string.le_viewport_title, (currentViewport.w * 100).roundToInt(), (currentViewport.h * 100).roundToInt()),
+                        onDone = { viewportSelected = false },
+                    ) { NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() }) }
+                    ViewportToolbar(
+                        keepAspect = keepAspect,
+                        onKeepAspect = { keepAspect = it; dirty = true },
+                        onTop = { editViewport { ViewportQuick.top(it) } },
+                        onCenter = { editViewport { ViewportQuick.center(it) } },
+                        onFull = { editViewport { ViewportQuick.full() } },
+                        onDefault = { editViewport { defaultViewport } },
                     )
                 }
-                ViewportToolbar(
-                    keepAspect = keepAspect,
-                    onKeepAspect = { keepAspect = it; dirty = true },
-                    onTop = { editViewport { ViewportQuick.top(it) } },
-                    onCenter = { editViewport { ViewportQuick.center(it) } },
-                    onFull = { editViewport { ViewportQuick.full() } },
-                    onDefault = { editViewport { defaultViewport } },
-                )
-            } else if (selection.size >= 2) {
-                AlignToolbar(
-                    count = selection.size,
-                    onAlignRow = { align(AlignOps::alignRow) },
-                    onAlignColumn = { align(AlignOps::alignColumn) },
-                    onDistributeH = { align(AlignOps::distributeHorizontally) },
-                    onDistributeV = { align(AlignOps::distributeVertically) },
-                    onMirror = { align { AlignOps.mirrorHorizontally(it, canvasSize.width) } },
-                )
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
-                }
-            } else if (sel != null) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
-                    Text(sel.id.displayName(profile), style = MaterialTheme.typography.labelLarge, color = OneEmuColors.Accent, modifier = Modifier.weight(1f).padding(start = 4.dp))
-                    Text(stringResource(R.string.le_visible), style = MaterialTheme.typography.bodyMedium)
-                    Switch(
-                        checked = sel.visible,
-                        onCheckedChange = { v -> edit { l -> l.update(sel.id) { it.copy(visible = v) } } },
-                        modifier = Modifier.padding(start = 8.dp),
+                selection.size >= 2 -> {
+                    SelectionHeader(stringResource(R.string.le_selected_n, selection.size), onDone = { selection = emptyList() }) {
+                        NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
+                    }
+                    AlignToolbar(
+                        count = selection.size,
+                        onAlignRow = { align(AlignOps::alignRow) },
+                        onAlignColumn = { align(AlignOps::alignColumn) },
+                        onDistributeH = { align(AlignOps::distributeHorizontally) },
+                        onDistributeV = { align(AlignOps::distributeVertically) },
+                        onMirror = { align { AlignOps.mirrorHorizontally(it, canvasSize.width) } },
                     )
                 }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.le_scale), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp))
-                    Slider(
-                        value = sel.scale,
-                        onValueChange = { s -> edit("scale") { l -> l.update(sel.id) { it.copy(scale = s) } } },
-                        onValueChangeFinished = { history.endCoalesce() },
-                        valueRange = ELEMENT_SCALE_MIN..ELEMENT_SCALE_MAX,
-                        modifier = Modifier.weight(1f),
+                sel != null -> {
+                    SelectionHeader(sel.id.displayName(profile), onDone = { selection = emptyList() }) {
+                        NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
+                    }
+                    PercentSlider(
+                        stringResource(R.string.le_scale),
+                        sel.scale,
+                        { v -> edit("scale") { l -> l.update(sel.id) { it.copy(scale = v) } } },
+                        ELEMENT_SCALE_MIN..ELEMENT_SCALE_MAX,
+                        onFinished = { history.endCoalesce() },
                     )
-                    Text("${(sel.scale * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
-                }
-                // A stick that also presses the d-pad. Plenty of games never read the analog sticks -
-                // Tekken on PlayStation is one - and there the stick does nothing until it does this.
-                if (sel.id.kind == PadElementId.Kind.STICK) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.le_stick_dpad), style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                stringResource(R.string.le_stick_dpad_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OneEmuColors.OnSurfaceMuted,
-                            )
-                        }
-                        Switch(
-                            checked = sel.dpadToo,
-                            onCheckedChange = { v -> edit { l -> l.update(sel.id) { it.copy(dpadToo = v) } } },
-                            modifier = Modifier.padding(start = 8.dp),
+                    SwitchLine(stringResource(R.string.le_visible), sel.visible, { v -> edit { l -> l.update(sel.id) { it.copy(visible = v) } } })
+                    // A stick that also presses the d-pad. Plenty of games never read the analog sticks -
+                    // Tekken is one - and there the stick does nothing until it does this.
+                    if (sel.id.kind == PadElementId.Kind.STICK) {
+                        SwitchLine(
+                            stringResource(R.string.le_stick_dpad),
+                            sel.dpadToo,
+                            { v -> edit { l -> l.update(sel.id) { it.copy(dpadToo = v) } } },
+                            stringResource(R.string.le_stick_dpad_desc),
                         )
                     }
                 }
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.le_opacity), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(56.dp))
-                Slider(value = opacity, onValueChange = { opacity = it; dirty = true }, valueRange = 0.15f..1f, modifier = Modifier.weight(1f))
-                Text("${(opacity * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp))
-            }
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                FilterChip(selected = snap, onClick = { snap = !snap }, label = { Text(stringResource(R.string.le_snap)) })
-                TextButton(onClick = {
-                    val l = layout
-                    selection = if (l == null) emptyList() else l.elements.filter { it.visible }.map { it.id }
-                    viewportSelected = false
-                }) { Text(stringResource(R.string.le_select_all), maxLines = 1) }
-                TextButton(onClick = { edit { it.mirrored() } }) { Text(stringResource(R.string.le_mirror_all), maxLines = 1) }
-                TextButton(onClick = { showCopyFrom = true }) { Text(stringResource(R.string.le_copy_from), maxLines = 1) }
-                FilterChip(
-                    selected = viewportSelected,
-                    onClick = { viewportSelected = !viewportSelected; if (viewportSelected) selection = emptyList() },
-                    label = { Text(stringResource(R.string.vp_select)) },
-                )
-                TextButton(onClick = { showElementList = true }) { Text(stringResource(R.string.le_elements)) }
-                fun applyPreset(preset: DefaultLayouts.Preset) {
-                    val before = snapshot()
-                    if (before != null) history.record(before)
-                    layout = DefaultLayouts.forProfile(profile, config, preset)
-                    viewport = defaultViewport
-                    dirty = true
-                    selection = emptyList()
-                }
-                TextButton(onClick = { applyPreset(DefaultLayouts.Preset.DEFAULT) }) {
-                    Text(stringResource(R.string.le_reset), maxLines = 1)
-                }
-                TextButton(onClick = { applyPreset(DefaultLayouts.Preset.ARCADE) }) {
-                    Text(stringResource(R.string.le_preset_arcade), maxLines = 1)
+                else -> {
+                    Text(
+                        stringResource(R.string.le_idle_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OneEmuColors.OnSurfaceMuted,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                    EditorToolRow(
+                        listOf(
+                            EditorTool(Icons.Outlined.AddCircleOutline, stringResource(R.string.le_tool_buttons)) { showElementList = true },
+                            EditorTool(Icons.Outlined.AspectRatio, stringResource(R.string.le_tool_screen)) {
+                                viewportSelected = true
+                                selection = emptyList()
+                            },
+                            EditorTool(Icons.Outlined.SelectAll, stringResource(R.string.le_tool_select_all)) {
+                                val l = layout
+                                selection = if (l == null) emptyList() else l.elements.filter { it.visible }.map { it.id }
+                            },
+                            EditorTool(Icons.Outlined.Dashboard, stringResource(R.string.le_tool_layout)) { showLayoutMenu = true },
+                            EditorTool(Icons.Outlined.Settings, stringResource(R.string.le_tool_settings)) { showSettings = true },
+                        ),
+                    )
                 }
             }
+
         }
+    }
+
+    if (showLayoutMenu) {
+        fun applyPreset(preset: DefaultLayouts.Preset) {
+            val before = snapshot()
+            if (before != null) history.record(before)
+            layout = DefaultLayouts.forProfile(profile, config, preset)
+            viewport = defaultViewport
+            dirty = true
+            selection = emptyList()
+        }
+        AlertDialog(
+            onDismissRequest = { showLayoutMenu = false },
+            title = { Text(stringResource(R.string.le_layout_menu_title)) },
+            text = {
+                Column {
+                    MenuLine(stringResource(R.string.le_reset), stringResource(R.string.le_layout_default_desc)) {
+                        showLayoutMenu = false; applyPreset(DefaultLayouts.Preset.DEFAULT)
+                    }
+                    MenuLine(stringResource(R.string.le_preset_arcade), stringResource(R.string.le_layout_arcade_desc)) {
+                        showLayoutMenu = false; applyPreset(DefaultLayouts.Preset.ARCADE)
+                    }
+                    MenuLine(stringResource(R.string.le_mirror_all), stringResource(R.string.le_layout_mirror_desc)) {
+                        showLayoutMenu = false; edit { it.mirrored() }
+                    }
+                    MenuLine(stringResource(R.string.le_copy_from), stringResource(R.string.le_layout_copy_desc)) {
+                        showLayoutMenu = false; showCopyFrom = true
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showLayoutMenu = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    if (showSettings) {
+        EditorSettingsDialog(
+            opacity = opacity,
+            onOpacity = { opacity = it; dirty = true },
+            snap = snap,
+            onSnap = { snap = it; dirty = true },
+            chrome = chrome,
+            onDismiss = { showSettings = false },
+        )
     }
 
     if (showElementList) {
