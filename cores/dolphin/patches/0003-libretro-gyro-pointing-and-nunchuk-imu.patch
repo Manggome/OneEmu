@@ -11,10 +11,22 @@ index 7d27a1e..d071cc7 100644
      },
      "1"
 diff --git a/Source/Core/DolphinLibretro/Input.cpp b/Source/Core/DolphinLibretro/Input.cpp
-index 5250054..75be259 100644
+index 5250054..6b8f21b 100644
 --- a/Source/Core/DolphinLibretro/Input.cpp
 +++ b/Source/Core/DolphinLibretro/Input.cpp
-@@ -981,6 +981,13 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned
+@@ -953,8 +953,10 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned
+ 
+         static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[4].get())
+           ->SetValue(irMode == 0);                                    // Relative input
++        // Never auto-hide: a touch screen's stick rests at the centre between pushes, and a pointer that
++        // vanishes whenever the thumb lets go reads as "remote not pointing at the screen" to the game.
+         static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[5].get())
+-          ->SetValue(true);                                           // Auto hide
++          ->SetValue(false);                                          // Auto hide
+ 
+         // Swing‑related updates
+         ControllerEmu::ControlGroup* wmSwing = wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Swing);
+@@ -981,6 +983,13 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned
            wmSwing->SetControlExpression(3, "");
          }
        }
@@ -28,7 +40,7 @@ index 5250054..75be259 100644
        else
        {
          // Mouse controls IR
-@@ -994,6 +1001,16 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned
+@@ -994,6 +1003,16 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned
            ->SetValue(false);                                          // Auto hide
        }
  
@@ -45,7 +57,7 @@ index 5250054..75be259 100644
        if (f.irMode && device == RETRO_DEVICE_WIIMOTE_NC)
        {
          // mouse
-@@ -1429,6 +1446,57 @@ void retro_set_controller_port_device_gc(unsigned port, unsigned device)
+@@ -1429,6 +1448,57 @@ void retro_set_controller_port_device_gc(unsigned port, unsigned device)
      return Pad::GetConfig()->SaveConfig();
  }
  
@@ -103,7 +115,7 @@ index 5250054..75be259 100644
  void retro_set_controller_port_device_wii(unsigned port, unsigned device)
  {
    std::string devJoypad = Libretro::Input::GetQualifiedName(port, RETRO_DEVICE_JOYPAD);
-@@ -1559,6 +1627,10 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
+@@ -1559,6 +1629,10 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
        wmButtons->SetControlExpression(4, "L");                             // -
        wmButtons->SetControlExpression(5, "R");                             // +
  
@@ -114,7 +126,7 @@ index 5250054..75be259 100644
        f.irMode = true;
      }
      else
-@@ -1579,49 +1651,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
+@@ -1579,49 +1653,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
        }
  
        // Map accel data to tilt expressions
