@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
+import com.manggome.oneemu.emu.input.MotionSensors
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
@@ -141,6 +142,12 @@ class EmulatorActivity : ComponentActivity() {
         val session = EmulatorSession(game, core, hwApi)
         val missing = session.missingRequiredBios()
         if (missing.isNotEmpty()) { ui.error = getString(R.string.emu_missing_bios, missing.joinToString(", ")); return }
+        // Motion sensors, for the one core that reads them (Dolphin: the Wii Remote's tilt, swing and, in
+        // IR mode 3, its pointer). Reported before the core loads, because it asks during its first frames.
+        motion?.stop()
+        motion = if (session.wantsMotion) MotionSensors(this) { displayRotation } else null
+        session.gyroAvailable = motion?.hasGyroscope == true
+        NativeBridge.setSensorsAvailable(motion?.hasAccelerometer == true, motion?.hasGyroscope == true)
         ui.session = session
         CrashMarker.write(this, game.title, game.path, core.id)
         if (session.load()) {
@@ -182,6 +189,26 @@ class EmulatorActivity : ComponentActivity() {
         val s = ui.session ?: return
         val shouldRun = isResumed && surface != null && !overlayOpen && !closed
         if (shouldRun) s.resume() else s.pause()
+        // Sensors only while the game actually runs: they cost battery, and a paused remote should not drift.
+        if (shouldRun) motion?.start() else motion?.stop()
+    }
+
+    /** The phone's motion, when the running core reads it; see [MotionSensors]. */
+    private var motion: MotionSensors? = null
+
+    /** Cached: MotionSensors asks on every reading, and the display only turns on a configuration change. */
+    @Volatile private var displayRotation: Int = Surface.ROTATION_0
+
+    private fun readDisplayRotation() {
+        displayRotation = runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) display?.rotation
+            else @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation
+        }.getOrNull() ?: Surface.ROTATION_0
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        readDisplayRotation()
     }
 
     private fun toggleMenu() {
@@ -265,6 +292,7 @@ class EmulatorActivity : ComponentActivity() {
     // ---- lifecycle ----
     override fun onResume() {
         super.onResume()
+        readDisplayRotation()
         isResumed = true
         applyImmersive()
         updateRunning()
@@ -296,6 +324,7 @@ class EmulatorActivity : ComponentActivity() {
             val s = ui.session
             ioScope.launch { s?.close(); CrashMarker.clear(this@EmulatorActivity) }
         }
+        motion?.stop()
         gamepad.stopWatching()
         haptics.cancel()
         super.onDestroy()

@@ -291,5 +291,12 @@
     <string name="lib_wii_title">Wii 컨트롤러</string>
     <string name="lib_wii_desc_wii">이 디스크는 Wii 게임입니다. 눈차크를 붙여 두면 \"눈차크를 연결하세요\" 안내 없이 바로 시작합니다.</string>
     <string name="lib_wii_desc_unknown">디스크 종류를 읽지 못했습니다. Wii 게임이면 직접 골라 주세요.</string>
+    <string name="lib_wii_aim_title">조준 방식</string>
+    <string name="lib_wii_aim_desc">폰을 기울여 가리키면 엄지로 조준하면서 버튼을 누르지 않아도 됩니다. 조준이 틀어지면 화면 가운데를 향하고 재조준 버튼을 누르세요.</string>
+    <string name="lib_wii_aim_desc_no_gyro">이 기기에는 자이로 센서가 없어 화면 터치나 스틱으로 조준합니다.</string>
+    <string name="lib_wii_aim_auto">자동 (자이로가 있으면 자이로)</string>
+    <string name="lib_wii_aim_gyro">폰 기울이기 (자이로)</string>
+    <string name="lib_wii_aim_touch">화면 터치</string>
+    <string name="lib_wii_aim_stick">오른쪽 스틱</string>
     <string name="lib_wii_edit_layout">Wii 레이아웃 편집</string>
 </resources>

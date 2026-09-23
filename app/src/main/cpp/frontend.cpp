@@ -94,6 +94,10 @@ static retro_proc_address_t cb_hw_get_proc_address(const char* sym) {
 static bool cb_set_rumble(unsigned port, enum retro_rumble_effect, uint16_t strength) {
     return Frontend::get().rumble(port, strength);
 }
+static bool cb_set_sensor_state(unsigned port, enum retro_sensor_action action, unsigned) {
+    return Frontend::get().sensorState(port, (unsigned)action);
+}
+static float cb_get_sensor_input(unsigned port, unsigned id) { return Frontend::get().sensorInput(port, id); }
 static retro_time_t cb_perf_get_time_usec() { return nowNs() / 1000; }
 static retro_perf_tick_t cb_perf_get_counter() { return (retro_perf_tick_t)nowNs(); }
 static uint64_t cb_perf_get_cpu_features() { return 0; }
@@ -770,6 +774,47 @@ void Frontend::setPointer(int16_t x, int16_t y, bool pressed) {
     pointerX_ = x; pointerY_ = y; pointerPressed_ = pressed;
 }
 
+void Frontend::setSensorsAvailable(bool accelerometer, bool gyroscope) {
+    accelAvailable_ = accelerometer;
+    gyroAvailable_ = gyroscope;
+    accelOn_ = false;
+    gyroOn_ = false;
+    for (int i = 0; i < 3; i++) { accel_[i] = 0.f; gyro_[i] = 0.f; }
+}
+
+void Frontend::setSensor(int kind, float x, float y, float z) {
+    std::atomic<float>* v = kind == 0 ? accel_ : gyro_;
+    v[0].store(x, std::memory_order_relaxed);
+    v[1].store(y, std::memory_order_relaxed);
+    v[2].store(z, std::memory_order_relaxed);
+}
+
+// One phone, so one set of sensors: only port 0 has them. Enabling one the phone lacks reports false,
+// which is how a core learns to fall back (Dolphin then keeps pointing on the stick or the touch screen).
+bool Frontend::sensorState(unsigned port, unsigned action) {
+    if (port != 0) return false;
+    switch (action) {
+        case RETRO_SENSOR_ACCELEROMETER_ENABLE: accelOn_ = accelAvailable_.load(); return accelOn_;
+        case RETRO_SENSOR_ACCELEROMETER_DISABLE: accelOn_ = false; return true;
+        case RETRO_SENSOR_GYROSCOPE_ENABLE: gyroOn_ = gyroAvailable_.load(); return gyroOn_;
+        case RETRO_SENSOR_GYROSCOPE_DISABLE: gyroOn_ = false; return true;
+        default: return false;
+    }
+}
+
+float Frontend::sensorInput(unsigned port, unsigned id) {
+    if (port != 0) return 0.f;
+    switch (id) {
+        case RETRO_SENSOR_ACCELEROMETER_X: return accelOn_ ? accel_[0].load(std::memory_order_relaxed) : 0.f;
+        case RETRO_SENSOR_ACCELEROMETER_Y: return accelOn_ ? accel_[1].load(std::memory_order_relaxed) : 0.f;
+        case RETRO_SENSOR_ACCELEROMETER_Z: return accelOn_ ? accel_[2].load(std::memory_order_relaxed) : 0.f;
+        case RETRO_SENSOR_GYROSCOPE_X: return gyroOn_ ? gyro_[0].load(std::memory_order_relaxed) : 0.f;
+        case RETRO_SENSOR_GYROSCOPE_Y: return gyroOn_ ? gyro_[1].load(std::memory_order_relaxed) : 0.f;
+        case RETRO_SENSOR_GYROSCOPE_Z: return gyroOn_ ? gyro_[2].load(std::memory_order_relaxed) : 0.f;
+        default: return 0.f;
+    }
+}
+
 void Frontend::setControllerPortDevice(unsigned port, unsigned device) {
     run([&] { if (core_.loaded() && gameLoaded_) core_.retro_set_controller_port_device(port, device); });
 }
@@ -947,7 +992,14 @@ bool Frontend::environment(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES:
             *(uint64_t*)data = (1 << RETRO_DEVICE_JOYPAD) | (1 << RETRO_DEVICE_ANALOG) | (1 << RETRO_DEVICE_POINTER);
             return true;
-        case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE: return false;
+        case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE: {
+            // The phone's own accelerometer and gyroscope, on port 0: Dolphin turns them into the Wii
+            // Remote's motion (tilt, swing, shake) and, with dolphin_ir_mode 3, its pointer.
+            auto* si = (retro_sensor_interface*)data;
+            si->set_sensor_state = cb_set_sensor_state;
+            si->get_sensor_input = cb_get_sensor_input;
+            return true;
+        }
         case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE: return false;
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: ((retro_log_callback*)data)->log = cb_log; return true;
         case RETRO_ENVIRONMENT_GET_PERF_INTERFACE: {

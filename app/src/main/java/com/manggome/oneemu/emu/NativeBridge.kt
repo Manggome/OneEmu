@@ -64,6 +64,10 @@ object NativeBridge {
     external fun setPointer(x: Int, y: Int, pressed: Boolean)
     /** retro_set_controller_port_device(port, device) on the emu thread. */
     external fun setControllerPortDevice(port: Int, device: Int)
+    /** Which motion sensors the phone has; call before loadCore so a core asking for them gets a true answer. */
+    external fun setSensorsAvailable(accelerometer: Boolean, gyroscope: Boolean)
+    /** One reading, in libretro units and in the frame the core expects; see MotionSensors. kind 0 = accel, 1 = gyro. */
+    external fun setSensor(kind: Int, x: Float, y: Float, z: Float)
 
     // ---- runtime config ----
     /** 0 = normal speed, N = N× fast forward, -1 = unlimited. */

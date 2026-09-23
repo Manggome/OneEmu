@@ -112,7 +112,9 @@ object DefaultLayouts {
      */
     private fun wiimote(landscape: Boolean): PadLayout {
         val base = fourButton(landscape, shoulders = true, leftStick = true, rightStick = false, triggers = true, lowPortrait = false)
-        if (landscape) return PadLayout(base.elements + e(R3, 0.50f, 0.80f, 0.85f))
+        // 재조준 (L3): a gyro drifts, and the core recentres the pointer on it. Between the d-pad and the
+        // face buttons, where either thumb reaches it without letting go of anything.
+        if (landscape) return PadLayout(base.elements + e(R3, 0.50f, 0.80f, 0.85f) + e(L3, 0.50f, 0.64f, 0.85f))
         // Portrait: a four-button pad drops SELECT/START to the very bottom edge to clear the stick, which on a
         // phone puts them under the navigation bar. 1, 2 and HOME are menu buttons a Wii game needs, so they sit
         // in a row of their own beside the stick instead.
@@ -123,7 +125,7 @@ object DefaultLayouts {
                     START -> it.copy(x = 0.62f, y = 0.93f)
                     else -> it
                 }
-            } + e(R3, 0.80f, 0.93f, 0.85f),
+            } + e(R3, 0.80f, 0.93f, 0.85f) + e(L3, 0.50f, 0.72f, 0.85f),
         )
     }
 
