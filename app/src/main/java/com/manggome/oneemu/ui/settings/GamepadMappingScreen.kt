@@ -2,6 +2,9 @@ package com.manggome.oneemu.ui.settings
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.FilterChip
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,6 +41,9 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
     var capturing by remember { mutableStateOf<Pair<String, Int>?>(null) }
     // True when the press should be added to the button's keys instead of replacing them.
     var adding by remember { mutableStateOf(false) }
+    // 조합 버튼: first the key is captured, then the buttons it presses are picked.
+    var comboCapture by remember { mutableStateOf(false) }
+    var comboKey by remember { mutableStateOf<Int?>(null) }
     var resetting by remember { mutableStateOf(false) }
 
     val devices = rememberPadDevices()
@@ -74,6 +80,30 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
             )
         }
         SettingsDivider()
+        SectionHeader(stringResource(R.string.gamepad_combos))
+        NoteText(stringResource(R.string.gamepad_combos_desc))
+        for ((key, mask) in mapping.combos) {
+            val parts = GamepadMapping.nameOf(mask).split('+')
+            val labels = ArrayList<String>(parts.size)
+            for (part in parts) labels += buttonLabel(part)
+            SettingsRow(
+                title = GamepadCapture.keyName(key),
+                subtitle = labels.joinToString(" + "),
+                trailing = {
+                    IconButton(onClick = { save(mapping.withoutKey(key)) }) {
+                        Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.gamepad_combo_delete))
+                    }
+                },
+                onClick = { comboKey = key },
+            )
+        }
+        SettingsRow(
+            title = stringResource(R.string.gamepad_combo_add),
+            icon = Icons.Outlined.Add,
+            enabled = device != null,
+            onClick = { comboCapture = true },
+        )
+        SettingsDivider()
         SettingsRow(
             title = stringResource(R.string.gamepad_reset),
             subtitle = stringResource(R.string.gamepad_reset_desc),
@@ -91,6 +121,26 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
             },
             onClear = { capturing = null; save(GamepadMapping(mapping.keys.filterValues { it != button })) },
             onDismiss = { capturing = null },
+        )
+    }
+
+    if (comboCapture) {
+        CaptureDialog(
+            label = stringResource(R.string.gamepad_combo_key),
+            onCaptured = { keyCode -> comboCapture = false; comboKey = keyCode },
+            onClear = { comboCapture = false },
+            onDismiss = { comboCapture = false },
+        )
+    }
+    comboKey?.let { key ->
+        ComboDialog(
+            keyName = GamepadCapture.keyName(key),
+            initial = mapping.buttonFor(key)?.takeIf { it !in GamepadMapping.ACTIONS } ?: 0,
+            onSave = { mask ->
+                comboKey = null
+                save(if (mask == 0) mapping.withoutKey(key) else mapping.addKey(mask, key))
+            },
+            onDismiss = { comboKey = null },
         )
     }
 
@@ -147,4 +197,30 @@ private fun buttonLabel(name: String): String = when (name) {
     "LEFT" -> stringResource(R.string.gamepad_btn_left)
     "RIGHT" -> stringResource(R.string.gamepad_btn_right)
     else -> name
+}
+
+/** Picks the pad buttons a 조합 key presses together. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ComboDialog(keyName: String, initial: Int, onSave: (Int) -> Unit, onDismiss: () -> Unit) {
+    var mask by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.gamepad_combo_title, keyName)) },
+        text = {
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+            ) {
+                for ((name, bit) in GamepadMapping.COMBO_BUTTONS) {
+                    FilterChip(
+                        selected = mask and bit != 0,
+                        onClick = { mask = mask xor bit },
+                        label = { Text(buttonLabel(name)) },
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(mask) }, enabled = Integer.bitCount(mask) != 1) { Text(stringResource(R.string.ok)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }

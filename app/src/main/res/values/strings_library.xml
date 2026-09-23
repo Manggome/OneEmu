@@ -298,4 +298,9 @@
     <string name="lib_wii_aim_touch">화면 터치</string>
     <string name="lib_wii_aim_stick">조준 스틱 (기본)</string>
     <string name="lib_wii_edit_layout">Wii 레이아웃 편집</string>
+    <string name="lib_wii_gyro_how">누르고 있을 버튼은 없습니다. 포인터는 항상 폰 방향을 따라가고, 기준(화면 가운데)은 게임이 시작될 때 폰이 향하던 방향입니다. 기준이 어긋나면 폰을 화면 가운데로 향한 채 재조준 버튼을 누르거나, 메뉴 → 자이로 가운데 맞추기를 누르세요.</string>
+    <string name="lib_wii_gyro_sensitivity">자이로 감도</string>
+    <string name="lib_wii_gyro_sensitivity_desc">높을수록 폰을 조금만 돌려도 화면 끝까지 갑니다. 코어 r6 이상에서 적용됩니다.</string>
+    <string name="lib_wii_gyro_autocenter">시작할 때 자동으로 가운데 맞추기</string>
+    <string name="lib_wii_gyro_autocenter_desc">게임 시작 1.5초 뒤와 화면을 돌렸을 때, 그때 폰 방향을 화면 가운데로 잡습니다.</string>
 </resources>

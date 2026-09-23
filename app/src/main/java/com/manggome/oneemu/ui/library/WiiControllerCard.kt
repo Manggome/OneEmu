@@ -8,7 +8,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Switch
+import com.manggome.oneemu.emu.input.MotionSensors
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -135,6 +141,7 @@ internal fun WiiControllerCard(game: GameEntity, onEditWiiLayout: () -> Unit) {
                         Text(stringResource(label), style = MaterialTheme.typography.bodyLarge)
                     }
                 }
+                if (aim == "3") GyroOptions(game.id)
                 Spacer(Modifier.height(4.dp))
                 OutlinedButton(
                     onClick = onEditWiiLayout,
@@ -152,3 +159,62 @@ private const val IR_MODE = "dolphin_ir_mode"
 private fun hasGyroscope(context: android.content.Context): Boolean =
     (context.getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager)
         ?.getDefaultSensor(android.hardware.Sensor.TYPE_GYROSCOPE) != null
+
+/**
+ * Where "straight at the screen" is, and how far a turn moves the pointer, for gyro aiming. Nothing is held
+ * down while aiming: the pointer follows the phone all the time, measured from the direction it was
+ * pointing when the game started (or the last 자이로 가운데 맞추기 / 재조준).
+ */
+@Composable
+private fun GyroOptions(gameId: Long) {
+    val settings = OneEmuApp.get().settings
+    val scope = rememberCoroutineScope()
+    var sensitivity by remember(gameId) { mutableStateOf(100) }
+    LaunchedEffect(gameId) {
+        sensitivity = settings.gameOptionOverrides(gameId)[MotionSensors.SENSITIVITY_OPTION]?.toIntOrNull() ?: 100
+    }
+    val autoCenter by settings.observe(MotionSensors.AUTO_CENTER, true).collectAsState(true)
+
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+        Text(
+            stringResource(R.string.lib_wii_gyro_how),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(stringResource(R.string.lib_wii_gyro_sensitivity), style = MaterialTheme.typography.titleSmall)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (v in MotionSensors.SENSITIVITIES) {
+                FilterChip(
+                    selected = v == sensitivity,
+                    onClick = {
+                        sensitivity = v
+                        scope.launch {
+                            settings.setGameOptionOverride(gameId, MotionSensors.SENSITIVITY_OPTION, if (v == 100) null else v.toString())
+                        }
+                    },
+                    label = { Text("$v%") },
+                )
+            }
+        }
+        Text(
+            stringResource(R.string.lib_wii_gyro_sensitivity_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            Modifier.fillMaxWidth().clickable { scope.launch { settings.set(MotionSensors.AUTO_CENTER, !autoCenter) } }.padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.lib_wii_gyro_autocenter), style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    stringResource(R.string.lib_wii_gyro_autocenter_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = autoCenter, onCheckedChange = { v -> scope.launch { settings.set(MotionSensors.AUTO_CENTER, v) } })
+        }
+    }
+}

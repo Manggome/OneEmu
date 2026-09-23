@@ -1,8 +1,8 @@
 diff --git a/Source/Core/DolphinLibretro/Common/Options.cpp b/Source/Core/DolphinLibretro/Common/Options.cpp
-index 7d27a1e..d071cc7 100644
+index 7d27a1e..bed8d3d 100644
 --- a/Source/Core/DolphinLibretro/Common/Options.cpp
 +++ b/Source/Core/DolphinLibretro/Common/Options.cpp
-@@ -1535,6 +1535,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
+@@ -1535,10 +1535,30 @@ static struct retro_core_option_v2_definition option_defs[] = {
        { "0", "Right Stick controls pointer (relative)" },
        { "1", "Right Stick controls pointer (absolute)" },
        { "2", "Mouse controls pointer" },
@@ -10,8 +10,43 @@ index 7d27a1e..d071cc7 100644
        { nullptr, nullptr }
      },
      "1"
+   },
++  {
++    Libretro::Options::wiimote::IR_GYRO_SENSITIVITY,
++    "Wiimote IR > Gyroscope Pointer Sensitivity",
++    "Gyroscope Pointer Sensitivity",
++    "How far the pointer moves for a turn of the device when the gyroscope controls it (IR mode 3). Higher values reach the screen edges with a smaller turn.",
++    nullptr,
++    CATEGORY_WIIMOTE,
++    {
++      { "50",  "50%" },
++      { "75",  "75%" },
++      { "100", "100%" },
++      { "125", "125%" },
++      { "150", "150%" },
++      { "200", "200%" },
++      { "300", "300%" },
++      { nullptr, nullptr }
++    },
++    "100"
++  },
+   {
+     Libretro::Options::wiimote::IR_OFFSET,
+     "Wiimote IR > Wiimote IR Vertical Offset",
+diff --git a/Source/Core/DolphinLibretro/Common/Options.h b/Source/Core/DolphinLibretro/Common/Options.h
+index 0601c80..d04374b 100644
+--- a/Source/Core/DolphinLibretro/Common/Options.h
++++ b/Source/Core/DolphinLibretro/Common/Options.h
+@@ -298,6 +298,7 @@ namespace wiimote {
+ 
+   // Motion simulation
+   constexpr const char IR_MODE[] = "dolphin_ir_mode";
++  constexpr const char IR_GYRO_SENSITIVITY[] = "dolphin_ir_gyro_sensitivity";
+   constexpr const char IR_OFFSET[] = "dolphin_ir_offset";
+   constexpr const char IR_YAW[] = "dolphin_ir_yaw";
+   constexpr const char IR_PITCH[] = "dolphin_ir_pitch";
 diff --git a/Source/Core/DolphinLibretro/Input.cpp b/Source/Core/DolphinLibretro/Input.cpp
-index 5250054..6b8f21b 100644
+index 5250054..f4f141b 100644
 --- a/Source/Core/DolphinLibretro/Input.cpp
 +++ b/Source/Core/DolphinLibretro/Input.cpp
 @@ -953,8 +953,10 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned
@@ -40,7 +75,7 @@ index 5250054..6b8f21b 100644
        else
        {
          // Mouse controls IR
-@@ -994,6 +1003,16 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned
+@@ -994,6 +1003,36 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned
            ->SetValue(false);                                          // Auto hide
        }
  
@@ -52,12 +87,32 @@ index 5250054..6b8f21b 100644
 +        const bool gyroPoint = irMode == 3 && sensor_enabled[port][SENSOR_GYRO];
 +        wmImuIR->enabled.SetValue(gyroPoint);
 +        wmImuIR->SetControlExpression(0, gyroPoint ? "L3" : "");  // Recenter
++
++        // Sensitivity: the emulated camera's field of view decides how far the pointer travels for a turn
++        // of the remote, so a narrower one reaches the screen edges with a smaller turn of the phone.
++        // Settings 2 and 3 of this group are the horizontal and vertical FOV (WiimoteEmu adds them after
++        // IMUCursor's own Total Yaw and Accelerometer Influence). Dolphin's defaults are kept as the 100%.
++        if (gyroPoint && wmImuIR->numeric_settings.size() >= 4)
++        {
++          auto* fovX = static_cast<ControllerEmu::NumericSetting<double>*>(wmImuIR->numeric_settings[2].get());
++          auto* fovY = static_cast<ControllerEmu::NumericSetting<double>*>(wmImuIR->numeric_settings[3].get());
++          static double s_defaultFovX = -1.0, s_defaultFovY = -1.0;
++          if (s_defaultFovX < 0.0)
++          {
++            s_defaultFovX = fovX->GetValue();
++            s_defaultFovY = fovY->GetValue();
++          }
++          const int sensitivity = std::clamp(
++            Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_GYRO_SENSITIVITY, 100), 10, 1000);
++          fovX->SetValue(s_defaultFovX * 100.0 / sensitivity);
++          fovY->SetValue(s_defaultFovY * 100.0 / sensitivity);
++        }
 +      }
 +
        if (f.irMode && device == RETRO_DEVICE_WIIMOTE_NC)
        {
          // mouse
-@@ -1429,6 +1448,57 @@ void retro_set_controller_port_device_gc(unsigned port, unsigned device)
+@@ -1429,6 +1468,57 @@ void retro_set_controller_port_device_gc(unsigned port, unsigned device)
      return Pad::GetConfig()->SaveConfig();
  }
  
@@ -115,7 +170,7 @@ index 5250054..6b8f21b 100644
  void retro_set_controller_port_device_wii(unsigned port, unsigned device)
  {
    std::string devJoypad = Libretro::Input::GetQualifiedName(port, RETRO_DEVICE_JOYPAD);
-@@ -1559,6 +1629,10 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
+@@ -1559,6 +1649,10 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
        wmButtons->SetControlExpression(4, "L");                             // -
        wmButtons->SetControlExpression(5, "R");                             // +
  
@@ -126,7 +181,7 @@ index 5250054..6b8f21b 100644
        f.irMode = true;
      }
      else
-@@ -1579,49 +1653,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
+@@ -1579,49 +1673,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
        }
  
        // Map accel data to tilt expressions

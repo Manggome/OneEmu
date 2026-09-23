@@ -243,4 +243,10 @@
     <string name="gamepad_btn_speed">배속 바꾸기</string>
     <string name="gamepad_btn_save">저장 목록 열기</string>
     <string name="gamepad_btn_load">불러오기 목록 열기</string>
+    <string name="gamepad_combos">조합 버튼 (매크로)</string>
+    <string name="gamepad_combos_desc">버튼 하나로 여러 버튼을 동시에 누릅니다. 예: L4 = A+B. 남는 뒷버튼(L4·R4)에 쓰기 좋습니다.</string>
+    <string name="gamepad_combo_add">조합 버튼 추가</string>
+    <string name="gamepad_combo_key">조합으로 쓸 버튼</string>
+    <string name="gamepad_combo_title">%1$s 을(를) 누르면 함께 눌릴 버튼</string>
+    <string name="gamepad_combo_delete">조합 지우기</string>
 </resources>
