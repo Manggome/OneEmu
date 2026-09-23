@@ -58,7 +58,49 @@ class AppDirs(private val context: Context) {
 
     fun clearTemp() { temp.listFiles()?.forEach { it.deleteRecursively() } }
 
-    private fun dir(relative: String): File = File(root, relative).also { it.mkdirs() }
+    private fun dir(relative: String): File = File(root, relative).also { d ->
+        d.mkdirs()
+        // Created with the folder, so the first picture written there is already hidden.
+        GALLERY_HIDDEN.firstOrNull { relative == it || relative.startsWith("$it/") }?.let { top ->
+            runCatching { File(File(root, top), NO_MEDIA).createNewFile() }
+        }
+    }
+
+    /**
+     * Keeps the app's own pictures out of the phone's gallery.
+     *
+     * Moving everyone's data to /sdcard/OneEmu put it where the media scanner looks, and it indexes every
+     * image it finds: the box art and banner icons in thumbnails/, every image of every pad skin, and the
+     * little screenshot saved next to each save state. A user opens the gallery and finds it full of
+     * pictures from their ROMs. A `.nomedia` file tells the scanner to skip a folder; the files it had
+     * already indexed are handed back to it so it drops them too. Screenshots taken on purpose are not
+     * affected - 스크린샷 copies them into Pictures/OneEmu, which stays visible.
+     *
+     * @return how many already-indexed files were handed to the scanner.
+     */
+    fun hideFromGallery(): Int {
+        // Its own once-only record rather than "is .nomedia there yet": dir() drops that marker the
+        // moment any of these folders is touched, which on an existing install happens before this runs,
+        // and the pictures the scanner had already indexed would then never be handed back.
+        val done = File(root, RESCANNED)
+        if (done.exists()) return 0
+        val stale = ArrayList<String>()
+        for (top in GALLERY_HIDDEN) {
+            val folder = File(root, top)
+            if (!folder.isDirectory) continue
+            runCatching { File(folder, NO_MEDIA).createNewFile() }
+            folder.walkTopDown().maxDepth(4)
+                .filter { it.isFile && it.extension.lowercase() in IMAGE_EXTENSIONS }
+                .take(MAX_RESCAN)
+                .mapTo(stale) { it.absolutePath }
+        }
+        if (stale.isNotEmpty()) {
+            runCatching { android.media.MediaScannerConnection.scanFile(context, stale.toTypedArray(), null, null) }
+                .onFailure { Log.w(TAG, "rescan failed", it) }
+        }
+        runCatching { done.createNewFile() }
+        return stale.size
+    }
 
     /** The visible folder when it is usable, otherwise the app-private one we started out with. */
     private fun resolveRoot(): File {
@@ -88,6 +130,13 @@ class AppDirs(private val context: Context) {
 
     companion object {
         private const val TAG = "AppDirs"
+        /** Folders holding pictures that are the app's business, not the user's photos. */
+        internal val GALLERY_HIDDEN = listOf("thumbnails", "skins", "states", "screenshots")
+        private const val NO_MEDIA = ".nomedia"
+        /** Written once the already-indexed pictures have been handed back to the media scanner. */
+        private const val RESCANNED = ".gallery-hidden"
+        private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")
+        private const val MAX_RESCAN = 5000
 
         /**
          * Moves each of [names] from [from] to [to], returning the ones that were moved.
