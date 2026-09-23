@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,7 +48,7 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
     var resetting by remember { mutableStateOf(false) }
 
     val devices = rememberPadDevices()
-    val psPositional = rememberPref(GamepadMapping.PS_POSITIONAL, true).value
+    val layout by remember { GamepadMapping.observeLayout(settings) }.collectAsState(GamepadMapping.LAYOUT_AUTO)
     val device = devices.firstOrNull { it.key == deviceKey }
 
     LaunchedEffect(deviceKey) { mapping = loadMapping(deviceKey) }
@@ -69,9 +70,15 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
             val keys = mapping.keysFor(button)
             // What the same row presses in a PlayStation game, so the game's own ×○□△ key settings can be
             // matched up without guessing.
-            val ps = psGlyph(button, psPositional)
+            val ps = psGlyph(button, GamepadMapping.positionalFor(layout, playStation = true))
+            // In position mode a Nintendo-style game sees the other letter, so say which.
+            val other = if (layout == GamepadMapping.LAYOUT_POSITION && ps != null) GamepadMapping.nameOf(GamepadMapping.toPositional(button)) else null
             SettingsRow(
-                title = if (ps != null) stringResource(R.string.gamepad_ps_hint, buttonLabel(name), ps) else buttonLabel(name),
+                title = when {
+                    ps == null -> buttonLabel(name)
+                    other != null -> stringResource(R.string.gamepad_game_hint, buttonLabel(name), other, ps)
+                    else -> stringResource(R.string.gamepad_ps_hint, buttonLabel(name), ps)
+                },
                 subtitle = if (keys.isEmpty()) stringResource(R.string.gamepad_unbound) else keys.joinToString(" · ") { GamepadCapture.keyName(it) },
                 enabled = device != null,
                 // + adds a second (third...) button for the same job - a back paddle that also presses A.

@@ -249,7 +249,13 @@
     <string name="gamepad_combo_key">조합으로 쓸 버튼</string>
     <string name="gamepad_combo_title">%1$s 을(를) 누르면 함께 눌릴 버튼</string>
     <string name="gamepad_combo_delete">조합 지우기</string>
-    <string name="gamepad_ps_positional">PS 게임은 버튼 위치 기준</string>
-    <string name="gamepad_ps_positional_desc">PS1·PS2·PSP 게임에서 패드의 아래=×, 오른쪽=○, 왼쪽=□, 위=△. 엑박·닌텐도 패드도 듀얼쇼크와 같은 자리에 같은 버튼이 옵니다. 다른 기종은 그대로입니다.</string>
     <string name="gamepad_ps_hint">%1$s  ·  PS 게임에서 %2$s</string>
+    <string name="gamepad_layout">버튼 배치 기준</string>
+    <string name="gamepad_layout_auto">자동</string>
+    <string name="gamepad_layout_auto_desc">PS 게임만 위치 기준(아래=×, 오른쪽=○, 왼쪽=□, 위=△), 나머지는 글자 그대로</string>
+    <string name="gamepad_layout_position">모든 게임 위치 기준</string>
+    <string name="gamepad_layout_position_desc">자리가 같은 버튼으로. 닌텐도 게임은 아래 버튼이 B(슈퍼패미컴 B 자리)가 됩니다</string>
+    <string name="gamepad_layout_letter">모든 게임 글자 기준</string>
+    <string name="gamepad_layout_letter_desc">패드의 A는 게임의 A. PS 게임은 A가 ○로 들어갑니다</string>
+    <string name="gamepad_game_hint">%1$s  ·  게임에서 %2$s · PS %3$s</string>
 </resources>

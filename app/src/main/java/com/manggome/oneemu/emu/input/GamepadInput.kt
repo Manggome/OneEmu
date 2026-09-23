@@ -76,6 +76,31 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
         val PS_POSITIONAL = androidx.datastore.preferences.core.booleanPreferencesKey("gamepad_ps_positional")
 
         /**
+         * Which games read the face buttons by position: [LAYOUT_AUTO] only PlayStation games (a DualShock's
+         * ×○□△ have no letters to match), [LAYOUT_POSITION] every game, the way RetroArch does it (on a
+         * Nintendo game the bottom button is then B, where the SNES has it), [LAYOUT_LETTER] none (a pad's A
+         * is the game's A). Replaces [PS_POSITIONAL]; "off" there reads as [LAYOUT_LETTER].
+         */
+        val FACE_LAYOUT = androidx.datastore.preferences.core.stringPreferencesKey("gamepad_face_layout")
+        const val LAYOUT_AUTO = "auto"
+        const val LAYOUT_POSITION = "position"
+        const val LAYOUT_LETTER = "letter"
+        val LAYOUTS = listOf(LAYOUT_AUTO, LAYOUT_POSITION, LAYOUT_LETTER)
+
+        /** Whether a game on a PlayStation system (or not) takes the face buttons by position under [layout]. */
+        fun positionalFor(layout: String, playStation: Boolean): Boolean = when (layout) {
+            LAYOUT_POSITION -> true
+            LAYOUT_LETTER -> false
+            else -> playStation
+        }
+
+        /** [FACE_LAYOUT], falling back to what the old on/off switch said. */
+        fun observeLayout(settings: com.manggome.oneemu.data.Settings): kotlinx.coroutines.flow.Flow<String> =
+            kotlinx.coroutines.flow.combine(settings.observe(FACE_LAYOUT, ""), settings.observe(PS_POSITIONAL, true)) { layout, oldSwitch ->
+                layout.takeIf { it in LAYOUTS } ?: if (oldSwitch) LAYOUT_AUTO else LAYOUT_LETTER
+            }
+
+        /**
          * From the letter mapping to the position one. Android reports face buttons by position (the bottom
          * one is BUTTON_A on any pad), and the default mapping sends BUTTON_A to the RetroPad's A - its
          * *right* button, the PlayStation's ○. Swapping A↔B and X↔Y puts bottom on B (×), right on A (○),

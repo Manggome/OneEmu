@@ -49,12 +49,25 @@ internal fun GamepadSettingsScreen(onBack: () -> Unit, onMapping: (deviceKey: St
             checked = stickDpad.value,
             onCheckedChange = stickDpad.set,
         )
-        val psPositional = rememberPref(GamepadMapping.PS_POSITIONAL, true)
-        SwitchRow(
-            title = stringResource(R.string.gamepad_ps_positional),
-            subtitle = stringResource(R.string.gamepad_ps_positional_desc),
-            checked = psPositional.value,
-            onCheckedChange = psPositional.set,
+        val layout by remember { GamepadMapping.observeLayout(settings) }.collectAsState(GamepadMapping.LAYOUT_AUTO)
+        val layoutNames = listOf(
+            stringResource(R.string.gamepad_layout_auto),
+            stringResource(R.string.gamepad_layout_position),
+            stringResource(R.string.gamepad_layout_letter),
+        )
+        val layoutDescs = listOf(
+            stringResource(R.string.gamepad_layout_auto_desc),
+            stringResource(R.string.gamepad_layout_position_desc),
+            stringResource(R.string.gamepad_layout_letter_desc),
+        )
+        val layoutIndex = GamepadMapping.LAYOUTS.indexOf(layout).coerceAtLeast(0)
+        ChoiceRow(
+            title = stringResource(R.string.gamepad_layout),
+            subtitle = layoutNames[layoutIndex] + " — " + layoutDescs[layoutIndex],
+            options = layoutNames,
+            selectedIndex = layoutIndex,
+            onSelect = { i -> scope.launch { settings.set(GamepadMapping.FACE_LAYOUT, GamepadMapping.LAYOUTS[i]) } },
+            icon = Icons.Outlined.SportsEsports,
         )
         SettingsDivider()
         if (devices.isEmpty()) {
