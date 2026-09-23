@@ -221,7 +221,6 @@ fun ViewportToolbar(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(stringResource(R.string.vp_label), style = MaterialTheme.typography.labelLarge, color = OneEmuColors.Accent, modifier = Modifier.padding(end = 4.dp))
         FilterChip(selected = keepAspect, onClick = { onKeepAspect(!keepAspect) }, label = { Text(stringResource(R.string.vp_keep_aspect)) })
         TextButton(onClick = onTop) { Text(stringResource(R.string.vp_snap_top), maxLines = 1) }
         TextButton(onClick = onCenter) { Text(stringResource(R.string.vp_center), maxLines = 1) }
