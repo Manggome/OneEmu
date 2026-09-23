@@ -40,6 +40,7 @@ class OneEmuApp : Application() {
         appScope.launch { runCatching { scanner.pruneUnsupportedEntries(); scanner.ensureNoContentEntries() } }
         // Box art, pad skins and save-state thumbnails were turning up in the phone's gallery.
         appScope.launch { runCatching { dirs.hideFromGallery() } }
+        appScope.launch { settings.observe(com.manggome.oneemu.emu.FoldLayout.SIDE_BY_SIDE, true).collect { com.manggome.oneemu.emu.FoldLayout.enabled = it } }
         appScope.launch {
             settings.flow.map { prefs ->
                 SystemId.entries.mapNotNull { sys -> prefs[Settings.Keys.coreForSystem(sys.id)]?.takeIf { it.isNotEmpty() }?.let { sys.id to it } }.toMap()

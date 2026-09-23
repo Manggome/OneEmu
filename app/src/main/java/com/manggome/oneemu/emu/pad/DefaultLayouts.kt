@@ -25,9 +25,13 @@ object DefaultLayouts {
     fun forProfile(profile: PadProfile, config: ScreenConfig): PadLayout = forProfile(profile, config, Preset.DEFAULT)
 
     fun forProfile(profile: PadProfile, config: ScreenConfig, preset: Preset): PadLayout {
+        // Unfolded and sideways, a DS/3DS shows its screens side by side across the top (FoldLayout), which
+        // leaves the lower half for the pad - the arrangement its portrait layout already is.
+        val padBelow = com.manggome.oneemu.emu.FoldLayout.applies(profile.system, config)
+        val landscape = config.landscape && !padBelow
         val base = when (preset) {
-            Preset.DEFAULT -> forProfile(profile, config.landscape)
-            Preset.ARCADE -> arcadeStyle(profile.system, config.landscape)
+            Preset.DEFAULT -> forProfile(profile, landscape)
+            Preset.ARCADE -> arcadeStyle(profile.system, landscape)
         }
         return if (config.wide) PadLayout(base.elements.map { it.copy(scale = it.scale * WIDE_SCALE) }) else base
     }

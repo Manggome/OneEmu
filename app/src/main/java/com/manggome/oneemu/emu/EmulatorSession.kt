@@ -288,6 +288,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         BACKEND_OPTIONS[core.id]?.let { (key, vk, gl) -> if (key !in user && key !in perGame) merged[key] = if (vulkan) vk else gl }
         merged.putAll(user)
         merged.putAll(perGame)
+        explicitOptions = user.keys + perGame.keys
         irMode = merged[IR_MODE]
         return merged.entries.joinToString("\n") { "${it.key}=${it.value}" }
     }
@@ -478,6 +479,21 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         val values = p[7].split('|').filter { it.isNotEmpty() }.map { it.substringBefore('=') to it.substringAfter('=', it) }
         CoreOption(p[0], p[1], p[2], p[3], p[4], p[5], p[6] == "1", values)
     }.toList()
+
+    /** Options the player set for the core or this game; the app leaves those alone. */
+    @Volatile private var explicitOptions: Set<String> = emptySet()
+
+    /**
+     * DS/3DS screens side by side on an unfolded panel held sideways, stacked otherwise ([FoldLayout]).
+     * Called whenever the screen shape changes, so opening or closing the phone mid-game rearranges them.
+     */
+    fun applyFoldLayout(config: ScreenConfig, enabled: Boolean) {
+        if (!FoldLayout.isDualScreen(system)) return
+        FoldLayout.enabled = enabled
+        val (key, value) = FoldLayout.option(core.id, FoldLayout.applies(system, config)) ?: return
+        if (key in explicitOptions) return
+        NativeBridge.setOption(key, value)
+    }
 
     suspend fun setCoreOption(key: String, value: String) {
         NativeBridge.setOption(key, value)

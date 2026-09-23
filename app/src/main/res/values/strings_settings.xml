@@ -287,4 +287,6 @@
     <string name="gamepad_macro_key">매크로로 쓸 버튼</string>
     <string name="gamepad_macro_pick">%1$s 을(를) 누르면 재생할 매크로</string>
     <string name="gamepad_macro_missing">(지워진 매크로)</string>
+    <string name="video_fold_side_by_side">펼친 가로 화면에서 DS·3DS 두 화면 나란히</string>
+    <string name="video_fold_side_by_side_desc">폴드를 펼쳐 가로로 들면 두 화면을 위쪽에 좌우로 놓고 패드는 아래에 둡니다. 접었거나 세로일 때는 그대로입니다.</string>
 </resources>
