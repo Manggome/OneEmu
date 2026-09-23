@@ -201,6 +201,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
                     onLongClick = { if (selectionMode) toggle(it) else selectedIds = setOf(it.id) },
                     onMore = { if (selectionMode) toggle(it) else selected = it },
                     selectedIds = selectedIds,
+                    pack = state.viewMode == ViewMode.PACK,
                 )
             }
         }
@@ -251,6 +252,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
 @Composable
 private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavHostController, onShowHidden: () -> Unit) {
     var sortMenu by remember { mutableStateOf(false) }
+    var viewMenu by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
 
     if (state.searching) {
@@ -318,13 +320,22 @@ private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavH
                     SortItem(R.string.lib_sort_added, state.sortMode == SortMode.ADDED) { vm.setSortMode(SortMode.ADDED); sortMenu = false }
                 }
             }
-            if (state.viewMode == ViewMode.LIST) {
-                IconButton(onClick = { vm.setViewMode(ViewMode.GRID) }) {
-                    Icon(Icons.Filled.GridView, contentDescription = stringResource(R.string.lib_view_grid))
+            // 목록 / 그리드 / 게임팩: the icon shows the current one, the menu picks.
+            Box {
+                IconButton(onClick = { viewMenu = true }) {
+                    Icon(
+                        when (state.viewMode) {
+                            ViewMode.LIST -> Icons.AutoMirrored.Filled.ViewList
+                            ViewMode.GRID -> Icons.Filled.GridView
+                            ViewMode.PACK -> Icons.Filled.VideogameAsset
+                        },
+                        contentDescription = stringResource(R.string.lib_view_mode),
+                    )
                 }
-            } else {
-                IconButton(onClick = { vm.setViewMode(ViewMode.LIST) }) {
-                    Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = stringResource(R.string.lib_view_list))
+                DropdownMenu(expanded = viewMenu, onDismissRequest = { viewMenu = false }) {
+                    CheckItem(R.string.lib_view_list, state.viewMode == ViewMode.LIST) { vm.setViewMode(ViewMode.LIST); viewMenu = false }
+                    CheckItem(R.string.lib_view_grid, state.viewMode == ViewMode.GRID) { vm.setViewMode(ViewMode.GRID); viewMenu = false }
+                    CheckItem(R.string.lib_view_pack, state.viewMode == ViewMode.PACK) { vm.setViewMode(ViewMode.PACK); viewMenu = false }
                 }
             }
             Box {
@@ -351,7 +362,7 @@ private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavH
                     HorizontalDivider()
                     CheckItem(R.string.lib_menu_group_by_system, state.groupBySystem) { vm.setGroupBySystem(!state.groupBySystem) }
                     CheckItem(R.string.lib_menu_show_file_name, state.showFileName) { vm.setShowFileName(!state.showFileName) }
-                    if (state.viewMode == ViewMode.GRID) {
+                    if (state.viewMode != ViewMode.LIST) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.lib_menu_grid_columns, state.gridColumns)) },
                             onClick = {
@@ -436,13 +447,14 @@ private fun GameList(
             item(key = "recent", contentType = "recent") { RecentRow(state.recent, onClick, onLongClick) }
         }
         for (section in state.sections) {
-            if (state.groupBySystem) {
+            if (state.groupBySystem || section.favorites) {
                 stickyHeader(key = "h_${section.key}", contentType = "header") { _ ->
                     SectionHeader(section, onToggle = { onToggleSection(section) })
                 }
             }
             if (!section.collapsed) {
-                items(section.games, key = { "g_${it.id}" }, contentType = { "game" }) { game ->
+                // Keyed per section: a favourite is listed twice, at the top and in its system.
+                items(section.games, key = { "g_${section.key}_${it.id}" }, contentType = { "game" }) { game ->
                     GameListItem(
                         game = game,
                         showFileName = state.showFileName,
@@ -466,6 +478,8 @@ private fun GameGrid(
     onLongClick: (GameEntity) -> Unit,
     onMore: (GameEntity) -> Unit,
     selectedIds: Set<Long> = emptySet(),
+    /** 게임팩: each game drawn as its cartridge, card or disc ([GamePackItem]). */
+    pack: Boolean = false,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(state.gridColumns),
@@ -480,21 +494,30 @@ private fun GameGrid(
             }
         }
         for (section in state.sections) {
-            if (state.groupBySystem) {
+            if (state.groupBySystem || section.favorites) {
                 item(key = "h_${section.key}", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
                     SectionHeader(section, onToggle = { onToggleSection(section) })
                 }
             }
             if (!section.collapsed) {
-                items(section.games, key = { "g_${it.id}" }, contentType = { "game" }) { game ->
-                    GameGridItem(
-                        game = game,
-                        showSystemChip = !state.groupBySystem,
-                        onClick = { onClick(game) },
-                        onLongClick = { onLongClick(game) },
-                        columns = state.gridColumns,
-                        selected = game.id in selectedIds,
-                    )
+                items(section.games, key = { "g_${section.key}_${it.id}" }, contentType = { if (pack) "pack" else "game" }) { game ->
+                    if (pack) {
+                        GamePackItem(
+                            game = game,
+                            onClick = { onClick(game) },
+                            onLongClick = { onLongClick(game) },
+                            selected = game.id in selectedIds,
+                        )
+                    } else {
+                        GameGridItem(
+                            game = game,
+                            showSystemChip = !state.groupBySystem,
+                            onClick = { onClick(game) },
+                            onLongClick = { onLongClick(game) },
+                            columns = state.gridColumns,
+                            selected = game.id in selectedIds,
+                        )
+                    }
                 }
             }
         }

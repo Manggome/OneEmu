@@ -10,8 +10,8 @@
     <string name="lib_sort_title">제목순</string>
     <string name="lib_sort_recent">최근 플레이순</string>
     <string name="lib_sort_added">추가순</string>
-    <string name="lib_view_list">리스트로 보기</string>
-    <string name="lib_view_grid">그리드로 보기</string>
+    <string name="lib_view_list">목록</string>
+    <string name="lib_view_grid">그리드</string>
     <string name="lib_menu_folders">폴더 관리</string>
     <string name="lib_menu_rescan">다시 스캔</string>
     <string name="lib_menu_unhide">숨긴 게임 되살리기</string>
@@ -302,4 +302,7 @@
     <string name="lib_wii_gyro_sensitivity_desc">높을수록 폰을 조금만 돌려도 화면 끝까지 갑니다. 코어 r6 이상에서 적용됩니다.</string>
     <string name="lib_wii_gyro_autocenter">시작할 때 자동으로 가운데 맞추기</string>
     <string name="lib_wii_gyro_autocenter_desc">게임 시작 1.5초 뒤와 화면을 돌렸을 때, 그때 폰 방향을 화면 가운데로 잡습니다.</string>
+    <string name="lib_view_pack">게임팩</string>
+    <string name="lib_view_mode">보기 방식</string>
+    <string name="lib_favorites_title">즐겨찾기</string>
 </resources>

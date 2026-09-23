@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-enum class ViewMode { LIST, GRID }
+enum class ViewMode { LIST, GRID, PACK }
 enum class SortMode { TITLE, RECENT, ADDED }
 
 /**

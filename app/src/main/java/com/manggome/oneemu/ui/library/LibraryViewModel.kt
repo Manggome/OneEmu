@@ -48,8 +48,14 @@ data class LibrarySection(
     val system: SystemId?,
     val games: List<GameEntity>,
     val collapsed: Boolean,
+    /** The 즐겨찾기 block at the top; its games also stay in their own sections below. */
+    val favorites: Boolean = false,
 ) {
-    val key: String get() = system?.id ?: "unknown"
+    val key: String get() = if (favorites) FAVORITES_KEY else system?.id ?: "unknown"
+
+    companion object {
+        const val FAVORITES_KEY = "favorites"
+    }
 }
 
 data class LibraryUiState(
@@ -66,7 +72,7 @@ data class LibraryUiState(
     val searching: Boolean = false,
 ) {
     val isEmpty: Boolean get() = !loading && totalCount == 0
-    val filteredCount: Int get() = sections.sumOf { it.games.size }
+    val filteredCount: Int get() = sections.filter { !it.favorites }.sumOf { it.games.size }
 }
 
 /** How far a whole-library box art run has got; [running] false hides the bar. */
@@ -161,11 +167,14 @@ class LibraryViewModel : ViewModel() {
         } else {
             if (sorted.isEmpty()) emptyList() else listOf(LibrarySection(null, sorted, false))
         }
+        val favorites = sorted.filter { it.favorite }
+        val withFavorites = if (favorites.isEmpty()) sections
+        else listOf(LibrarySection(null, favorites, LibrarySection.FAVORITES_KEY in p.collapsed, favorites = true)) + sections
         val recent = all.filter { it.lastPlayedAt > 0 }.sortedByDescending { it.lastPlayedAt }.take(RECENT_LIMIT)
         return LibraryUiState(
             loading = false,
             totalCount = all.size,
-            sections = sections,
+            sections = withFavorites,
             recent = recent,
             viewMode = p.viewMode,
             sortMode = p.sortMode,
