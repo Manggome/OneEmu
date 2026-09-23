@@ -132,8 +132,6 @@
     <string name="le_settings">편집 설정</string>
     <string name="le_snap_desc">버튼을 옮길 때 격자 칸에 맞춰 붙습니다</string>
     <string name="le_axis_lock_desc">끌 때 가로나 세로 한 방향으로만 움직입니다</string>
-    <string name="le_panel_top">도구를 화면 위에 두기</string>
-    <string name="le_panel_top_desc">아래쪽 버튼을 편집할 때 도구가 가리지 않게 합니다</string>
     <string name="le_tool_buttons">버튼</string>
     <string name="le_tool_screen">화면</string>
     <string name="le_tool_select_all">전체 선택</string>
@@ -147,8 +145,8 @@
     <string name="le_idle_hint">버튼을 누르면 선택되고, 끌면 옮겨집니다</string>
     <string name="le_selected_n">%1$d개 선택</string>
     <string name="le_viewport_title">게임 화면 · %1$d%% × %2$d%%</string>
-    <string name="le_stick_dpad">방향키도 함께 입력</string>
-    <string name="le_stick_dpad_desc">아날로그를 읽지 않는 게임(철권 등)에서 스틱을 쓰려면 켜세요</string>
+    <string name="le_stick_dpad">스틱을 방향키로도</string>
+    <string name="le_stick_dpad_desc">스틱을 기울이면 방향키도 눌립니다. 스틱을 안 읽는 게임(철권 등)용 · 화면 스틱, 스킨, 블루투스 패드 모두</string>
     <string name="le_visible">표시</string>
     <string name="le_elements">요소 표시/숨기기</string>
     <string name="le_snap">격자에 맞추기</string>
@@ -206,4 +204,11 @@
     <string name="qs_rotation_180">180°</string>
     <string name="qs_rotation_270">270°</string>
     <string name="emu_error_other_core">다른 코어로 실행</string>
+    <string name="le_bar_fold">위쪽 줄 접기</string>
+    <string name="le_bar_unfold">위쪽 줄 펼치기</string>
+    <string name="le_panel_to_top">도구를 위로</string>
+    <string name="le_panel_to_bottom">도구를 아래로</string>
+    <string name="le_swap_skin">스킨 바꾸기 · 받기</string>
+    <string name="le_swap_skin_desc">받아 둔 스킨이나 온라인 스킨으로 바로 바꿉니다</string>
+    <string name="le_stick_dpad_everywhere">게임패드 설정에서 모든 기종에 켜 두었습니다</string>
 </resources>

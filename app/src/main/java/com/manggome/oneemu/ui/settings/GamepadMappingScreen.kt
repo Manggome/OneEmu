@@ -1,7 +1,10 @@
 package com.manggome.oneemu.ui.settings
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,6 +36,8 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
     val settings = OneEmuApp.get().settings
     var mapping by remember { mutableStateOf(GamepadMapping.DEFAULT) }
     var capturing by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    // True when the press should be added to the button's keys instead of replacing them.
+    var adding by remember { mutableStateOf(false) }
     var resetting by remember { mutableStateOf(false) }
 
     val devices = rememberPadDevices()
@@ -50,12 +55,22 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
         else NoteText(stringResource(R.string.gamepad_map_hint))
         SettingsDivider()
         for ((name, button) in GamepadMapping.assignable) {
-            val key = mapping.keyFor(button)
+            if (name == "MENU") {
+                SettingsDivider()
+                SectionHeader(stringResource(R.string.gamepad_actions))
+            }
+            val keys = mapping.keysFor(button)
             SettingsRow(
                 title = buttonLabel(name),
-                subtitle = key?.let { GamepadCapture.keyName(it) } ?: stringResource(R.string.gamepad_unbound),
+                subtitle = if (keys.isEmpty()) stringResource(R.string.gamepad_unbound) else keys.joinToString(" · ") { GamepadCapture.keyName(it) },
                 enabled = device != null,
-                onClick = { capturing = name to button },
+                // + adds a second (third...) button for the same job - a back paddle that also presses A.
+                trailing = {
+                    IconButton(onClick = { adding = true; capturing = name to button }, enabled = device != null) {
+                        Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.gamepad_add_key))
+                    }
+                },
+                onClick = { adding = false; capturing = name to button },
             )
         }
         SettingsDivider()
@@ -70,7 +85,10 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
     capturing?.let { (name, button) ->
         CaptureDialog(
             label = buttonLabel(name),
-            onCaptured = { keyCode -> capturing = null; save(mapping.rebind(button, keyCode)) },
+            onCaptured = { keyCode ->
+                capturing = null
+                save(if (adding) mapping.addKey(button, keyCode) else mapping.rebind(button, keyCode))
+            },
             onClear = { capturing = null; save(GamepadMapping(mapping.keys.filterValues { it != button })) },
             onDismiss = { capturing = null },
         )
@@ -120,6 +138,10 @@ private fun CaptureDialog(label: String, onCaptured: (Int) -> Unit, onClear: () 
 private fun buttonLabel(name: String): String = when (name) {
     "MENU" -> stringResource(R.string.gamepad_btn_menu)
     "TURBO" -> stringResource(R.string.gamepad_btn_turbo)
+    "FAST_FORWARD" -> stringResource(R.string.gamepad_btn_ff)
+    "SPEED" -> stringResource(R.string.gamepad_btn_speed)
+    "SAVE_STATE" -> stringResource(R.string.gamepad_btn_save)
+    "LOAD_STATE" -> stringResource(R.string.gamepad_btn_load)
     "UP" -> stringResource(R.string.gamepad_btn_up)
     "DOWN" -> stringResource(R.string.gamepad_btn_down)
     "LEFT" -> stringResource(R.string.gamepad_btn_left)

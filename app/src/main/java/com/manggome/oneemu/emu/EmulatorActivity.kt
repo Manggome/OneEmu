@@ -7,6 +7,8 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
 import com.manggome.oneemu.emu.input.MotionSensors
+import com.manggome.oneemu.emu.input.StickDpad
+import kotlinx.coroutines.flow.flatMapLatest
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
@@ -24,6 +26,7 @@ import com.manggome.oneemu.core.CoreInfo
 import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.input.GamepadDevices
 import com.manggome.oneemu.emu.input.GamepadInput
+import com.manggome.oneemu.emu.input.GamepadMapping
 import com.manggome.oneemu.emu.pad.PadInput
 import com.manggome.oneemu.library.ArcadeCoreRouter
 import com.manggome.oneemu.model.SystemId
@@ -48,7 +51,11 @@ class EmulatorUiState {
     /** 연사: the buttons chosen in the settings are tapped for you while this is on. */
     var turbo by mutableStateOf(false)
     var toast by mutableStateOf<String?>(null)
+    /** A pad button asked for the save / load slot list; the screen opens it and clears this. */
+    var slotRequest by mutableStateOf<SlotRequest?>(null)
 }
+
+enum class SlotRequest { SAVE, LOAD }
 
 /**
  * Full-screen game activity. Launched with [EXTRA_GAME_ID]; owns one [EmulatorSession], the
@@ -81,6 +88,9 @@ class EmulatorActivity : ComponentActivity() {
     private var overlayOpen = false
     private var closed = false
     private var padInput = PadInput()
+    /** [StickDpad] for the pad being played; read on every input push. */
+    @Volatile private var stickDpad = false
+    private var stickDpadJob: kotlinx.coroutines.Job? = null
     /** One entry per player; pads publish on the port they were assigned. */
     private val gamepadInputs = Array(GamepadDevices.MAX_PLAYERS) { PadInput() }
     private var gameId = -1L
@@ -98,6 +108,14 @@ class EmulatorActivity : ComponentActivity() {
             },
             onMenu = { toggleMenu() },
             onTurbo = { toggleTurbo() },
+            onAction = { action ->
+                when (action) {
+                    GamepadMapping.FAST_FORWARD -> setFastForward(!ui.fastForward)
+                    GamepadMapping.SPEED -> cycleSpeed()
+                    GamepadMapping.SAVE_STATE -> if (ui.session != null) ui.slotRequest = SlotRequest.SAVE
+                    GamepadMapping.LOAD_STATE -> if (ui.session != null) ui.slotRequest = SlotRequest.LOAD
+                }
+            },
         )
         gamepad.startWatching { ui.gamepadConnected = gamepad.isGamepadConnected() }
         ui.gamepadConnected = gamepad.isGamepadConnected()
@@ -149,10 +167,20 @@ class EmulatorActivity : ComponentActivity() {
         session.gyroAvailable = motion?.hasGyroscope == true
         NativeBridge.setSensorsAvailable(motion?.hasAccelerometer == true, motion?.hasGyroscope == true)
         ui.session = session
+        stickDpadJob?.cancel()
+        stickDpadJob = lifecycleScope.launch {
+            // The pad can change after load (Dolphin decides Wii Remote or GameCube pad from the disc).
+            @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+            session.padProfile.flatMapLatest { StickDpad.observe(settings, it) }.collect { on ->
+                stickDpad = on
+                for (port in gamepadInputs.indices) pushInput(port)
+            }
+        }
         CrashMarker.write(this, game.title, game.path, core.id)
         if (session.load()) {
             session.applyCheats()
             updateRunning()
+            recenterGyroSoon()
         }
     }
 
@@ -208,7 +236,32 @@ class EmulatorActivity : ComponentActivity() {
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
+        val before = displayRotation
         readDisplayRotation()
+        if (displayRotation != before) recenterGyroSoon()
+    }
+
+    /** Held into port 0 on top of everything else, for presses the app makes itself. */
+    @Volatile private var syntheticMask = 0
+    private var recenterJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * When the phone's motion aims the Wii Remote, Dolphin counts "straight ahead" as the remote held level
+     * until 재조준 is pressed. Nobody holds a phone level - it is tipped back towards the face - so the
+     * pointer started below the screen and simply never appeared. Pressing 재조준 once, shortly after the game
+     * is running and again whenever the screen turns, makes however the phone is held right now the middle.
+     */
+    private fun recenterGyroSoon() {
+        if (ui.session?.irMode != EmulatorSession.IR_MODE_GYRO) return
+        recenterJob?.cancel()
+        recenterJob = lifecycleScope.launch {
+            kotlinx.coroutines.delay(1500)
+            syntheticMask = EmulatorSession.Buttons.L3
+            pushInput(0)
+            kotlinx.coroutines.delay(150)
+            syntheticMask = 0
+            pushInput(0)
+        }
     }
 
     private fun toggleMenu() {
@@ -227,16 +280,18 @@ class EmulatorActivity : ComponentActivity() {
         val s = ui.session ?: return
         val g = gamepadInputs[port]
         if (port != 0) {
-            s.setInput(g.mask, g.lx, g.ly, g.rx, g.ry, port)
+            s.setInput(g.mask or (if (stickDpad) StickDpad.mask(g.lx, g.ly) else 0), g.lx, g.ly, g.rx, g.ry, port)
             return
         }
         val p = padInput
         val leftFromPad = p.lx != 0 || p.ly != 0
         val rightFromPad = p.rx != 0 || p.ry != 0
+        val lx = if (leftFromPad) p.lx else g.lx
+        val ly = if (leftFromPad) p.ly else g.ly
         s.setInput(
-            p.mask or g.mask,
-            if (leftFromPad) p.lx else g.lx,
-            if (leftFromPad) p.ly else g.ly,
+            p.mask or g.mask or syntheticMask or (if (stickDpad) StickDpad.mask(lx, ly) else 0),
+            lx,
+            ly,
             if (rightFromPad) p.rx else g.rx,
             if (rightFromPad) p.ry else g.ry,
         )

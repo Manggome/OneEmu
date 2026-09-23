@@ -78,6 +78,7 @@ import com.manggome.oneemu.emu.skin.SkinSelection
 import com.manggome.oneemu.emu.skin.SkinStore
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.ui.skins.SkinEditor
+import com.manggome.oneemu.ui.skins.SkinSwapDialog
 import com.manggome.oneemu.ui.theme.OneEmuColors
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -155,6 +156,7 @@ private fun VectorLayoutEditor(
     var showElementList by remember { mutableStateOf(false) }
     var showCopyFrom by remember { mutableStateOf(false) }
     var showLayoutMenu by remember { mutableStateOf(false) }
+    var showSkinSwap by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
@@ -479,16 +481,8 @@ private fun VectorLayoutEditor(
                         onFinished = { history.endCoalesce() },
                     )
                     SwitchLine(stringResource(R.string.le_visible), sel.visible, { v -> edit { l -> l.update(sel.id) { it.copy(visible = v) } } })
-                    // A stick that also presses the d-pad. Plenty of games never read the analog sticks -
-                    // Tekken is one - and there the stick does nothing until it does this.
-                    if (sel.id.kind == PadElementId.Kind.STICK) {
-                        SwitchLine(
-                            stringResource(R.string.le_stick_dpad),
-                            sel.dpadToo,
-                            { v -> edit { l -> l.update(sel.id) { it.copy(dpadToo = v) } } },
-                            stringResource(R.string.le_stick_dpad_desc),
-                        )
-                    }
+                    // A stick that also presses the d-pad - for the many games that never read the sticks.
+                    if (sel.id == PadElementId.LEFT_STICK) StickDpadLine(profile)
                 }
                 else -> {
                     Text(
@@ -519,6 +513,8 @@ private fun VectorLayoutEditor(
         }
     }
 
+    if (showSkinSwap) SkinSwapDialog(profile, onDismiss = { showSkinSwap = false })
+
     if (showLayoutMenu) {
         fun applyPreset(preset: DefaultLayouts.Preset) {
             val before = snapshot()
@@ -538,6 +534,9 @@ private fun VectorLayoutEditor(
                     }
                     MenuLine(stringResource(R.string.le_preset_arcade), stringResource(R.string.le_layout_arcade_desc)) {
                         showLayoutMenu = false; applyPreset(DefaultLayouts.Preset.ARCADE)
+                    }
+                    MenuLine(stringResource(R.string.le_swap_skin), stringResource(R.string.le_swap_skin_desc)) {
+                        showLayoutMenu = false; showSkinSwap = true
                     }
                     MenuLine(stringResource(R.string.le_mirror_all), stringResource(R.string.le_layout_mirror_desc)) {
                         showLayoutMenu = false; edit { it.mirrored() }
@@ -559,6 +558,7 @@ private fun VectorLayoutEditor(
             onSnap = { snap = it; dirty = true },
             chrome = chrome,
             onDismiss = { showSettings = false },
+            profile = profile,
         )
     }
 

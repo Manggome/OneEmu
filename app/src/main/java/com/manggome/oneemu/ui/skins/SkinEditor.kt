@@ -100,6 +100,11 @@ import com.manggome.oneemu.ui.theme.OneEmuColors
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AspectRatio
+import androidx.compose.material.icons.outlined.AddCircleOutline
+import com.manggome.oneemu.emu.pad.PadElementVisual
+import com.manggome.oneemu.emu.pad.drawPadElement
+import com.manggome.oneemu.emu.pad.rectOn
+import com.manggome.oneemu.emu.pad.rememberPadInsets
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.ui.text.style.TextAlign
@@ -117,7 +122,7 @@ import kotlin.math.roundToInt
 private typealias Group = List<Int>
 
 /** One undo step of the skin editor: desc edits + viewport together. */
-private data class SkinEditState(val layout: SkinLayout, val viewport: ViewportRect)
+private data class SkinEditState(val layout: SkinLayout, val viewport: ViewportRect, val extras: PadLayout? = null)
 
 /**
  * Drag-to-arrange editor for an image skin. Descs are moved as clusters (d-pad arms + diagonals, ABXY
@@ -161,11 +166,18 @@ fun SkinEditor(
     var keepAspect by remember { mutableStateOf(true) }
     var dirty by remember { mutableStateOf(false) }
     var selection by remember { mutableStateOf<List<Group>>(emptyList()) }
+    // The 배속/연사/저장/불러오기 buttons drawn over the skin. They belong to the vector layout (PadHost draws
+    // them from there), so the editor keeps its own copy, lets them be dragged like the skin's buttons,
+    // and writes them back on 저장.
+    var extras by remember { mutableStateOf<PadLayout?>(null) }
+    var selectedExtra by remember { mutableStateOf<PadElementId?>(null) }
+    var showExtras by remember { mutableStateOf(false) }
     var opacity by remember { mutableStateOf(Settings.DEFAULT_PAD_OPACITY) }
     var globalScale by remember { mutableStateOf(Settings.DEFAULT_PAD_SCALE) }
     var vibrate by remember { mutableStateOf(true) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var showLayoutMenu by remember { mutableStateOf(false) }
+    var showSkinSwap by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
     val history = remember { UndoHistory<SkinEditState>(50) }
@@ -181,6 +193,8 @@ fun SkinEditor(
         vibrate = settings.get(Settings.Keys.padVibration, true)
         selection = emptyList()
         viewportSelected = false
+        selectedExtra = null
+        extras = PadLayoutStore.load(profile, config)
         history.clear()
         dirty = false
     }
@@ -198,6 +212,7 @@ fun SkinEditor(
         val vp = currentViewport
         scope.launch {
             SkinStore.saveLayout(skinInfo.id, profile.key, config, l)
+            extras?.let { if (it != padLayout) PadLayoutStore.save(profile, config, it) }
             ViewportStore.save(profile, config, vp)
             settings.set(Settings.Keys.padOpacity, opacity)
             settings.set(ViewportPrefs.keepAspect, keepAspect)
@@ -229,8 +244,8 @@ fun SkinEditor(
         overlay?.let { groupPlaced(placeOverlay(it, canvasSize, landscape, SkinLayout.EMPTY, 1f).second) }.orEmpty()
     }
 
-    fun snapshot() = SkinEditState(currentLayout, currentViewport)
-    fun restore(s: SkinEditState) { layout = s.layout; viewport = s.viewport; dirty = true }
+    fun snapshot() = SkinEditState(currentLayout, currentViewport, extras)
+    fun restore(s: SkinEditState) { layout = s.layout; viewport = s.viewport; if (s.extras != null) extras = s.extras; dirty = true }
 
     /** Applies [transform] as one undo step ([key] coalesces slider/nudge bursts). */
     fun edit(key: String? = null, transform: (SkinLayout) -> SkinLayout) {
@@ -243,6 +258,13 @@ fun SkinEditor(
         val before = snapshot()
         history.record(before, key)
         viewport = transform(before.viewport).normalized()
+        dirty = true
+    }
+    fun editExtras(key: String? = null, transform: (PadLayout) -> PadLayout) {
+        val before = snapshot()
+        val cur = before.extras ?: return
+        history.record(before, key)
+        extras = transform(cur)
         dirty = true
     }
     fun undo() { history.undo(snapshot())?.let(::restore) }
@@ -258,6 +280,20 @@ fun SkinEditor(
     val selectionState = rememberUpdatedState(selection)
     val canvasState = rememberUpdatedState(canvasSize)
     val vibrateState = rememberUpdatedState(vibrate)
+    val extrasState = rememberUpdatedState(extras)
+    val selectedExtraState = rememberUpdatedState(selectedExtra)
+    val scaleState = rememberUpdatedState(globalScale)
+    val padInsets = rememberPadInsets()
+    val insetsState = rememberUpdatedState(padInsets)
+
+    /** Where each shown extra button sits, in the order it is drawn (later on top). */
+    fun extraRects(size: Size = canvasState.value): List<Pair<PadElementId, Rect>> {
+        val l = extrasState.value ?: return emptyList()
+        if (size == Size.Zero) return emptyList()
+        return overlayExtras.mapNotNull { id ->
+            l[id]?.takeIf { it.visible }?.let { id to it.rectOn(size, density, scaleState.value, insetsState.value) }
+        }
+    }
 
     fun viewportRect(size: Size = canvasState.value) = viewportState.value.toRect(size)
 
@@ -275,24 +311,30 @@ fun SkinEditor(
         object : EditorDragHost<Any> {
             private var startLayout: SkinLayout = SkinLayout.EMPTY
             private var startViewport: Rect = Rect.Zero
+            private var startExtras: PadLayout? = null
 
             @Suppress("UNCHECKED_CAST")
             private fun Any.asGroup(): Group = this as Group
 
             override fun hitTest(pos: Offset): Any? {
+                extraRects().asReversed().firstOrNull { (_, r) -> inflate(r, 0.3f).contains(pos) }?.let { return it.first }
                 val placed = placedState.value
                 val g = groupsState.value.asReversed().firstOrNull { g -> inflate(groupBounds(placed, g), 0.15f).contains(pos) }
                 if (g != null) return g
                 return if (viewportRect().contains(pos)) ViewportItem else null
             }
-            override fun rectOf(id: Any): Rect? =
-                if (id === ViewportItem) viewportRect() else groupBounds(placedState.value, id.asGroup()).takeIf { it != Rect.Zero }
-            override fun selection(): List<Any> = selectionState.value
+            override fun rectOf(id: Any): Rect? = when (id) {
+                ViewportItem -> viewportRect()
+                is PadElementId -> extraRects().firstOrNull { it.first == id }?.second
+                else -> groupBounds(placedState.value, id.asGroup()).takeIf { it != Rect.Zero }
+            }
+            override fun selection(): List<Any> = selectionState.value + listOfNotNull(selectedExtraState.value)
             override fun otherRects(exclude: Set<Any>): List<Rect> {
                 if (ViewportItem in exclude) return emptyList()
                 val placed = placedState.value
                 return groupsState.value.filter { g -> g !in exclude && g.any { placed.getOrNull(it)?.visible == true } }
-                    .map { groupBounds(placed, it) }.filter { it != Rect.Zero }
+                    .map { groupBounds(placed, it) }.filter { it != Rect.Zero } +
+                    extraRects().filter { it.first !in exclude }.map { it.second }
             }
             override fun fixedRects(): List<Rect> = buildList {
                 add(viewportRect())
@@ -302,9 +344,14 @@ fun SkinEditor(
                 if (ViewportItem in moving) listOf(Rect(Offset.Zero, canvasState.value)) else fixedRects()
             override fun axisLockOn(): Boolean = chrome.axisLock
             override fun onTap(id: Any?) {
+                selectedExtra = null
                 if (id === ViewportItem) {
                     viewportSelected = !viewportSelectedState.value
                     selection = emptyList()
+                } else if (id is PadElementId) {
+                    viewportSelected = false
+                    selection = emptyList()
+                    selectedExtra = id
                 } else {
                     viewportSelected = false
                     selection = if (id == null) emptyList() else listOf(id.asGroup())
@@ -312,13 +359,16 @@ fun SkinEditor(
             }
             override fun onLongPress(id: Any) {
                 if (id === ViewportItem) { viewportSelected = true; return }
+                if (id is PadElementId) { onTap(id); return }
+                selectedExtra = null
                 val g = id.asGroup()
                 selection = if (g in selection) selection.filter { it != g } else selection + listOf(g)
             }
             override fun onDragStart(ids: Set<Any>) {
                 startLayout = layoutState.value ?: SkinLayout.EMPTY
                 startViewport = viewportRect()
-                history.record(SkinEditState(startLayout, viewportState.value))
+                startExtras = extrasState.value
+                history.record(SkinEditState(startLayout, viewportState.value, startExtras))
             }
             override fun onDragMove(ids: Set<Any>, delta: Offset) {
                 val s = canvasState.value
@@ -327,10 +377,17 @@ fun SkinEditor(
                     viewport = ViewportRect.fromRect(clampInside(startViewport.translate(delta), s), s)
                     return
                 }
+                startExtras?.let { base ->
+                    var e = base
+                    for (id in ids.filterIsInstance<PadElementId>()) {
+                        e = e.update(id) { it.copy(x = (it.x + delta.x / s.width).coerceIn(0f, 1f), y = (it.y + delta.y / s.height).coerceIn(0f, 1f)) }
+                    }
+                    if (e !== base) extras = e
+                }
                 val ov = overlayState.value ?: return
                 val placed = placedState.value
                 var l = startLayout
-                for (g in ids) l = l.moveGroup(ov, placed, g.asGroup(), delta.x / s.width, delta.y / s.height)
+                for (g in ids) if (g !is PadElementId) l = l.moveGroup(ov, placed, g.asGroup(), delta.x / s.width, delta.y / s.height)
                 layout = l
             }
             override fun onDragEnd(ids: Set<Any>) { dirty = true }
@@ -343,6 +400,10 @@ fun SkinEditor(
         if (s == Size.Zero) return
         if (viewportSelected) {
             editViewport("nudge") { v -> ViewportRect.fromRect(clampInside(v.toRect(s).translate(Offset(dxDp * density, dyDp * density)), s), s) }
+            return
+        }
+        selectedExtra?.let { id ->
+            editExtras("nudge") { l -> l.update(id) { it.copy(x = (it.x + dxDp * density / s.width).coerceIn(0f, 1f), y = (it.y + dyDp * density / s.height).coerceIn(0f, 1f)) } }
             return
         }
         val ov = overlay ?: return
@@ -389,10 +450,18 @@ fun SkinEditor(
                 val pl = placement ?: return@Canvas
                 drawOverlay(s, ov, pl.first, pl.second, SkinVisual(showHidden = true), Color.Transparent)
             }
+            Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = opacity.coerceIn(0.15f, 1f) }) {
+                val l = extras ?: return@Canvas
+                for ((id, r) in extraRects(canvasSize)) {
+                    val e = l[id] ?: continue
+                    drawPadElement(e, r, profile, PadElementVisual(selected = id == selectedExtra), textMeasurer)
+                }
+            }
             Canvas(Modifier.fillMaxSize()) {
                 val pl = placement?.second ?: return@Canvas
-                for (sel in selection) {
-                    val r = inflate(groupBounds(pl, sel), 0.12f)
+                val extraSel = extraRects(canvasSize).filter { it.first == selectedExtra }.map { it.second }
+                for (r0 in selection.map { groupBounds(pl, it) } + extraSel) {
+                    val r = inflate(r0, 0.12f)
                     drawRoundRect(
                         Color(0xFFFFD166), r.topLeft, r.size, androidx.compose.ui.geometry.CornerRadius(12f),
                         style = Stroke(width = 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))),
@@ -480,6 +549,24 @@ fun SkinEditor(
                         onMirror = { align { AlignOps.mirrorHorizontally(it, canvasSize.width) } },
                     )
                 }
+                selectedExtra != null && extras?.get(selectedExtra!!) != null -> {
+                    val id = selectedExtra!!
+                    val e = extras!![id]!!
+                    SelectionHeader(id.displayName, onDone = { selectedExtra = null }) {
+                        NudgeButtons(enabled = true, onNudge = ::nudge, onRelease = { history.endCoalesce() })
+                    }
+                    PercentSlider(
+                        stringResource(R.string.le_scale),
+                        e.scale,
+                        { v -> editExtras("scale") { l -> l.update(id) { it.copy(scale = v) } } },
+                        0.6f..2f,
+                        onFinished = { history.endCoalesce() },
+                    )
+                    TextButton(onClick = {
+                        editExtras { l -> l.update(id) { it.copy(visible = false) } }
+                        selectedExtra = null
+                    }) { Text(stringResource(R.string.se_extra_remove)) }
+                }
                 members.isNotEmpty() && ov != null -> {
                     val visible = members.any { it.visible }
                     val scale = currentLayout[ov, members.first().desc]?.scale ?: 1f
@@ -527,6 +614,7 @@ fun SkinEditor(
                     }
                     EditorToolRow(
                         listOf(
+                            EditorTool(Icons.Outlined.AddCircleOutline, stringResource(R.string.le_tool_buttons)) { showExtras = true },
                             EditorTool(Icons.Outlined.AspectRatio, stringResource(R.string.le_tool_screen)) {
                                 viewportSelected = true
                                 selection = emptyList()
@@ -539,6 +627,8 @@ fun SkinEditor(
             }
         }
     }
+
+    if (showSkinSwap) SkinSwapDialog(profile, onDismiss = { showSkinSwap = false })
 
     if (showLayoutMenu) {
         AlertDialog(
@@ -563,9 +653,39 @@ fun SkinEditor(
                             SkinStore.select(profile.key, SkinStore.VECTOR)
                         }
                     }
+                    MenuLine(stringResource(R.string.le_swap_skin), stringResource(R.string.le_swap_skin_desc)) {
+                        showLayoutMenu = false; showSkinSwap = true
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = { showLayoutMenu = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    if (showExtras) {
+        AlertDialog(
+            onDismissRequest = { showExtras = false },
+            title = { Text(stringResource(R.string.se_extras_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.se_extras_desc), style = MaterialTheme.typography.bodySmall, color = OneEmuColors.OnSurfaceMuted)
+                    for (id in overlayExtras) {
+                        SwitchLine(id.displayName, extras?.get(id)?.visible == true, { on ->
+                            editExtras { l ->
+                                if (on) l.withElement(id, id.defaultSpot.first, id.defaultSpot.second) else l.update(id) { it.copy(visible = false) }
+                            }
+                            if (on) {
+                                // Straight to placing it: selected, panel showing its arrows.
+                                selectedExtra = id
+                                selection = emptyList()
+                                viewportSelected = false
+                                showExtras = false
+                            } else if (selectedExtra == id) selectedExtra = null
+                        })
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showExtras = false }) { Text(stringResource(R.string.ok)) } },
         )
     }
 
@@ -577,21 +697,8 @@ fun SkinEditor(
             onSnap = {},
             chrome = chrome,
             onDismiss = { showSettings = false },
-        ) {
-            // Buttons the skin's art does not have (fast-forward, menu...), drawn by the vector pad on top.
-            for (id in overlayExtras) {
-                SwitchLine(
-                    stringResource(R.string.se_extra_button, id.displayName),
-                    padLayout?.get(id)?.visible == true,
-                    { on ->
-                        val cur = padLayout ?: PadLayout(emptyList())
-                        val next = if (!on) cur.update(id) { it.copy(visible = false) }
-                        else cur.withElement(id, id.defaultSpot.first, id.defaultSpot.second)
-                        scope.launch { PadLayoutStore.save(profile, config, next) }
-                    },
-                )
-            }
-        }
+            profile = profile,
+        )
     }
 
     if (confirmDiscard) {

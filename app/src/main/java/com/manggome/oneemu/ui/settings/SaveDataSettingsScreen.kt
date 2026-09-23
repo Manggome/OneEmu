@@ -1,5 +1,9 @@
 package com.manggome.oneemu.ui.settings
 
+import com.manggome.oneemu.data.Settings
+
+import androidx.compose.material.icons.outlined.Save
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.widget.Toast
@@ -70,7 +74,16 @@ internal fun SaveDataSettingsScreen(onBack: () -> Unit) {
         }
     }
 
+    val autoSave = rememberPref(Settings.Keys.autoSaveState, true)
     SettingsScaffold(title = stringResource(R.string.settings_savedata), onBack = onBack) {
+        SwitchRow(
+            title = stringResource(R.string.misc_auto_save),
+            subtitle = stringResource(R.string.misc_auto_save_desc),
+            checked = autoSave.value,
+            onCheckedChange = { autoSave.set(it) },
+            icon = Icons.Outlined.Save,
+        )
+        SettingsDivider()
         val s = stats
         SettingsRow(
             title = stringResource(R.string.save_folder),

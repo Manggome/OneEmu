@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Autorenew
+import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Gavel
@@ -27,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.manggome.oneemu.BuildConfig
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
+import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.update.UpdateDialog
 import com.manggome.oneemu.update.UpdateViewModel
 
@@ -40,6 +43,7 @@ internal fun AboutSettingsScreen(onBack: () -> Unit) {
     val updateVm: UpdateViewModel = viewModel(key = "update-about")
     val updateState by updateVm.state.collectAsState()
     val checking = updateState is UpdateViewModel.UiState.Checking
+    val updateOnStart = rememberPref(Settings.Keys.updateCheckOnStart, true)
 
     fun open(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
@@ -59,6 +63,13 @@ internal fun AboutSettingsScreen(onBack: () -> Unit) {
             onClick = { updateVm.checkNow() },
             trailing = if (checking) ({ CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) }) else null,
         )
+        SwitchRow(
+            title = stringResource(R.string.misc_update_on_start),
+            subtitle = stringResource(R.string.misc_update_on_start_desc),
+            checked = updateOnStart.value,
+            onCheckedChange = { updateOnStart.set(it) },
+            icon = Icons.Outlined.Autorenew,
+        )
         SettingsRow(
             title = stringResource(R.string.about_github),
             subtitle = GITHUB_URL,
@@ -75,6 +86,17 @@ internal fun AboutSettingsScreen(onBack: () -> Unit) {
                     val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     cm.setPrimaryClip(android.content.ClipData.newPlainText("OneEmu log", text))
                     android.widget.Toast.makeText(context, R.string.log_copied, android.widget.Toast.LENGTH_SHORT).show()
+                }
+            },
+        )
+        SettingsRow(
+            title = stringResource(R.string.misc_clear_temp),
+            subtitle = stringResource(R.string.misc_clear_temp_desc),
+            icon = Icons.Outlined.CleaningServices,
+            onClick = {
+                scope.launch {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { OneEmuApp.get().dirs.clearTemp() }
+                    android.widget.Toast.makeText(context, R.string.misc_clear_temp_done, android.widget.Toast.LENGTH_SHORT).show()
                 }
             },
         )

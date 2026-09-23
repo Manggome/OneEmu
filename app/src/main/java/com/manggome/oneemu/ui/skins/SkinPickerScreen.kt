@@ -408,3 +408,20 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMockGame(landsc
     }
     drawRect(Color(0xFF2B2B2B), rect.topLeft, rect.size)
 }
+
+/**
+ * The skin picker over a layout editor (배치 → 스킨 바꾸기): pick one already on the phone, or download one
+ * from 온라인, without leaving the editor. The editor follows the pad's selected skin, so it switches to the
+ * new skin (or back to the vector pad) as soon as one is chosen; 배치 편집 on a card just closes this.
+ */
+@Composable
+fun SkinSwapDialog(profile: PadProfile, onDismiss: () -> Unit) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        androidx.compose.material3.Surface(Modifier.fillMaxSize(), color = OneEmuColors.Background) {
+            SkinPickerScreen(profile = profile, onBack = onDismiss, onEdit = onDismiss)
+        }
+    }
+}

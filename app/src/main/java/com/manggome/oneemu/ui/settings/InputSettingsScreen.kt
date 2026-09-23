@@ -12,21 +12,13 @@ import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.EmulatorSession.Buttons
 import kotlin.math.roundToInt
 
-/** Buttons 연사 can tap, in the order the picker lists them. */
-private val TURBO_BUTTONS = listOf(
-    "A" to Buttons.A, "B" to Buttons.B, "X" to Buttons.X, "Y" to Buttons.Y,
-    "L" to Buttons.L, "R" to Buttons.R, "L2" to Buttons.L2, "R2" to Buttons.R2,
-)
-
 @Composable
-internal fun InputSettingsScreen(onBack: () -> Unit, onGamepad: () -> Unit = {}) {
+internal fun InputSettingsScreen(onBack: () -> Unit) {
     val opacity = rememberPref(Settings.Keys.padOpacity, Settings.DEFAULT_PAD_OPACITY)
     val scale = rememberPref(Settings.Keys.padScale, Settings.DEFAULT_PAD_SCALE)
     val vibration = rememberPref(Settings.Keys.padVibration, true)
     val vibrationMs = rememberPref(Settings.Keys.padVibrationMs, Settings.DEFAULT_VIBRATION_MS)
     val hideWithGamepad = rememberPref(Settings.Keys.padHideWithGamepad, true)
-    val turboMask = rememberPref(Settings.Keys.turboMask, Settings.DEFAULT_TURBO_MASK)
-    val turboRate = rememberPref(Settings.Keys.turboRate, Settings.DEFAULT_TURBO_RATE)
 
     SettingsScaffold(title = stringResource(R.string.settings_input), onBack = onBack) {
         SliderRow(
@@ -71,32 +63,6 @@ internal fun InputSettingsScreen(onBack: () -> Unit, onGamepad: () -> Unit = {})
             onCheckedChange = { hideWithGamepad.set(it) },
             icon = Icons.Outlined.SportsEsports,
         )
-        SettingsRow(
-            title = stringResource(R.string.settings_gamepad),
-            subtitle = stringResource(R.string.settings_gamepad_desc),
-            icon = Icons.Outlined.SportsEsports,
-            onClick = onGamepad,
-        )
-        SettingsDivider()
-
-        SectionHeader(stringResource(R.string.input_turbo))
-        MultiChoiceRow(
-            title = stringResource(R.string.input_turbo_buttons),
-            options = TURBO_BUTTONS.map { it.first },
-            selected = TURBO_BUTTONS.indices.filter { turboMask.value and TURBO_BUTTONS[it].second != 0 }.toSet(),
-            onChange = { picked -> turboMask.set(picked.fold(0) { acc, i -> acc or TURBO_BUTTONS[i].second }) },
-            emptyLabel = stringResource(R.string.input_turbo_none),
-            icon = Icons.Outlined.Bolt,
-        )
-        ChoiceRow(
-            title = stringResource(R.string.input_turbo_rate),
-            options = Settings.TURBO_RATES.map { stringResource(R.string.input_turbo_rate_value, it) },
-            selectedIndex = Settings.TURBO_RATES.indexOf(turboRate.value)
-                .let { if (it < 0) Settings.TURBO_RATES.indexOf(Settings.DEFAULT_TURBO_RATE) else it },
-            onSelect = { turboRate.set(Settings.TURBO_RATES[it]) },
-            icon = Icons.Outlined.Speed,
-        )
-        NoteText(stringResource(R.string.input_turbo_note))
         SettingsDivider()
         NoteText(stringResource(R.string.input_layout_note))
     }

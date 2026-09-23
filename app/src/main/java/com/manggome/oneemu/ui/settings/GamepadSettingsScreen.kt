@@ -21,6 +21,7 @@ import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.input.GamepadDevices
+import com.manggome.oneemu.emu.input.StickDpad
 import com.manggome.oneemu.emu.input.GamepadMapping
 import com.manggome.oneemu.emu.input.PadDevice
 import kotlinx.coroutines.flow.first
@@ -40,6 +41,15 @@ internal fun GamepadSettingsScreen(onBack: () -> Unit, onMapping: (deviceKey: St
     val playerLabels = listOf(auto) + (1..GamepadDevices.MAX_PLAYERS).map { stringResource(R.string.gamepad_player_n, it) }
 
     SettingsScaffold(title = stringResource(R.string.gamepad_title), onBack = onBack) {
+        // Before the device list: it applies with or without a pad connected right now.
+        val stickDpad = rememberPref(StickDpad.everywhere, false)
+        SwitchRow(
+            title = stringResource(R.string.gamepad_stick_dpad),
+            subtitle = stringResource(R.string.gamepad_stick_dpad_desc),
+            checked = stickDpad.value,
+            onCheckedChange = stickDpad.set,
+        )
+        SettingsDivider()
         if (devices.isEmpty()) {
             NoteText(stringResource(R.string.gamepad_none))
             return@SettingsScaffold

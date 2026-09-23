@@ -57,4 +57,28 @@ class GamepadMappingTest {
         assertNull(parsed.buttonFor(9999))
         assertEquals(Buttons.X, parsed.buttonFor(KeyEvent.KEYCODE_BUTTON_C))
     }
+
+    @Test
+    fun addedKeyKeepsTheOriginal() {
+        // A back paddle (reported as BUTTON_1) that presses A while A still does.
+        val m = GamepadMapping.DEFAULT.addKey(Buttons.A, KeyEvent.KEYCODE_BUTTON_1)
+        assertEquals(Buttons.A, m.buttonFor(KeyEvent.KEYCODE_BUTTON_A))
+        assertEquals(Buttons.A, m.buttonFor(KeyEvent.KEYCODE_BUTTON_1))
+        // (The keyboard fallback's key for A is in there too.)
+        assert(m.keysFor(Buttons.A).containsAll(listOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_1)))
+        // Survives the save format.
+        val back = GamepadMapping.parse(m.overridesOf())
+        assertEquals(Buttons.A, back.buttonFor(KeyEvent.KEYCODE_BUTTON_1))
+        assertEquals(Buttons.A, back.buttonFor(KeyEvent.KEYCODE_BUTTON_A))
+    }
+
+    @Test
+    fun appActionsRoundTrip() {
+        val m = GamepadMapping.DEFAULT
+            .rebind(GamepadMapping.FAST_FORWARD, KeyEvent.KEYCODE_BUTTON_2)
+            .rebind(GamepadMapping.SAVE_STATE, KeyEvent.KEYCODE_BUTTON_3)
+        val back = GamepadMapping.parse(m.overridesOf())
+        assertEquals(GamepadMapping.FAST_FORWARD, back.buttonFor(KeyEvent.KEYCODE_BUTTON_2))
+        assertEquals(GamepadMapping.SAVE_STATE, back.buttonFor(KeyEvent.KEYCODE_BUTTON_3))
+    }
 }

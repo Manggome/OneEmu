@@ -24,13 +24,13 @@
     <string name="perm_open_settings">설정 열기</string>
 
     <!-- 설정 메뉴 (My Boy 참고) -->
-    <string name="settings_video">비디오</string>
+    <string name="settings_video">화면 · 소리</string>
     <string name="settings_audio">오디오</string>
-    <string name="settings_input">입력</string>
-    <string name="settings_layouts">패드 레이아웃</string>
+    <string name="settings_input">화면 패드</string>
+    <string name="settings_layouts">패드 레이아웃 · 스킨</string>
     <string name="settings_cores">코어 / BIOS</string>
-    <string name="settings_misc">기타</string>
+    <string name="settings_misc">연사 · 빨리감기</string>
     <string name="settings_advanced">고급</string>
-    <string name="settings_about">정보</string>
+    <string name="settings_about">정보 · 업데이트</string>
     <string name="settings_update">업데이트 확인</string>
 </resources>
