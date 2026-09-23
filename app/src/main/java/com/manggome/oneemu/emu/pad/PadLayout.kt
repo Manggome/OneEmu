@@ -246,10 +246,17 @@ object PadLayoutStore {
     private val settings get() = OneEmuApp.get().settings
 
     fun observe(profile: PadProfile, config: ScreenConfig): Flow<PadLayout> =
-        settings.observe(Settings.Keys.layout(profile.key, config), "").map { resolve(profile, config, it) }
+        if (profile.gameId == null) settings.observe(Settings.Keys.layout(profile.key, config), "").map { resolve(profile, config, it) }
+        // A game's own layout, or the pad's while it has none.
+        else kotlinx.coroutines.flow.combine(
+            settings.observe(Settings.Keys.layout(profile.key, config), ""),
+            settings.observe(Settings.Keys.layout(profile.base.key, config), ""),
+        ) { mine, pad -> resolve(profile, config, mine.ifBlank { pad }) }
 
     suspend fun load(profile: PadProfile, config: ScreenConfig): PadLayout =
-        resolve(profile, config, settings.get(Settings.Keys.layout(profile.key, config), ""))
+        resolve(profile, config, settings.get(Settings.Keys.layout(profile.key, config), "").ifBlank {
+            if (profile.gameId == null) "" else settings.get(Settings.Keys.layout(profile.base.key, config), "")
+        })
 
     suspend fun save(profile: PadProfile, config: ScreenConfig, layout: PadLayout) =
         settings.set(Settings.Keys.layout(profile.key, config), layout.toJson())

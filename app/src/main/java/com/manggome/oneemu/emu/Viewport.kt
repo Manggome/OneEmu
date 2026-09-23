@@ -99,10 +99,14 @@ object ViewportStore {
 
     /** Saved viewport or null when the user never customised this configuration. */
     fun observeSaved(profile: PadProfile, config: ScreenConfig): Flow<ViewportRect?> =
-        settings.observe(Keys.viewport(profile.key, config), "").map { it.takeIf(String::isNotBlank)?.let(ViewportRect::fromJson) }
+        kotlinx.coroutines.flow.combine(
+            settings.observe(Keys.viewport(profile.key, config), ""),
+            settings.observe(Keys.viewport(profile.base.key, config), ""),
+        ) { mine, pad -> mine.ifBlank { pad }.takeIf(String::isNotBlank)?.let(ViewportRect::fromJson) }
 
     suspend fun loadSaved(profile: PadProfile, config: ScreenConfig): ViewportRect? =
-        settings.get(Keys.viewport(profile.key, config), "").takeIf(String::isNotBlank)?.let(ViewportRect::fromJson)
+        settings.get(Keys.viewport(profile.key, config), "").ifBlank { settings.get(Keys.viewport(profile.base.key, config), "") }
+            .takeIf(String::isNotBlank)?.let(ViewportRect::fromJson)
 
     suspend fun save(profile: PadProfile, config: ScreenConfig, viewport: ViewportRect) =
         settings.set(Keys.viewport(profile.key, config), viewport.normalized().toJson())

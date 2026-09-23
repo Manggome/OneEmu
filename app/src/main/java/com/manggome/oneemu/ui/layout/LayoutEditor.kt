@@ -426,7 +426,7 @@ private fun VectorLayoutEditor(
         EditorChrome(
             state = chrome,
             title = stringResource(R.string.le_title),
-            subtitle = null,
+            subtitle = if (profile.gameId != null) stringResource(R.string.le_per_game_badge) else null,
             orientationToggle = configSelector ?: { ScreenConfigSelector(config, onSelect = null) },
             onCancel = { requestClose() },
             onSave = { save() },

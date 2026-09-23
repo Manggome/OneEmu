@@ -274,14 +274,21 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
             }
 
             if (editorOpen) {
-                LayoutEditor(
-                    system = session.system,
-                    profile = padProfile,
-                    config = config,
-                    showMockGame = false,
-                    onClose = { editorOpen = false },
-                    onViewportPreview = { v -> NativeBridge.setViewport(v.x, v.y, v.w, v.h) },
-                )
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.manggome.oneemu.ui.layout.LocalPerGameLayout provides com.manggome.oneemu.ui.layout.PerGameLayoutToggle(
+                        on = padProfile.gameId != null,
+                        set = { on -> scope.launch { session.setPerGameLayout(on) } },
+                    ),
+                ) {
+                    LayoutEditor(
+                        system = session.system,
+                        profile = padProfile,
+                        config = config,
+                        showMockGame = false,
+                        onClose = { editorOpen = false },
+                        onViewportPreview = { v -> NativeBridge.setViewport(v.x, v.y, v.w, v.h) },
+                    )
+                }
             }
 
             if (confirmReset) {

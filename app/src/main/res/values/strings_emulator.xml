@@ -210,4 +210,7 @@
     <string name="quick_none">빠른 저장이 아직 없습니다</string>
     <string name="slot_quick">빠른 저장</string>
     <string name="rewind_unsupported">되감기는 가벼운 기종(패미컴·게임보이·GBA·메가드라이브·마스터 시스템·게임 기어)에서만 됩니다</string>
+    <string name="le_per_game">이 게임만 따로 배치</string>
+    <string name="le_per_game_desc">켜면 이 게임은 버튼 배치·화면 위치·스킨을 따로 저장합니다. 따로 저장한 게 없으면 기종 배치를 그대로 씁니다.</string>
+    <string name="le_per_game_badge">이 게임 전용</string>
 </resources>

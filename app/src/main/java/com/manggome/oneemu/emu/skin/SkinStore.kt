@@ -184,8 +184,17 @@ object SkinStore {
     // ---- selection ----
 
     /** Raw selection: skin id or [VECTOR]. Unset falls back to the console-appropriate bundled skin. */
-    fun observeSelected(systemId: String): Flow<String> =
-        settings.observe(Keys.selected(systemId), "").map { it.ifBlank { SystemId.fromId(systemId)?.let(::defaultSkinId) ?: VECTOR } }
+    fun observeSelected(systemId: String): Flow<String> {
+        val profile = PadProfile.fromKey(systemId)
+        val fallback = profile?.base?.let(::defaultSkinId) ?: SystemId.fromId(systemId)?.let(::defaultSkinId) ?: VECTOR
+        // A game with a skin of its own chosen uses it; otherwise whatever its pad uses.
+        if (profile?.gameId != null) {
+            return combine(settings.observe(Keys.selected(systemId), ""), settings.observe(Keys.selected(profile.base.key), "")) { mine, pad ->
+                mine.ifBlank { pad }.ifBlank { fallback }
+            }
+        }
+        return settings.observe(Keys.selected(systemId), "").map { it.ifBlank { fallback } }
+    }
 
     /** Resolved selection; emits [SkinSelection.Vector] when the id is unknown (e.g. a deleted import). */
     fun observeSelectedSkin(context: Context, profile: PadProfile): Flow<SkinSelection> =
@@ -208,11 +217,16 @@ object SkinStore {
 
     // ---- layouts ----
 
+    private fun baseKey(systemId: String): String = PadProfile.fromKey(systemId)?.base?.key ?: systemId
+
     fun observeLayout(skinId: String, systemId: String, config: ScreenConfig): Flow<SkinLayout> =
-        settings.observe(Keys.layout(skinId, systemId, config), "").map { it.takeIf(String::isNotBlank)?.let(SkinLayout::fromJson) ?: SkinLayout.EMPTY }
+        combine(settings.observe(Keys.layout(skinId, systemId, config), ""), settings.observe(Keys.layout(skinId, baseKey(systemId), config), "")) { mine, pad ->
+            mine.ifBlank { pad }.takeIf(String::isNotBlank)?.let(SkinLayout::fromJson) ?: SkinLayout.EMPTY
+        }
 
     suspend fun loadLayout(skinId: String, systemId: String, config: ScreenConfig): SkinLayout =
-        settings.get(Keys.layout(skinId, systemId, config), "").takeIf(String::isNotBlank)?.let(SkinLayout::fromJson) ?: SkinLayout.EMPTY
+        settings.get(Keys.layout(skinId, systemId, config), "").ifBlank { settings.get(Keys.layout(skinId, baseKey(systemId), config), "") }
+            .takeIf(String::isNotBlank)?.let(SkinLayout::fromJson) ?: SkinLayout.EMPTY
 
     suspend fun saveLayout(skinId: String, systemId: String, config: ScreenConfig, layout: SkinLayout) =
         settings.set(Keys.layout(skinId, systemId, config), layout.toJson())
