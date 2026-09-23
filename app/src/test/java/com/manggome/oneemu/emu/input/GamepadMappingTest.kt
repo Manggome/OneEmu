@@ -93,4 +93,16 @@ class GamepadMappingTest {
         // Plain buttons are not combos.
         assert(GamepadMapping.DEFAULT.combos.isEmpty())
     }
+
+    @Test
+    fun positionalSwapsFaceButtonsOnly() {
+        // Bottom (BUTTON_A → RetroPad A) becomes B = × in a PlayStation core; right becomes A = ○.
+        assertEquals(Buttons.B, GamepadMapping.toPositional(Buttons.A))
+        assertEquals(Buttons.A, GamepadMapping.toPositional(Buttons.B))
+        assertEquals(Buttons.Y, GamepadMapping.toPositional(Buttons.X))
+        assertEquals(Buttons.X, GamepadMapping.toPositional(Buttons.Y))
+        val other = Buttons.START or Buttons.UP or Buttons.L2
+        assertEquals(other, GamepadMapping.toPositional(other))
+        assertEquals(Buttons.A or Buttons.B or Buttons.L, GamepadMapping.toPositional(Buttons.A or Buttons.B or Buttons.L))
+    }
 }

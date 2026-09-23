@@ -69,6 +69,28 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
         const val SAVE_STATE = 1 shl 26
         const val LOAD_STATE = 1 shl 25
 
+        /**
+         * PlayStation games take the face buttons by position: a pad's bottom button is ×, right ○, left □,
+         * top △, as on a DualShock, whatever letters are printed on it.
+         */
+        val PS_POSITIONAL = androidx.datastore.preferences.core.booleanPreferencesKey("gamepad_ps_positional")
+
+        /**
+         * From the letter mapping to the position one. Android reports face buttons by position (the bottom
+         * one is BUTTON_A on any pad), and the default mapping sends BUTTON_A to the RetroPad's A - its
+         * *right* button, the PlayStation's ○. Swapping A↔B and X↔Y puts bottom on B (×), right on A (○),
+         * left on Y (□) and top on X (△).
+         */
+        fun toPositional(mask: Int): Int {
+            val face = Buttons.A or Buttons.B or Buttons.X or Buttons.Y
+            var out = mask and face.inv()
+            if (mask and Buttons.A != 0) out = out or Buttons.B
+            if (mask and Buttons.B != 0) out = out or Buttons.A
+            if (mask and Buttons.X != 0) out = out or Buttons.Y
+            if (mask and Buttons.Y != 0) out = out or Buttons.X
+            return out
+        }
+
         /** Pseudo-buttons: app actions rather than buttons of the emulated pad. */
         val ACTIONS = setOf(MENU, TURBO, FAST_FORWARD, SPEED, SAVE_STATE, LOAD_STATE)
 
