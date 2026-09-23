@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.AddToHomeScreen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Info
@@ -119,6 +120,12 @@ fun GameActionSheet(
                 if (game.favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
                 stringResource(if (game.favorite) R.string.lib_action_favorite_remove else R.string.lib_action_favorite_add),
             ) { vm.toggleFavorite(game) }
+            val shortcutFailed = stringResource(R.string.lib_shortcut_unsupported)
+            val context = androidx.compose.ui.platform.LocalContext.current
+            SheetItem(Icons.Filled.AddToHomeScreen, stringResource(R.string.lib_action_shortcut)) {
+                onDismiss()
+                if (!GameShortcuts.pin(context, game)) android.widget.Toast.makeText(context, shortcutFailed, android.widget.Toast.LENGTH_LONG).show()
+            }
             SheetItem(Icons.Filled.Image, stringResource(R.string.lib_action_thumbnail)) { onDismiss(); onPickThumbnail(game) }
             SheetItem(Icons.Filled.CloudDownload, stringResource(R.string.lib_action_boxart)) { onDismiss(); vm.fetchBoxArt(game) }
             SheetItem(Icons.Filled.PhotoLibrary, stringResource(R.string.lib_action_boxart_pick)) { onDismiss(); onPickBoxArt(game) }
