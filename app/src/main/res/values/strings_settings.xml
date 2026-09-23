@@ -3,7 +3,6 @@
     <!-- 설정 홈 -->
     <string name="settings_title">설정</string>
     <string name="settings_video_desc">화면 필터, 화면비, FPS 표시, 소리</string>
-    <string name="settings_audio_desc">소리 켜기/끄기</string>
     <string name="settings_input_desc">화면 패드 투명도·크기, 진동, 패드 연결 시 숨기기</string>
     <string name="settings_layouts_desc">기종별 버튼 위치 편집, 스킨 고르기·받기</string>
     <string name="settings_cores_desc">기본 코어 선택, 코어 옵션, BIOS 상태</string>
@@ -41,7 +40,6 @@
     <!-- 연사 -->
     <string name="input_turbo">연사</string>
     <string name="input_turbo_buttons">연사할 버튼</string>
-    <string name="input_turbo_buttons_desc">고른 버튼을 누르고 있으면 자동으로 연타합니다</string>
     <string name="input_turbo_none">없음</string>
     <string name="input_turbo_rate">연사 속도</string>
     <string name="input_turbo_rate_value">초당 %1$d회</string>
@@ -163,10 +161,8 @@
     <string name="about_check_update">업데이트 확인</string>
     <string name="about_checking">확인 중…</string>
     <string name="about_up_to_date">최신 버전입니다</string>
-    <string name="about_update_available">새 버전 v%1$s이(가) 있습니다</string>
     <string name="about_check_failed">업데이트를 확인할 수 없습니다: %1$s</string>
     <string name="about_github">GitHub 저장소</string>
-    <string name="about_github_desc">소스 코드, 이슈 제보, 릴리스</string>
     <string name="about_copy_log">최근 실행 로그 복사</string>
     <string name="about_copy_log_desc">마지막으로 실행한 게임의 코어 로그와 상태를 클립보드에 복사합니다. 문제 신고 때 붙여 넣어 주세요.</string>
     <string name="about_debug_note">지금 실행 중인 빌드는 디버그 빌드입니다. 앱 내 업데이트로 받은 릴리스 APK는 이 빌드 위에 덮어 설치되지 않으니, GitHub Releases의 릴리스 APK를 설치해서 사용하세요.</string>

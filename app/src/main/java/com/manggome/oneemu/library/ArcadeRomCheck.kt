@@ -390,7 +390,7 @@ object ArcadeRomCheck {
         // romof chain: game → parent → BIOS
         val chain = ArrayList<Game>()
         var cur: Game? = game
-        while (cur != null && chain.none { it.name == cur!!.name }) {
+        while (cur != null && chain.none { it.name == cur.name }) {
             chain.add(cur)
             cur = cur.romof.takeIf { it.isNotEmpty() }?.let { db[it] }
         }

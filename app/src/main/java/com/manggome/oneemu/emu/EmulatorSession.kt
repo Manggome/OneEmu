@@ -127,8 +127,8 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         // live anywhere, without writing anything into it (the app has no permission to, outside its own dirs).
         val gameDir = java.io.File(game.path).takeIf { it.isFile }?.parentFile
         val useGameDirAsSystem = core.id == "jazz2" && gameDir != null
-        if (useGameDirAsSystem) hideGameFolderFromGallery(gameDir!!)
-        val systemDirForCore = if (useGameDirAsSystem) gameDir!!.absolutePath else dirs.system.absolutePath
+        if (useGameDirAsSystem) hideGameFolderFromGallery(gameDir)
+        val systemDirForCore = if (useGameDirAsSystem) gameDir.absolutePath else dirs.system.absolutePath
         val coreAssetsDir = core.assetsInstallDir.takeIf { it.isNotEmpty() }
             ?.let { java.io.File(dirs.system, it).parentFile?.absolutePath }
             ?: dirs.system.absolutePath

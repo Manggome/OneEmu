@@ -176,7 +176,7 @@ object SkinStore {
             author = meta?.author.orEmpty(),
             license = meta?.license.orEmpty(),
             source = meta?.source,
-            portraitCfg = port!!, landscapeCfg = land!!,
+            portraitCfg = port, landscapeCfg = land,
             assetDir = null, fileDir = dir,
         )
     }

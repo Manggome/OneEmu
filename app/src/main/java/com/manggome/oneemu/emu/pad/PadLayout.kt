@@ -187,13 +187,8 @@ data class PadElement(
     val y: Float,
     val scale: Float = 1f,
     val visible: Boolean = true,
-    /**
-     * Sticks only: press the d-pad as well as moving the stick. Plenty of games never read the analog
-     * sticks at all - Tekken on PlayStation is a digital game - and on those the stick does nothing
-     * whatsoever until it also sends a direction. Off by default, because a game that reads both would
-     * then see the same input twice.
-     */
-    val dpadToo: Boolean = false,
+    // (A per-stick "dpadToo" flag lived here for a day; StickDpad replaced it for every stick and pad at
+    // once. Saved layouts that still carry it load fine - the JSON reader ignores unknown keys.)
 )
 
 @Serializable
@@ -253,6 +248,68 @@ object PadLayoutStore {
         val def = DefaultLayouts.forProfile(profile, config)
         val stored = saved.takeIf { it.isNotBlank() }?.let { PadLayout.fromJson(it) } ?: return def
         val known = stored.elements.map { it.id }.toSet()
-        return PadLayout(stored.elements + def.elements.filter { it.id !in known })
+        var elements = stored.elements
+        for (added in def.elements.filter { it.id !in known }) elements = elements + FreeSpot.place(added, elements, config)
+        return PadLayout(elements)
+    }
+}
+
+/**
+ * Where to put a control that a saved layout predates. Its default spot was chosen for the default layout,
+ * and in one the player rearranged it may land on top of something - the Wii Remote's aim stick arriving
+ * on the B button of a layout saved before it existed. This keeps the default when it is free and otherwise
+ * takes the nearest free spot, measured on a typical screen of that shape.
+ */
+internal object FreeSpot {
+    private const val MARGIN_DP = 6f
+    private const val STEP = 0.02f
+
+    /** Typical screen size in dp for [config]: a phone, or an unfolded foldable when wide. */
+    private fun screenDp(config: ScreenConfig): Pair<Float, Float> = when {
+        config.wide && config.landscape -> 841f to 673f
+        config.wide -> 673f to 841f
+        config.landscape -> 915f to 412f
+        else -> 412f to 915f
+    }
+
+    private class Box(val l: Float, val t: Float, val r: Float, val b: Float) {
+        fun hits(o: Box) = l < o.r && o.l < r && t < o.b && o.t < b
+    }
+
+    private fun box(e: PadElement, x: Float, y: Float, w: Float, h: Float, margin: Float): Box {
+        val bw = e.id.baseWidthDp * e.scale / 2f + margin
+        val bh = e.id.baseHeightDp * e.scale / 2f + margin
+        return Box(x * w - bw, y * h - bh, x * w + bw, y * h + bh)
+    }
+
+    fun place(element: PadElement, existing: List<PadElement>, config: ScreenConfig): PadElement {
+        if (!element.visible) return element
+        val (w, h) = screenDp(config)
+        val others = existing.filter { it.visible }.map { box(it, it.x, it.y, w, h, 0f) }
+        fun free(x: Float, y: Float): Boolean {
+            val b = box(element, x, y, w, h, MARGIN_DP)
+            if (b.l < 0f || b.t < 0f || b.r > w || b.b > h) return false
+            return others.none { it.hits(b) }
+        }
+        if (free(element.x, element.y)) return element
+        // Portrait keeps the picture at the top, so a control is only moved within the pad's half.
+        val minY = if (config.landscape) 0.05f else 0.40f
+        var best: Pair<Float, Float>? = null
+        var bestDist = Float.MAX_VALUE
+        var y = minY
+        while (y <= 0.98f) {
+            var x = 0.02f
+            while (x <= 0.98f) {
+                if (free(x, y)) {
+                    val dx = (x - element.x) * w
+                    val dy = (y - element.y) * h
+                    val d = dx * dx + dy * dy
+                    if (d < bestDist) { bestDist = d; best = x to y }
+                }
+                x += STEP
+            }
+            y += STEP
+        }
+        return best?.let { (bx, by) -> element.copy(x = bx, y = by) } ?: element
     }
 }

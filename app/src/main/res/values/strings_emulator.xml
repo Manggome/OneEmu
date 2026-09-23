@@ -4,7 +4,6 @@
     <string name="emu_error_title">게임을 시작할 수 없습니다</string>
     <string name="emu_exit_confirm">게임을 종료할까요?</string>
     <string name="emu_exit">종료</string>
-    <string name="emu_gamepad_connected">게임패드가 연결되어 화면 패드를 숨겼습니다</string>
     <string name="emu_no_core">이 기종을 실행할 코어가 없습니다</string>
     <string name="emu_missing_bios">필요한 BIOS 파일이 없습니다: %1$s</string>
     <string name="emu_game_not_found">게임 정보를 찾을 수 없습니다</string>
@@ -150,13 +149,10 @@
     <string name="le_visible">표시</string>
     <string name="le_elements">요소 표시/숨기기</string>
     <string name="le_snap">격자에 맞추기</string>
-    <string name="le_select_all">전체 선택</string>
     <string name="le_mirror_all">좌우 반전</string>
     <string name="le_copy_from">다른 배치 가져오기</string>
     <string name="le_copy_from_hint">아래에서 고르면 지금 배치를 덮어씁니다. 마음에 안 들면 되돌리기로 취소하세요.</string>
     <string name="le_copy_from_other_systems">다른 기종에서</string>
-    <string name="le_portrait">세로</string>
-    <string name="le_landscape">가로</string>
     <string name="le_hint">끌어서 이동 · 탭 선택 · 길게 눌러 여러 개 선택 · 점선 화면 상자는 끌어서 옮기고 모서리로 크기 조절</string>
     <string name="le_hint_dismiss">안내 닫기</string>
     <string name="le_axis_lock">축 고정</string>
@@ -164,20 +160,17 @@
     <string name="le_redo">다시 실행</string>
     <string name="le_panel_collapse">도구 접기</string>
     <string name="le_panel_expand">도구 펴기</string>
-    <string name="le_panel_edge">도구 패널 위/아래</string>
     <string name="le_nudge_left">왼쪽으로 1dp</string>
     <string name="le_nudge_right">오른쪽으로 1dp</string>
     <string name="le_nudge_up">위로 1dp</string>
     <string name="le_nudge_down">아래로 1dp</string>
     <string name="le_readout">X %1$d dp (%2$d%%) · Y %3$d dp (%4$d%%)</string>
-    <string name="le_selected_count">%1$d개 선택</string>
     <string name="le_align_row">가로 정렬(중심)</string>
     <string name="le_align_column">세로 정렬(중심)</string>
     <string name="le_distribute_h">가로 균등 배치</string>
     <string name="le_distribute_v">세로 균등 배치</string>
     <string name="le_mirror">좌우 대칭 배치</string>
     <string name="le_saved">레이아웃을 저장했습니다</string>
-    <string name="le_mock_game">게임 화면</string>
     <string name="le_discard_confirm">변경 사항을 저장하지 않고 나갈까요?</string>
     <string name="le_discard">나가기</string>
 
@@ -191,13 +184,11 @@
 
     <!-- 게임 화면(뷰포트) 편집 -->
     <string name="vp_label">화면</string>
-    <string name="vp_select">화면 위치/크기</string>
     <string name="vp_keep_aspect">비율 유지</string>
     <string name="vp_snap_top">화면 위쪽에 붙이기</string>
     <string name="vp_center">화면 가운데</string>
     <string name="vp_full">전체 화면</string>
     <string name="vp_default">기본 위치</string>
-    <string name="vp_size_readout">화면 크기 %1$d%% × %2$d%%</string>
     <string name="qs_rotation">화면 회전</string>
     <string name="qs_rotation_0">기본</string>
     <string name="qs_rotation_90">90°</string>
