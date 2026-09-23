@@ -3,7 +3,10 @@ package com.manggome.oneemu.ui.settings
 import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CleaningServices
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.FastForward
+import androidx.compose.material.icons.outlined.Speed
+import com.manggome.oneemu.emu.EmulatorSession.Buttons
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.runtime.Composable
@@ -19,51 +22,48 @@ import kotlinx.coroutines.withContext
 
 private val FF_SPEEDS = Settings.FF_SPEEDS // 0 = unlimited
 
+/** Buttons 연사 can tap, in the order the picker lists them. */
+private val TURBO_BUTTONS = listOf(
+    "A" to Buttons.A, "B" to Buttons.B, "X" to Buttons.X, "Y" to Buttons.Y,
+    "L" to Buttons.L, "R" to Buttons.R, "L2" to Buttons.L2, "R2" to Buttons.R2,
+)
+
+/** 연사 and 빨리감기: the two ways of making a game go faster than your thumbs. */
 @Composable
 internal fun MiscSettingsScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val dirs = OneEmuApp.get().dirs
-    val updateOnStart = rememberPref(Settings.Keys.updateCheckOnStart, true)
-    val autoSave = rememberPref(Settings.Keys.autoSaveState, true)
+    val turboMask = rememberPref(Settings.Keys.turboMask, Settings.DEFAULT_TURBO_MASK)
+    val turboRate = rememberPref(Settings.Keys.turboRate, Settings.DEFAULT_TURBO_RATE)
     val ffSpeed = rememberPref(Settings.Keys.fastForwardSpeed, Settings.DEFAULT_FF_SPEED)
     val unlimited = stringResource(R.string.misc_ff_unlimited)
 
     SettingsScaffold(title = stringResource(R.string.settings_misc), onBack = onBack) {
-        SwitchRow(
-            title = stringResource(R.string.misc_update_on_start),
-            subtitle = stringResource(R.string.misc_update_on_start_desc),
-            checked = updateOnStart.value,
-            onCheckedChange = { updateOnStart.set(it) },
-            icon = Icons.Outlined.SystemUpdate,
+        SectionHeader(stringResource(R.string.input_turbo))
+        MultiChoiceRow(
+            title = stringResource(R.string.input_turbo_buttons),
+            options = TURBO_BUTTONS.map { it.first },
+            selected = TURBO_BUTTONS.indices.filter { turboMask.value and TURBO_BUTTONS[it].second != 0 }.toSet(),
+            onChange = { picked -> turboMask.set(picked.fold(0) { acc, i -> acc or TURBO_BUTTONS[i].second }) },
+            emptyLabel = stringResource(R.string.input_turbo_none),
+            icon = Icons.Outlined.Bolt,
         )
-        SettingsDivider()
-        SwitchRow(
-            title = stringResource(R.string.misc_auto_save),
-            subtitle = stringResource(R.string.misc_auto_save_desc),
-            checked = autoSave.value,
-            onCheckedChange = { autoSave.set(it) },
-            icon = Icons.Outlined.Save,
+        ChoiceRow(
+            title = stringResource(R.string.input_turbo_rate),
+            options = Settings.TURBO_RATES.map { stringResource(R.string.input_turbo_rate_value, it) },
+            selectedIndex = Settings.TURBO_RATES.indexOf(turboRate.value)
+                .let { if (it < 0) Settings.TURBO_RATES.indexOf(Settings.DEFAULT_TURBO_RATE) else it },
+            onSelect = { turboRate.set(Settings.TURBO_RATES[it]) },
+            icon = Icons.Outlined.Speed,
         )
+        NoteText(stringResource(R.string.input_turbo_note))
         SettingsDivider()
+
+        SectionHeader(stringResource(R.string.settings_section_ff))
         ChoiceRow(
             title = stringResource(R.string.misc_ff_speed),
             options = FF_SPEEDS.map { if (it == 0) unlimited else "${it}×" },
             selectedIndex = FF_SPEEDS.indexOf(ffSpeed.value).let { if (it < 0) FF_SPEEDS.indexOf(Settings.DEFAULT_FF_SPEED) else it },
             onSelect = { ffSpeed.set(FF_SPEEDS[it]) },
             icon = Icons.Outlined.FastForward,
-        )
-        SettingsDivider()
-        SettingsRow(
-            title = stringResource(R.string.misc_clear_temp),
-            subtitle = stringResource(R.string.misc_clear_temp_desc),
-            icon = Icons.Outlined.CleaningServices,
-            onClick = {
-                scope.launch {
-                    withContext(Dispatchers.IO) { dirs.clearTemp() }
-                    Toast.makeText(context, R.string.misc_clear_temp_done, Toast.LENGTH_SHORT).show()
-                }
-            },
         )
     }
 }

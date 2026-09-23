@@ -104,30 +104,39 @@ object DefaultLayouts {
     private fun e(id: PadElementId, x: Float, y: Float, scale: Float = 1f) = PadElement(id, x, y, scale)
 
     /**
-     * Wii Remote + Nunchuk, the device Dolphin needs for a Wii disc. The ergonomics are a four-button pad's
-     * - a d-pad and a stick on the left, two big buttons and two small ones on the right - because that is
-     * what a phone screen can do; only the legend changes (X is C, Y is Z, L/R are minus/plus, START is 1,
-     * SELECT is 2, and the triggers shake the two halves). HOME is the one button a GameCube pad has no
-     * room for, so it is added here.
+     * Wii Remote + Nunchuk, the device Dolphin needs for a Wii disc. Laid out for how a Wii game is played
+     * rather than borrowed from a four-button pad: the nunchuk's stick with C and Z on the left, and on the
+     * right the pointer stick (조준 - the right stick aims the remote) with A and B right beside it, since
+     * aiming and pressing A is most of what a Wii game asks for. The legend is the Wii's own (X is C, Y is Z,
+     * L/R are minus/plus, START is 1, SELECT is 2, the triggers shake the two halves, R3 is HOME) and L3
+     * recentres the pointer when the phone's motion aims it.
      */
-    private fun wiimote(landscape: Boolean): PadLayout {
-        val base = fourButton(landscape, shoulders = true, leftStick = true, rightStick = false, triggers = true, lowPortrait = false)
-        // 재조준 (L3): a gyro drifts, and the core recentres the pointer on it. Between the d-pad and the
-        // face buttons, where either thumb reaches it without letting go of anything.
-        if (landscape) return PadLayout(base.elements + e(R3, 0.50f, 0.80f, 0.85f) + e(L3, 0.50f, 0.64f, 0.85f))
-        // Portrait: a four-button pad drops SELECT/START to the very bottom edge to clear the stick, which on a
-        // phone puts them under the navigation bar. 1, 2 and HOME are menu buttons a Wii game needs, so they sit
-        // in a row of their own beside the stick instead.
-        return PadLayout(
-            base.elements.map {
-                when (it.id) {
-                    SELECT -> it.copy(x = 0.45f, y = 0.93f)
-                    START -> it.copy(x = 0.62f, y = 0.93f)
-                    else -> it
-                }
-            } + e(R3, 0.80f, 0.93f, 0.85f) + e(L3, 0.50f, 0.72f, 0.85f),
-        )
-    }
+    private fun wiimote(landscape: Boolean): PadLayout = PadLayout(
+        if (landscape) listOf(
+            e(MENU, 0.03f, 0.07f), e(FAST_FORWARD, 0.97f, 0.07f),
+            e(DPAD, 0.10f, 0.30f, 0.75f),
+            e(LEFT_STICK, 0.12f, 0.70f),
+            e(L2, 0.22f, 0.30f, 0.85f),
+            e(BUTTON_X, 0.23f, 0.50f, 0.85f), e(BUTTON_Y, 0.23f, 0.68f, 0.85f),
+            e(R3, 0.90f, 0.20f, 0.85f),
+            e(R2, 0.77f, 0.30f, 0.85f),
+            e(BUTTON_A, 0.90f, 0.42f, 1.15f), e(BUTTON_B, 0.78f, 0.52f),
+            e(RIGHT_STICK, 0.87f, 0.76f, 0.95f),
+            e(L3, 0.70f, 0.80f, 0.8f),
+            e(L, 0.33f, 0.93f), e(SELECT, 0.44f, 0.93f), e(START, 0.56f, 0.93f), e(R, 0.67f, 0.93f),
+        ) else listOf(
+            // Everything below the picture, which sits at the top in portrait.
+            e(L2, 0.12f, 0.40f, 0.85f), e(MENU, 0.44f, 0.40f), e(FAST_FORWARD, 0.56f, 0.40f), e(R2, 0.88f, 0.40f, 0.85f),
+            e(L, 0.14f, 0.47f, 0.85f), e(R3, 0.50f, 0.47f, 0.85f), e(R, 0.86f, 0.47f, 0.85f),
+            e(DPAD, 0.20f, 0.61f, 0.8f),
+            e(L3, 0.52f, 0.60f, 0.8f),
+            e(BUTTON_A, 0.85f, 0.60f, 1.1f), e(BUTTON_B, 0.68f, 0.67f),
+            e(BUTTON_X, 0.46f, 0.70f, 0.85f), e(BUTTON_Y, 0.46f, 0.79f, 0.85f),
+            e(LEFT_STICK, 0.22f, 0.84f, 0.95f),
+            e(RIGHT_STICK, 0.78f, 0.84f, 0.95f),
+            e(SELECT, 0.40f, 0.95f), e(START, 0.60f, 0.95f),
+        ),
+    )
 
     /** The two stick clicks melonDS DS uses, next to the shoulders they sit beside on a real pad. */
     private fun withNdsExtras(base: PadLayout, landscape: Boolean): PadLayout = PadLayout(

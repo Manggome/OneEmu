@@ -1,10 +1,31 @@
 package com.manggome.oneemu.emu.skin
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.IntOffset
+import com.manggome.oneemu.emu.pad.PadElementVisual
+import com.manggome.oneemu.emu.pad.drawPadElement
+import com.manggome.oneemu.emu.pad.rectOn
+import com.manggome.oneemu.emu.pad.rememberPadInsets
+import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalContext
 import com.manggome.oneemu.emu.Haptics
 import com.manggome.oneemu.emu.rememberScreenConfig
@@ -89,8 +110,11 @@ fun PadHost(
 
 /**
  * The 배속, 연사, 저장 and 불러오기 buttons on top of an image skin. RetroArch overlays have no such controls, so they
- * are taken from the vector layout (the skin editor's chips add them there) and drawn as a pad of
- * their own.
+ * are taken from the vector layout (the skin editor places them there).
+ *
+ * Only the buttons themselves take touches. This used to be a whole second [VirtualPad] over the skin, and a
+ * full-screen pointer handler on top wins every touch - with any of these buttons switched on, the skin
+ * underneath (and the game screen) stopped responding entirely.
  */
 @Composable
 private fun ExtraOverlay(
@@ -111,25 +135,52 @@ private fun ExtraOverlay(
     val extras = listOf(PadElementId.SPEED, PadElementId.TURBO, PadElementId.SAVE_STATE, PadElementId.LOAD_STATE)
         .mapNotNull { layout[it]?.takeIf { e -> e.visible } }
     if (extras.isEmpty()) return
-    VirtualPad(
-        layout = PadLayout(extras),
-        profile = profile,
-        opacity = opacity,
-        globalScale = globalScale,
-        hapticMs = hapticMs,
-        haptics = haptics,
-        gameRect = null,
-        fastForwardActive = false,
-        onInput = {},
-        onPointer = { _, _, _ -> },
-        onMenu = {},
-        onFastForward = {},
-        speedLabel = speedLabel,
-        onSpeedCycle = onSpeedCycle,
-        modifier = modifier,
-        turboActive = turboActive,
-        onTurbo = onTurbo,
-        onSaveState = onSaveState,
-        onLoadState = onLoadState,
-    )
+    val density = LocalDensity.current
+    val insets = rememberPadInsets()
+    val textMeasurer = rememberTextMeasurer()
+    var pressed by remember { mutableStateOf<PadElementId?>(null) }
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val screen = Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
+        val placed = extras.map { it to it.rectOn(screen, density.density, globalScale, insets) }
+        // Drawing only: a Canvas has no pointer handler, so touches go straight through to the skin.
+        Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = opacity.coerceIn(0.05f, 1f) }) {
+            for ((e, r) in placed) {
+                val lit = (e.id == PadElementId.TURBO && turboActive) || e.id == pressed
+                drawPadElement(
+                    e, r, profile,
+                    PadElementVisual(pressedElements = if (lit) setOf(e.id) else emptySet(), labelOverride = if (e.id == PadElementId.SPEED) speedLabel else null),
+                    textMeasurer,
+                )
+            }
+        }
+        for ((e, r) in placed) {
+            // A little bigger than the drawing, as the vector pad's hit test is.
+            val slopX = r.width * 0.15f
+            val slopY = r.height * 0.15f
+            Box(
+                Modifier
+                    .offset { IntOffset((r.left - slopX).roundToInt(), (r.top - slopY).roundToInt()) }
+                    .size(with(density) { (r.width + 2 * slopX).toDp() }, with(density) { (r.height + 2 * slopY).toDp() })
+                    .pointerInput(e.id) {
+                        detectTapGestures(
+                            onPress = {
+                                pressed = e.id
+                                if (hapticMs >= 0) haptics?.tick(hapticMs)
+                                tryAwaitRelease()
+                                pressed = null
+                            },
+                            onTap = {
+                                when (e.id) {
+                                    PadElementId.SPEED -> onSpeedCycle()
+                                    PadElementId.TURBO -> onTurbo()
+                                    PadElementId.SAVE_STATE -> onSaveState()
+                                    PadElementId.LOAD_STATE -> onLoadState()
+                                    else -> {}
+                                }
+                            },
+                        )
+                    },
+            )
+        }
+    }
 }

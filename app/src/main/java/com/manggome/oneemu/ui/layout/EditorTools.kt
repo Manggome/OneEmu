@@ -23,6 +23,14 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import com.manggome.oneemu.OneEmuApp
+import com.manggome.oneemu.emu.input.StickDpad
+import com.manggome.oneemu.emu.pad.PadProfile
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -148,6 +156,8 @@ fun EditorSettingsDialog(
     onSnap: (Boolean) -> Unit,
     chrome: EditorChromeState,
     onDismiss: () -> Unit,
+    /** The pad being edited, for the settings that belong to it rather than to the layout. */
+    profile: PadProfile? = null,
     extra: @Composable () -> Unit = {},
 ) {
     AlertDialog(
@@ -163,12 +173,7 @@ fun EditorSettingsDialog(
                     { chrome.axisLock = it },
                     stringResource(R.string.le_axis_lock_desc),
                 )
-                SwitchLine(
-                    stringResource(R.string.le_panel_top),
-                    chrome.atTop,
-                    { if (it != chrome.atTop) chrome.toggleEdge() },
-                    stringResource(R.string.le_panel_top_desc),
-                )
+                if (profile != null) StickDpadLine(profile)
                 extra()
             }
         },
@@ -189,4 +194,22 @@ fun MenuLine(title: String, description: String? = null, onClick: () -> Unit) {
         }
         Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = OneEmuColors.OnSurfaceMuted)
     }
+}
+
+/**
+ * [StickDpad] for [profile], saved as soon as it is flipped (it is a setting of the pad, not part of the
+ * layout, so 저장/취소 do not apply to it).
+ */
+@Composable
+fun StickDpadLine(profile: PadProfile) {
+    val settings = remember { OneEmuApp.get().settings }
+    val scope = rememberCoroutineScope()
+    val on by settings.observe(StickDpad.key(profile), false).collectAsState(false)
+    val everywhere by settings.observe(StickDpad.everywhere, false).collectAsState(false)
+    SwitchLine(
+        stringResource(R.string.le_stick_dpad),
+        on || everywhere,
+        { v -> scope.launch { settings.set(StickDpad.key(profile), v) } },
+        stringResource(if (everywhere) R.string.le_stick_dpad_everywhere else R.string.le_stick_dpad_desc),
+    )
 }

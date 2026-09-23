@@ -29,9 +29,18 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
     /** The first key bound to [button], which is what the mapping screen shows on its row. */
     fun keyFor(button: Int): Int? = keys.entries.firstOrNull { it.value == button }?.key
 
+    /** Every key bound to [button], in key-code order. */
+    fun keysFor(button: Int): List<Int> = keys.filterValues { it == button }.keys.sorted()
+
     /** Binds [keyCode] to [button], dropping whatever used to press it. */
     fun rebind(button: Int, keyCode: Int): GamepadMapping =
         GamepadMapping(keys.filterValues { it != button } + (keyCode to button))
+
+    /**
+     * Binds [keyCode] to [button] as well, keeping the keys it already had - a back paddle (L4/R4) that
+     * presses A without A itself stopping to. A key only ever does one thing, so it leaves its old job.
+     */
+    fun addKey(button: Int, keyCode: Int): GamepadMapping = GamepadMapping(keys + (keyCode to button))
 
     /** Only the differences from [base], in the format [parse] reads back. */
     fun overridesOf(base: GamepadMapping = DEFAULT): String = buildList {
@@ -42,13 +51,24 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
     companion object {
         const val MENU = 1 shl 30
         const val TURBO = 1 shl 29
+        /** 빨리감기 on/off. */
+        const val FAST_FORWARD = 1 shl 28
+        /** 배속: the next speed step. */
+        const val SPEED = 1 shl 27
+        /** Opens the save / load slot list, as the on-screen 저장 / 불러오기 buttons do. */
+        const val SAVE_STATE = 1 shl 26
+        const val LOAD_STATE = 1 shl 25
+
+        /** Pseudo-buttons: app actions rather than buttons of the emulated pad. */
+        val ACTIONS = setOf(MENU, TURBO, FAST_FORWARD, SPEED, SAVE_STATE, LOAD_STATE)
 
         val buttonNames: Map<String, Int> = mapOf(
             "A" to Buttons.A, "B" to Buttons.B, "X" to Buttons.X, "Y" to Buttons.Y,
             "L" to Buttons.L, "R" to Buttons.R, "L2" to Buttons.L2, "R2" to Buttons.R2,
             "L3" to Buttons.L3, "R3" to Buttons.R3, "START" to Buttons.START, "SELECT" to Buttons.SELECT,
             "UP" to Buttons.UP, "DOWN" to Buttons.DOWN, "LEFT" to Buttons.LEFT, "RIGHT" to Buttons.RIGHT,
-            "MENU" to MENU, "TURBO" to TURBO,
+            "MENU" to MENU, "TURBO" to TURBO, "FAST_FORWARD" to FAST_FORWARD, "SPEED" to SPEED,
+            "SAVE_STATE" to SAVE_STATE, "LOAD_STATE" to LOAD_STATE,
         )
 
         /** Buttons the mapping screen offers, in the order it lists them. */
@@ -58,7 +78,8 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
             "L3" to Buttons.L3, "R3" to Buttons.R3,
             "START" to Buttons.START, "SELECT" to Buttons.SELECT,
             "UP" to Buttons.UP, "DOWN" to Buttons.DOWN, "LEFT" to Buttons.LEFT, "RIGHT" to Buttons.RIGHT,
-            "MENU" to MENU, "TURBO" to TURBO,
+            "MENU" to MENU, "TURBO" to TURBO, "FAST_FORWARD" to FAST_FORWARD, "SPEED" to SPEED,
+            "SAVE_STATE" to SAVE_STATE, "LOAD_STATE" to LOAD_STATE,
         )
 
         fun nameOf(button: Int): String = buttonNames.entries.firstOrNull { it.value == button }?.key ?: button.toString()
@@ -129,6 +150,8 @@ class GamepadInput(
     private val onChanged: (port: Int, mask: Int, lx: Int, ly: Int, rx: Int, ry: Int) -> Unit,
     private val onMenu: () -> Unit,
     private val onTurbo: () -> Unit = {},
+    /** The other [GamepadMapping.ACTIONS] (빨리감기, 배속, 저장, 불러오기). */
+    private val onAction: (Int) -> Unit = {},
 ) {
     private class DeviceState {
         var keyMask = 0
@@ -218,10 +241,14 @@ class GamepadInput(
     fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.repeatCount > 0 && event.action == KeyEvent.ACTION_DOWN) return isMapped(event)
         val button = mappingFor(event.deviceId).buttonFor(event.keyCode) ?: return false
-        if (button == GamepadMapping.MENU || button == GamepadMapping.TURBO) {
+        if (button in GamepadMapping.ACTIONS) {
             // Pseudo-buttons fire once, on release, whichever player pressed them.
             if (event.action == KeyEvent.ACTION_UP) {
-                if (button == GamepadMapping.MENU) onMenu() else onTurbo()
+                when (button) {
+                    GamepadMapping.MENU -> onMenu()
+                    GamepadMapping.TURBO -> onTurbo()
+                    else -> onAction(button)
+                }
             }
             return true
         }

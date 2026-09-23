@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Button
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -83,6 +84,8 @@ object EditorPrefs {
 @Stable
 class EditorChromeState internal constructor(private val settings: Settings, private val scope: CoroutineScope) {
     var collapsed by mutableStateOf(false)
+    /** Top bar folded into a small corner pill, so the top of the pad can be edited too. */
+    var barFolded by mutableStateOf(false)
     var atTop by mutableStateOf(false)
         private set
     var hintDismissed by mutableStateOf(true)
@@ -145,32 +148,43 @@ fun BoxScope.EditorChrome(
     val panelAlpha by animateFloatAsState(if (panelShown) 1f else 0f, tween(if (panelShown) 200 else 120), label = "panelAlpha")
 
     Column(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
-        // One slim bar: leave, what is being edited, undo/redo (they apply to everything, so they live here
-        // rather than in the panel), save. The screen-shape selector gets its own line under it, so neither
-        // has to be squeezed until the text is cut off.
-        Surface(color = OneEmuColors.Surface.copy(alpha = 0.92f)) {
-            Column(Modifier.fillMaxWidth().statusBarsPadding()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    SmallIconButton(Icons.Filled.Close, stringResource(R.string.le_cancel), onCancel, size = 44.dp)
-                    Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                        Text(title, style = MaterialTheme.typography.titleMedium, color = OneEmuColors.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (subtitle != null) {
-                            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = OneEmuColors.OnSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+        if (state.barFolded) {
+            // Folded: only what cannot wait - unfold, and 저장 - in a pill at the top-right corner.
+            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(8.dp), horizontalArrangement = Arrangement.End) {
+                Surface(color = OneEmuColors.Surface.copy(alpha = 0.92f), shape = RoundedCornerShape(50), shadowElevation = 4.dp) {
+                    Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        SmallIconButton(Icons.Filled.ExpandMore, stringResource(R.string.le_bar_unfold), { state.barFolded = false }, size = 40.dp)
+                        TextButton(onClick = onSave, enabled = saveEnabled) { Text(stringResource(R.string.le_save)) }
                     }
-                    SmallIconButton(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.le_undo), onUndo, enabled = canUndo, size = 44.dp)
-                    SmallIconButton(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.le_redo), onRedo, enabled = canRedo, size = 44.dp)
-                    Spacer(Modifier.width(4.dp))
-                    Button(onClick = onSave, enabled = saveEnabled, contentPadding = PaddingValues(horizontal = 18.dp)) {
-                        Text(stringResource(R.string.le_save))
-                    }
-                    Spacer(Modifier.width(4.dp))
                 }
-                if (orientationToggle != null) {
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 6.dp)) { orientationToggle() }
+            }
+        } else {
+            // One slim bar: leave, what is being edited, undo/redo (they apply to everything, so they live
+            // here rather than in the panel), save, and fold it away. The screen-shape selector gets its own
+            // line under it, so neither has to be squeezed until the text is cut off.
+            Surface(color = OneEmuColors.Surface.copy(alpha = 0.92f)) {
+                Column(Modifier.fillMaxWidth().statusBarsPadding()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SmallIconButton(Icons.Filled.Close, stringResource(R.string.le_cancel), onCancel, size = 44.dp)
+                        Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                            Text(title, style = MaterialTheme.typography.titleMedium, color = OneEmuColors.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (subtitle != null) {
+                                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = OneEmuColors.OnSurfaceMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        SmallIconButton(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.le_undo), onUndo, enabled = canUndo, size = 44.dp)
+                        SmallIconButton(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.le_redo), onRedo, enabled = canRedo, size = 44.dp)
+                        Button(onClick = onSave, enabled = saveEnabled, contentPadding = PaddingValues(horizontal = 16.dp)) {
+                            Text(stringResource(R.string.le_save))
+                        }
+                        SmallIconButton(Icons.Filled.ExpandLess, stringResource(R.string.le_bar_fold), { state.barFolded = true }, size = 44.dp)
+                    }
+                    if (orientationToggle != null) {
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 6.dp)) { orientationToggle() }
+                    }
                 }
             }
         }
@@ -212,16 +226,31 @@ private fun ToolPanel(
         shape = shape,
         shadowElevation = 6.dp,
     ) {
-        Column(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-            // A grab-bar, so the panel reads as a sheet over the pad rather than part of it.
-            if (!state.atTop) {
+        Column(Modifier.then(if (state.atTop) Modifier else Modifier.navigationBarsPadding()).padding(horizontal = 12.dp).padding(bottom = 8.dp)) {
+            // Handle row: fold the panel down to this row, or send it to the other edge when it is over
+            // the buttons being edited. One tap each, right where the thumb already is.
+            Box(Modifier.fillMaxWidth().height(36.dp)) {
+                SmallIconButton(
+                    if (state.collapsed == state.atTop) Icons.Filled.ExpandMore else Icons.Filled.ExpandLess,
+                    stringResource(if (state.collapsed) R.string.le_panel_expand else R.string.le_panel_collapse),
+                    { state.collapsed = !state.collapsed },
+                    size = 36.dp,
+                    modifier = Modifier.align(Alignment.CenterStart),
+                )
                 Box(
-                    Modifier.align(Alignment.CenterHorizontally).padding(bottom = 6.dp)
+                    Modifier.align(Alignment.Center)
                         .size(width = 36.dp, height = 4.dp)
                         .background(OneEmuColors.OnSurfaceMuted.copy(alpha = 0.4f), RoundedCornerShape(50)),
                 )
+                SmallIconButton(
+                    if (state.atTop) Icons.Filled.VerticalAlignBottom else Icons.Filled.VerticalAlignTop,
+                    stringResource(if (state.atTop) R.string.le_panel_to_bottom else R.string.le_panel_to_top),
+                    { state.toggleEdge() },
+                    size = 36.dp,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                )
             }
-            panel()
+            if (!state.collapsed) panel()
         }
     }
 }
@@ -259,8 +288,9 @@ fun SmallIconButton(
     enabled: Boolean = true,
     size: androidx.compose.ui.unit.Dp = 36.dp,
     tint: androidx.compose.ui.graphics.Color = OneEmuColors.OnSurface,
+    modifier: Modifier = Modifier,
 ) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(size)) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = modifier.size(size)) {
         Icon(icon, contentDescription = description, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(size * 0.6f))
     }
 }

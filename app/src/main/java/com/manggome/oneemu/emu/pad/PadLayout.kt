@@ -137,8 +137,8 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
         START -> "1 버튼"
         SELECT -> "2 버튼"
         LEFT_STICK -> "눈차크 스틱"
-        RIGHT_STICK -> "위모컨 기울이기"
-        L3 -> "재조준 (자이로 조준 가운데로)"
+        RIGHT_STICK -> "조준 스틱 (포인터)"
+        L3 -> "재조준 (자이로 조준일 때 가운데로)"
         else -> displayName
     }
 

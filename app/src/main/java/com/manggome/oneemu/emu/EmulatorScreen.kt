@@ -90,6 +90,15 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
 
     var surfaceSize by remember { mutableStateOf(IntSize.Zero) }
     var sheet by remember { mutableStateOf(Sheet.NONE) }
+    // 저장 / 불러오기 pressed on a Bluetooth pad.
+    LaunchedEffect(ui.slotRequest) {
+        when (ui.slotRequest) {
+            SlotRequest.SAVE -> sheet = Sheet.SAVE
+            SlotRequest.LOAD -> sheet = Sheet.LOAD
+            null -> return@LaunchedEffect
+        }
+        ui.slotRequest = null
+    }
     var editorOpen by remember { mutableStateOf(false) }
     var confirmExit by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }

@@ -97,8 +97,7 @@ internal fun WiiControllerCard(game: GameEntity, onEditWiiLayout: () -> Unit) {
             }
             if (choice.padProfile(platform).isWiimote) {
                 // How the remote points. Stored as this game's dolphin_ir_mode, so it sits with the rest
-                // of the game's core options; 자동 removes it and lets EmulatorSession decide (gyro when
-                // the phone has one).
+                // of the game's core options.
                 val gyro = remember { hasGyroscope(context) }
                 var aim by remember(game.id) { mutableStateOf<String?>(null) }
                 LaunchedEffect(game.id) { aim = settings.gameOptionOverrides(game.id)[IR_MODE] }
@@ -114,11 +113,11 @@ internal fun WiiControllerCard(game: GameEntity, onEditWiiLayout: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
                 )
+                // No stored value = the on-screen 조준 stick (EmulatorSession's default).
                 val options = buildList {
-                    add(null to R.string.lib_wii_aim_auto)
+                    add(null to R.string.lib_wii_aim_stick)
                     if (gyro) add("3" to R.string.lib_wii_aim_gyro)
                     add("2" to R.string.lib_wii_aim_touch)
-                    add("1" to R.string.lib_wii_aim_stick)
                 }
                 options.forEach { (value, label) ->
                     Row(

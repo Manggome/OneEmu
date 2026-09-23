@@ -1,6 +1,7 @@
 package com.manggome.oneemu.ui.settings
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.material.icons.outlined.BlurOn
 import androidx.compose.material.icons.outlined.Speed
@@ -18,8 +19,10 @@ internal fun VideoSettingsScreen(onBack: () -> Unit) {
     val fps = rememberPref(Settings.Keys.showFps, false)
     val screenFilter = rememberPref(Settings.Keys.videoFilter, Settings.FILTER_NONE)
     val strength = rememberPref(Settings.Keys.videoFilterStrength, Settings.DEFAULT_FILTER_STRENGTH)
+    val audio = rememberPref(Settings.Keys.audioEnabled, true)
 
     SettingsScaffold(title = stringResource(R.string.settings_video), onBack = onBack) {
+        SectionHeader(stringResource(R.string.settings_section_screen))
         ChoiceRow(
             title = stringResource(R.string.video_filter),
             options = listOf(stringResource(R.string.video_filter_nearest), stringResource(R.string.video_filter_linear)),
@@ -71,6 +74,16 @@ internal fun VideoSettingsScreen(onBack: () -> Unit) {
             checked = fps.value,
             onCheckedChange = { fps.set(it) },
             icon = Icons.Outlined.Speed,
+        )
+        SettingsDivider()
+
+        SectionHeader(stringResource(R.string.settings_section_sound))
+        SwitchRow(
+            title = stringResource(R.string.audio_enabled),
+            subtitle = stringResource(R.string.audio_enabled_desc),
+            checked = audio.value,
+            onCheckedChange = { audio.set(it) },
+            icon = Icons.AutoMirrored.Outlined.VolumeUp,
         )
     }
 }

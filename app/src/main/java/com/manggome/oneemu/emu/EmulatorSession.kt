@@ -233,7 +233,11 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     /** Whether this core reads the phone's motion sensors (only Dolphin does). */
     val wantsMotion: Boolean get() = core.id == "dolphin"
 
-    /** Set by the activity before [load]: decides whether a Wii Remote points with the gyro by default. */
+    /** Dolphin's effective dolphin_ir_mode for this session (null for other cores). */
+    @Volatile var irMode: String? = null
+        private set
+
+    /** Set by the activity before [load]: whether this phone has a gyroscope to aim with. */
     @Volatile var gyroAvailable: Boolean = false
 
     /**
@@ -260,17 +264,20 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         // Anything set for this one game sits on top of the core-wide settings. A game with none
         // behaves exactly as before.
         val perGame = app.settings.gameOptionOverrides(game.id)
-        // A Wii Remote aimed by tipping the phone is far easier than aiming with the thumb that also has
-        // to press A and B, so it is the default wherever there is a gyroscope; a choice the user made -
-        // for the core or for this one game - still wins. Mode 3 needs the r4 core; an older one reads
-        // it as the touch pointer, which is what mode 2 was anyway.
-        if (core.id == "dolphin" && IR_MODE !in user && IR_MODE !in perGame) {
-            merged[IR_MODE] = if (gyroAvailable) IR_MODE_GYRO else IR_MODE_TOUCH
+        // The Wii Remote's pointer. The default is the on-screen 조준 stick (relative: push to move the pointer,
+        // let go and it stays), which works on every phone and needs no holding the phone just so. Tipping the
+        // phone (mode 3) and touching the screen (mode 2) are the other choices, per game or for the core.
+        if (core.id == "dolphin") {
+            if (IR_MODE !in user && IR_MODE !in perGame) merged[IR_MODE] = IR_MODE_STICK
+            // Dolphin toggles "remote held sideways" on L3 by default. L3 is our 재조준, and a remote that
+            // flips sideways mid-game loses its pointer and swaps its buttons - so the hotkey is off.
+            if (SIDEWAYS_HOTKEY !in user && SIDEWAYS_HOTKEY !in perGame) merged[SIDEWAYS_HOTKEY] = "Disabled"
         }
         val vulkan = hwApi == "vulkan"
         BACKEND_OPTIONS[core.id]?.let { (key, vk, gl) -> if (key !in user && key !in perGame) merged[key] = if (vulkan) vk else gl }
         merged.putAll(user)
         merged.putAll(perGame)
+        irMode = merged[IR_MODE]
         return merged.entries.joinToString("\n") { "${it.key}=${it.value}" }
     }
 
@@ -472,8 +479,9 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     override fun onGeometryChanged(width: Int, height: Int, aspect: Float) { _geometry.value = Geometry(width, height, aspect) }
     companion object {
         private const val IR_MODE = "dolphin_ir_mode"
-        private const val IR_MODE_TOUCH = "2"
-        private const val IR_MODE_GYRO = "3"
+        private const val IR_MODE_STICK = "0"
+        const val IR_MODE_GYRO = "3"
+        private const val SIDEWAYS_HOTKEY = "dolphin_hotkey_sideways_toggle"
         private val GALLERY_IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "bmp", "webp")
         /** Library path of a game that is really "just start this core" (see CoreInfo.supportsNoContent). */
         const val NO_CONTENT_PREFIX = "core:"

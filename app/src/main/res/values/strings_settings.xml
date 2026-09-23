@@ -2,13 +2,13 @@
 <resources>
     <!-- 설정 홈 -->
     <string name="settings_title">설정</string>
-    <string name="settings_video_desc">화면 필터, 화면비, FPS 표시</string>
+    <string name="settings_video_desc">화면 필터, 화면비, FPS 표시, 소리</string>
     <string name="settings_audio_desc">소리 켜기/끄기</string>
-    <string name="settings_input_desc">가상 패드, 게임패드, 연사</string>
-    <string name="settings_layouts_desc">기종별 버튼 위치 편집</string>
+    <string name="settings_input_desc">화면 패드 투명도·크기, 진동, 패드 연결 시 숨기기</string>
+    <string name="settings_layouts_desc">기종별 버튼 위치 편집, 스킨 고르기·받기</string>
     <string name="settings_cores_desc">기본 코어 선택, 코어 옵션, BIOS 상태</string>
-    <string name="settings_misc_desc">업데이트, 자동 저장, 빨리감기</string>
-    <string name="settings_about_desc">버전, 라이선스, 포함된 코어</string>
+    <string name="settings_misc_desc">연사 버튼과 속도, 빨리감기 배속</string>
+    <string name="settings_about_desc">버전, 업데이트, 로그 복사, 라이선스</string>
 
     <!-- 비디오 -->
     <string name="video_filter">화면 필터</string>
@@ -49,7 +49,7 @@
 
     <!-- 저장 데이터 -->
     <string name="settings_savedata">저장 데이터</string>
-    <string name="settings_savedata_desc">세이브 파일 위치, 백업과 복원</string>
+    <string name="settings_savedata_desc">자동 저장, 세이브 파일 위치, 백업과 복원</string>
     <string name="save_folder">저장 폴더 (세이브·BIOS·스크린샷)</string>
     <string name="save_copy_path">경로 복사</string>
     <string name="save_counting">세는 중…</string>
@@ -66,7 +66,7 @@
 
     <!-- 게임패드 -->
     <string name="settings_gamepad">게임패드</string>
-    <string name="settings_gamepad_desc">연결된 패드의 플레이어 번호와 버튼 배치</string>
+    <string name="settings_gamepad_desc">블루투스 패드의 플레이어 번호, 버튼 배치, 스틱을 방향키로</string>
     <string name="gamepad_title">게임패드</string>
     <string name="gamepad_none">연결된 게임패드가 없습니다. 블루투스로 패드를 연결하면 여기에 나타납니다.</string>
     <string name="gamepad_player">플레이어</string>
@@ -78,7 +78,7 @@
     <string name="gamepad_buttons_desc">A·B가 바뀐 패드도 여기서 맞출 수 있습니다</string>
     <string name="gamepad_note">패드마다 따로 저장되므로, 다시 연결해도 설정이 그대로 남습니다.</string>
     <string name="gamepad_disconnected">이 패드는 지금 연결되어 있지 않습니다. 연결한 뒤에 버튼을 바꿀 수 있습니다.</string>
-    <string name="gamepad_map_hint">바꿀 버튼을 누른 뒤, 패드에서 사용할 버튼을 누르세요.</string>
+    <string name="gamepad_map_hint">줄을 누르면 그 기능의 버튼을 바꾸고, +를 누르면 버튼을 하나 더 붙입니다. L4·R4 같은 뒷버튼이나 추가 버튼도 누르면 잡힙니다.</string>
     <string name="gamepad_unbound">지정 안 됨</string>
     <string name="gamepad_reset">기본값으로 되돌리기</string>
     <string name="gamepad_reset_desc">이 패드의 버튼 배치를 처음 상태로 돌립니다</string>
@@ -229,4 +229,18 @@
     <string name="core_dl_err_lib_missing">내려받은 파일에 코어 라이브러리(%1$s)가 없습니다.</string>
     <string name="core_dl_err_app_too_old">이 코어는 앱 버전 %1$s 이상이 필요합니다. 앱을 먼저 업데이트해 주세요.</string>
     <string name="core_dl_err_generic">내려받기 실패: %1$s</string>
+    <string name="gamepad_stick_dpad">모든 기종에서 스틱을 방향키로도</string>
+    <string name="gamepad_stick_dpad_desc">왼쪽 스틱을 기울이면 방향키도 눌립니다. 스틱을 안 읽는 게임(철권 등)에서 패드 스틱으로 움직일 수 있게 합니다. 기종별로는 레이아웃 편집 → 설정에서 켤 수 있습니다.</string>
+    <string name="settings_group_game">게임</string>
+    <string name="settings_group_controls">조작</string>
+    <string name="settings_group_app">앱</string>
+    <string name="settings_section_screen">화면</string>
+    <string name="settings_section_sound">소리</string>
+    <string name="settings_section_ff">빨리감기</string>
+    <string name="gamepad_actions">앱 기능</string>
+    <string name="gamepad_add_key">버튼 하나 더 붙이기</string>
+    <string name="gamepad_btn_ff">빨리감기 켜기/끄기</string>
+    <string name="gamepad_btn_speed">배속 바꾸기</string>
+    <string name="gamepad_btn_save">저장 목록 열기</string>
+    <string name="gamepad_btn_load">불러오기 목록 열기</string>
 </resources>
