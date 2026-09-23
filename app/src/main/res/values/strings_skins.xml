@@ -26,7 +26,6 @@
     <string name="skins_credits_footer">번들 스킨은 libretro/common-overlays 저장소에서 가져왔으며 CC BY 4.0 라이선스를 따릅니다. 각 스킨의 제작자는 카드에 표시됩니다.</string>
     <string name="skins_preview_portrait">세로</string>
     <string name="skins_preview_landscape">가로</string>
-    <string name="skins_loading">스킨 불러오는 중…</string>
     <string name="skins_load_failed">스킨을 불러올 수 없습니다</string>
 
     <!-- 패드 스킨: 온라인 카탈로그 -->
@@ -76,8 +75,6 @@
     <string name="se_reset">기본값으로</string>
     <string name="se_saved">스킨 배치를 저장했습니다</string>
     <string name="se_variant">변형: %1$s</string>
-    <string name="se_turbo_button">연사 버튼</string>
-    <string name="se_speed_button">배속 버튼</string>
     <string name="se_reset_desc">이 스킨의 원래 버튼 위치와 크기로 되돌립니다</string>
     <string name="se_arcade_desc">스킨 대신 기본 패드를 쓰고, 스틱 왼쪽 · 버튼 오른쪽 두 줄로 놓습니다</string>
     <string name="se_extras_title">버튼 추가</string>

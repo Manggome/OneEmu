@@ -84,7 +84,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
     val settings = remember { OneEmuApp.get().settings }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val clipboard = LocalClipboardManager.current
+    val clipboard = remember { context.getSystemService(android.content.ClipboardManager::class.java) }
     val config = rememberScreenConfig()
     val session = ui.session
 
@@ -233,7 +233,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                             }
                             MenuAction.COPY_LOG -> scope.launch {
                                 val text = CrashMarker.buildLogReport(context, session.game.title, session.game.path, session.core.id)
-                                clipboard.setText(AnnotatedString(text))
+                                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("OneEmu", text))
                                 android.util.Log.i("OneEmu", "log report copied to clipboard (${text.length} chars)")
                                 ui.toast = context.getString(R.string.log_copied)
                             }
@@ -371,7 +371,8 @@ private fun ErrorDialog(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf(false) }
-    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val clipboard = remember { context.getSystemService(android.content.ClipboardManager::class.java) }
     var copied by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onClose,
@@ -419,7 +420,7 @@ private fun ErrorDialog(
                         TextButton(onClick = { expanded = !expanded }) {
                             Text(stringResource(if (expanded) R.string.emu_error_details_hide else R.string.emu_error_details))
                         }
-                        TextButton(onClick = { clipboard.setText(AnnotatedString("$message\n\n$detail")); copied = true; expanded = true }) {
+                        TextButton(onClick = { clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("OneEmu", "$message\n\n$detail")); copied = true; expanded = true }) {
                             Text(stringResource(R.string.emu_error_copy))
                         }
                     }

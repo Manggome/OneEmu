@@ -118,17 +118,10 @@ class PadLayoutTest {
     }
 
     @Test
-    fun `a layout saved before sticks could press the d-pad still loads`() {
-        val old = """{"elements":[{"id":"LEFT_STICK","x":0.3,"y":0.8,"scale":1.0,"visible":true}]}"""
+    fun `a layout saved with the old per-stick d-pad flag still loads`() {
+        val old = """{"elements":[{"id":"LEFT_STICK","x":0.3,"y":0.8,"scale":1.0,"visible":true,"dpadToo":true}]}"""
         val parsed = PadLayout.fromJson(old)!!
         assertEquals(1, parsed.elements.size)
-        assertEquals(false, parsed[PadElementId.LEFT_STICK]!!.dpadToo)
-    }
-
-    @Test
-    fun `the flag survives a round trip through json`() {
-        val before = PadLayout(listOf(PadElement(PadElementId.LEFT_STICK, 0.3f, 0.8f, dpadToo = true)))
-        val after = PadLayout.fromJson(before.toJson())!!
-        assertTrue(after[PadElementId.LEFT_STICK]!!.dpadToo)
+        assertEquals(0.3f, parsed[PadElementId.LEFT_STICK]!!.x, 0.001f)
     }
 }

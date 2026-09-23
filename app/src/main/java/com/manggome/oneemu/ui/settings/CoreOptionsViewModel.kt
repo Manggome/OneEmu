@@ -92,7 +92,7 @@ class CoreOptionsViewModel(private val coreId: String, private val gameId: Long 
             if (!NativeBridge.loadCore(libPath.absolutePath, app.dirs.system.absolutePath, app.dirs.saves(systemId).absolutePath, blob)) {
                 return State.Error(NativeBridge.lastError())
             }
-            val options = parseOptions(NativeBridge.getOptions())
+            val options = parseOptions(NativeBridge.getOptions()).filter { it.key !in MANAGED_ELSEWHERE }
             return State.Ready(core, options, overrides, baseline, perGame, quirk?.note)
         } catch (t: Throwable) {
             Log.e(TAG, "option probe failed", t)
@@ -160,6 +160,13 @@ class CoreOptionsViewModel(private val coreId: String, private val gameId: Long 
         private val probeMutex = Mutex()
 
         /** Format: key\tdesc\tinfo\tcategory\tcurrent\tdefault\tvisible\tval=label|val=label */
+        /**
+         * Options the app sets from its own screens, so a second, English row for them here would only be a
+         * way to contradict the first: the gyro sensitivity lives on the Wii game card, and the sideways
+         * hotkey is kept off because its default (L3) is the 재조준 button.
+         */
+        private val MANAGED_ELSEWHERE = setOf("dolphin_ir_gyro_sensitivity", "dolphin_hotkey_sideways_toggle")
+
         fun parseOptions(raw: String): List<CoreOption> = raw.lineSequence().filter { it.isNotBlank() }.mapNotNull { line ->
             val p = line.split('\t')
             if (p.size < 8) return@mapNotNull null

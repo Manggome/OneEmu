@@ -118,7 +118,6 @@ fun VirtualPad(
                         is Tracker.Btn -> { mask = mask or t.mask; els += t.elements }
                         is Tracker.Stick -> {
                             els += t.id
-                            mask = mask or t.dpadMask
                             if (t.id == PadElementId.LEFT_STICK) l = t.value else r = t.value
                         }
                         is Tracker.Small -> els += t.id
@@ -153,7 +152,7 @@ fun VirtualPad(
                         }
                         PadElementId.Kind.DPAD -> Tracker.Dpad(hit.rect.center, hit.rect.width / 2f).also { it.mask = dpadMask(p, it.center, it.radius) }
                         PadElementId.Kind.STICK ->
-                            Tracker.Stick(hit.element.id, hit.rect.center, hit.rect.width / 2f, hit.element.dpadToo).also { it.update(p) }
+                            Tracker.Stick(hit.element.id, hit.rect.center, hit.rect.width / 2f).also { it.update(p) }
                         PadElementId.Kind.SMALL -> Tracker.Small(hit.element.id, hit.rect, System.currentTimeMillis(), ffState.value).also {
                             if (it.id == PadElementId.FAST_FORWARD) onFfState.value(true)
                         }
@@ -233,9 +232,6 @@ fun VirtualPad(
     }
 }
 
-/** How far a stick must be pushed before [PadElement.dpadToo] counts it as a d-pad press. */
-private const val DPAD_ON = 0.5f
-
 private const val LONG_PRESS_MS = 350L
 
 private class Placed(val element: PadElement, val rect: Rect)
@@ -245,7 +241,7 @@ private sealed class Tracker {
 
     class Dpad(val center: Offset, val radius: Float) : Tracker() { var mask = 0 }
 
-    class Stick(val id: PadElementId, val center: Offset, val radius: Float, val dpadToo: Boolean = false) : Tracker() {
+    class Stick(val id: PadElementId, val center: Offset, val radius: Float) : Tracker() {
         var value = Offset.Zero
         fun update(p: Offset) {
             val travel = radius * 0.55f
@@ -255,22 +251,6 @@ private sealed class Tracker {
             if (len > 1f) { dx /= len; dy /= len }
             value = Offset(dx, dy)
         }
-
-        /**
-         * The d-pad this stick is pushed towards, for [PadElement.dpadToo]. Past [DPAD_ON] on an axis
-         * counts as held, which is far enough out that resting a thumb on the stick presses nothing and
-         * a diagonal presses both.
-         */
-        val dpadMask: Int
-            get() {
-                if (!dpadToo) return 0
-                var m = 0
-                if (value.x <= -DPAD_ON) m = m or Buttons.LEFT
-                if (value.x >= DPAD_ON) m = m or Buttons.RIGHT
-                if (value.y <= -DPAD_ON) m = m or Buttons.UP
-                if (value.y >= DPAD_ON) m = m or Buttons.DOWN
-                return m
-            }
     }
 
     /** A finger on face buttons; may slide between them. */

@@ -8,7 +8,6 @@ object Routes {
     const val LIBRARY = "library"
     const val SETTINGS = "settings"
     const val SETTINGS_VIDEO = "settings/video"
-    const val SETTINGS_AUDIO = "settings/audio"
     const val SETTINGS_INPUT = "settings/input"
     const val SETTINGS_GAMEPAD = "settings/gamepad"
     const val SETTINGS_LAYOUTS = "settings/layouts"
