@@ -105,4 +105,12 @@ class GamepadMappingTest {
         assertEquals(other, GamepadMapping.toPositional(other))
         assertEquals(Buttons.A or Buttons.B or Buttons.L, GamepadMapping.toPositional(Buttons.A or Buttons.B or Buttons.L))
     }
+
+    @Test
+    fun layoutChoiceDecidesWhoGoesByPosition() {
+        assertEquals(true, GamepadMapping.positionalFor(GamepadMapping.LAYOUT_AUTO, playStation = true))
+        assertEquals(false, GamepadMapping.positionalFor(GamepadMapping.LAYOUT_AUTO, playStation = false))
+        assertEquals(true, GamepadMapping.positionalFor(GamepadMapping.LAYOUT_POSITION, playStation = false))
+        assertEquals(false, GamepadMapping.positionalFor(GamepadMapping.LAYOUT_LETTER, playStation = true))
+    }
 }

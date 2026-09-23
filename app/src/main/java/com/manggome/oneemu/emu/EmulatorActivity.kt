@@ -91,7 +91,7 @@ class EmulatorActivity : ComponentActivity() {
     private var padInput = PadInput()
     /** [StickDpad] for the pad being played; read on every input push. */
     @Volatile private var stickDpad = false
-    /** [GamepadMapping.PS_POSITIONAL] applies: a PlayStation game with the setting on. */
+    /** The face buttons go by position in this game ([GamepadMapping.FACE_LAYOUT]). */
     @Volatile private var psPositional = false
     private var psPositionalJob: kotlinx.coroutines.Job? = null
     private var stickDpadJob: kotlinx.coroutines.Job? = null
@@ -181,9 +181,9 @@ class EmulatorActivity : ComponentActivity() {
             }
         }
         psPositionalJob?.cancel()
-        psPositionalJob = if (!session.system.isPlayStation) null else lifecycleScope.launch {
-            settings.observe(GamepadMapping.PS_POSITIONAL, true).collect { on ->
-                psPositional = on
+        psPositionalJob = lifecycleScope.launch {
+            GamepadMapping.observeLayout(settings).collect { layout ->
+                psPositional = GamepadMapping.positionalFor(layout, session.system.isPlayStation)
                 for (port in gamepadInputs.indices) pushInput(port)
             }
         }
@@ -298,7 +298,7 @@ class EmulatorActivity : ComponentActivity() {
     private fun pushInput(port: Int) {
         val s = ui.session ?: return
         val raw = gamepadInputs[port]
-        // Only the physical pad: the on-screen PlayStation pad already draws ×○□△ where they belong.
+        // Only the physical pad: the on-screen pad already draws each system's buttons where they belong.
         val g = if (psPositional) raw.copy(mask = GamepadMapping.toPositional(raw.mask)) else raw
         if (port != 0) {
             s.setInput(g.mask or (if (stickDpad) StickDpad.mask(g.lx, g.ly) else 0), g.lx, g.ly, g.rx, g.ry, port)
