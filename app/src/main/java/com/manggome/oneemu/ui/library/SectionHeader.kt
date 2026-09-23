@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -51,12 +52,19 @@ fun SectionHeader(section: LibrarySection, onToggle: () -> Unit, modifier: Modif
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (section.favorites) {
+                Icon(Icons.Filled.Star, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFFFFD54F))
+                Spacer(Modifier.width(10.dp))
+            }
             section.system?.let {
                 SystemChip(it)
                 Spacer(Modifier.width(10.dp))
             }
             Text(
-                section.system?.displayName ?: stringResource(R.string.lib_section_unknown),
+                when {
+                    section.favorites -> stringResource(R.string.lib_favorites_title)
+                    else -> section.system?.displayName ?: stringResource(R.string.lib_section_unknown)
+                },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
