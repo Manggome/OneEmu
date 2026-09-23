@@ -109,6 +109,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
             }
         }
         resolveWiiController()
+        if (app.settings.get(perGameLayoutKey(game.id), false)) _padProfile.value = _padProfile.value.base.copy(gameId = game.id)
         NativeBridge.openSessionLog(CrashMarker.sessionLogFile(app).absolutePath)
         NativeBridge.sessionLogLine("session: game=\"${game.title}\" path=${game.path} system=${system.id} core=${core.id} app=${com.manggome.oneemu.BuildConfig.VERSION_NAME} device=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} android=${android.os.Build.VERSION.RELEASE}")
         val libPath = app.cores.libraryPath(core)
@@ -232,6 +233,16 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
 
     /** Whether this core reads the phone's motion sensors (only Dolphin does). */
     val wantsMotion: Boolean get() = core.id == "dolphin"
+
+    /**
+     * 이 게임만 따로 배치: switches this session's pad between the game's own layout/skin/screen position
+     * and the pad's shared ones, and remembers the choice for the game.
+     */
+    suspend fun setPerGameLayout(on: Boolean) {
+        app.settings.set(perGameLayoutKey(game.id), on)
+        val base = _padProfile.value.base
+        _padProfile.value = if (on) base.copy(gameId = game.id) else base
+    }
 
     /** Dolphin's effective dolphin_ir_mode for this session (null for other cores). */
     @Volatile var irMode: String? = null
@@ -479,6 +490,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     override fun onGeometryChanged(width: Int, height: Int, aspect: Float) { _geometry.value = Geometry(width, height, aspect) }
     companion object {
         private const val IR_MODE = "dolphin_ir_mode"
+        fun perGameLayoutKey(gameId: Long) = androidx.datastore.preferences.core.booleanPreferencesKey("pergame_layout.$gameId")
         private const val IR_MODE_STICK = "0"
         const val IR_MODE_GYRO = "3"
         private const val SIDEWAYS_HOTKEY = "dolphin_hotkey_sideways_toggle"

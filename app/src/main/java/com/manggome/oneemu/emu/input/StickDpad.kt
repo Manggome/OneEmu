@@ -23,7 +23,7 @@ object StickDpad {
     /** On for every system. */
     val everywhere: Preferences.Key<Boolean> = booleanPreferencesKey("stick_dpad_all")
 
-    fun key(profile: PadProfile): Preferences.Key<Boolean> = booleanPreferencesKey("stick_dpad.${profile.key}")
+    fun key(profile: PadProfile): Preferences.Key<Boolean> = booleanPreferencesKey("stick_dpad.${profile.base.key}")
 
     fun observe(settings: Settings, profile: PadProfile): Flow<Boolean> =
         combine(settings.observe(everywhere, false), settings.observe(key(profile), false)) { all, mine -> all || mine }

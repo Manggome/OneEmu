@@ -174,6 +174,14 @@ fun EditorSettingsDialog(
                     stringResource(R.string.le_axis_lock_desc),
                 )
                 if (profile != null) StickDpadLine(profile)
+                LocalPerGameLayout.current?.let { toggle ->
+                    SwitchLine(
+                        stringResource(R.string.le_per_game),
+                        toggle.on,
+                        toggle.set,
+                        stringResource(R.string.le_per_game_desc),
+                    )
+                }
                 extra()
             }
         },
@@ -213,3 +221,8 @@ fun StickDpadLine(profile: PadProfile) {
         stringResource(if (everywhere) R.string.le_stick_dpad_everywhere else R.string.le_stick_dpad_desc),
     )
 }
+
+/** 이 게임만 따로 배치, offered by the editor only when it is opened from a running game. */
+data class PerGameLayoutToggle(val on: Boolean, val set: (Boolean) -> Unit)
+
+val LocalPerGameLayout = androidx.compose.runtime.compositionLocalOf<PerGameLayoutToggle?> { null }

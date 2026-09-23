@@ -155,7 +155,7 @@ fun SkinEditor(
 
     val loaded by produceState<Result<LoadedSkin>?>(null, skinInfo.id) { value = runCatching { SkinLoader.load(context, skinInfo) } }
     // The 배속 button lives in the vector layout even while a skin is active (PadHost draws it on top).
-    val padLayout by remember(system, config) { PadLayoutStore.observe(profile, config) }.collectAsState(initial = null)
+    val padLayout by remember(profile, config) { PadLayoutStore.observe(profile, config) }.collectAsState(initial = null)
     // Controls a RetroArch overlay has no concept of; PadHost draws them over the skin.
     val overlayExtras = com.manggome.oneemu.emu.skin.OVERLAY_EXTRAS
     var layout by remember { mutableStateOf<SkinLayout?>(null) }
@@ -182,7 +182,7 @@ fun SkinEditor(
     val chrome = rememberEditorChromeState()
     val drag = remember { EditorDragState() }
 
-    LaunchedEffect(skinInfo.id, system, config) {
+    LaunchedEffect(skinInfo.id, profile, config) {
         layout = SkinStore.loadLayout(skinInfo.id, profile.key, config)
         viewport = ViewportStore.loadSaved(profile, config)
         opacity = settings.get(Settings.Keys.padOpacity, Settings.DEFAULT_PAD_OPACITY)
@@ -502,7 +502,8 @@ fun SkinEditor(
         EditorChrome(
             state = chrome,
             title = stringResource(R.string.se_title),
-            subtitle = skinInfo.name + (overlay?.let { " · " + stringResource(R.string.se_variant, it.name) } ?: ""),
+            subtitle = (if (profile.gameId != null) stringResource(R.string.le_per_game_badge) + " · " else "") +
+                skinInfo.name + (overlay?.let { " · " + stringResource(R.string.se_variant, it.name) } ?: ""),
             orientationToggle = configSelector ?: { ScreenConfigSelector(config, onSelect = null) },
             onCancel = { requestClose() },
             onSave = { save() },

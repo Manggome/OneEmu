@@ -35,3 +35,16 @@ class FreeSpotTest {
         assertEquals(hidden, FreeSpot.place(hidden, listOf(PadElement(PadElementId.BUTTON_B, 0.78f, 0.84f)), ScreenConfig.PORTRAIT))
     }
 }
+
+class PadProfileKeyTest {
+    @Test
+    fun aGameProfileRoundTripsThroughItsKey() {
+        val wii = PadProfile.WIIMOTE.copy(gameId = 42)
+        assertEquals("gc-wii@g42", wii.key)
+        assertEquals(wii, PadProfile.fromKey(wii.key))
+        assertEquals(PadProfile.WIIMOTE, wii.base)
+        val gba = PadProfile(com.manggome.oneemu.model.SystemId.GBA, gameId = 7)
+        assertEquals(gba, PadProfile.fromKey("gba@g7"))
+        assertEquals(PadProfile(com.manggome.oneemu.model.SystemId.GBA), PadProfile.fromKey("gba"))
+    }
+}
