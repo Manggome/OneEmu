@@ -92,7 +92,13 @@ object ViewportStore {
      * with the top edge, full width, as tall as the image needs (clamped to the screen). Landscape: full.
      */
     fun default(system: SystemId, config: ScreenConfig, screen: Size): ViewportRect {
-        if (config.landscape || screen.width <= 0f || screen.height <= 0f) return ViewportRect.FULL
+        if (screen.width <= 0f || screen.height <= 0f) return ViewportRect.FULL
+        if (FoldLayout.applies(system, config)) {
+            // Unfolded and sideways: the two screens side by side across the top, the pad below them.
+            val h = (screen.width / FoldLayout.sideBySideAspect(system)) / screen.height
+            return ViewportRect(0f, 0f, 1f, h.coerceIn(ViewportRect.MIN_SIZE, 1f))
+        }
+        if (config.landscape) return ViewportRect.FULL
         val h = (screen.width / nominalAspect(system)) / screen.height
         return ViewportRect(0f, 0f, 1f, h.coerceIn(ViewportRect.MIN_SIZE, 1f))
     }

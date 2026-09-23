@@ -138,6 +138,8 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
             val geometry by session.geometry.collectAsState()
             // A Dolphin disc settles on the GameCube pad or the Wii Remote once its header has been read.
             val padProfile by session.padProfile.collectAsState()
+            val foldSideBySide by remember { OneEmuApp.get().settings.observe(FoldLayout.SIDE_BY_SIDE, true) }.collectAsState(true)
+            LaunchedEffect(config, foldSideBySide) { session.applyFoldLayout(config, foldSideBySide) }
             val layout by remember(padProfile, config) { PadLayoutStore.observe(padProfile, config) }
                 .collectAsState(initial = DefaultLayouts.forProfile(padProfile, config))
             // Game viewport for this (system, screen configuration): saved value or the top-anchored default.

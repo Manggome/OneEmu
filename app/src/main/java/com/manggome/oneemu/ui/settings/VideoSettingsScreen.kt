@@ -75,6 +75,14 @@ internal fun VideoSettingsScreen(onBack: () -> Unit) {
             onCheckedChange = { fps.set(it) },
             icon = Icons.Outlined.Speed,
         )
+        val fold = rememberPref(com.manggome.oneemu.emu.FoldLayout.SIDE_BY_SIDE, true)
+        SwitchRow(
+            title = stringResource(R.string.video_fold_side_by_side),
+            subtitle = stringResource(R.string.video_fold_side_by_side_desc),
+            checked = fold.value,
+            onCheckedChange = { fold.set(it) },
+            icon = Icons.Outlined.AspectRatio,
+        )
         SettingsDivider()
 
         SectionHeader(stringResource(R.string.settings_section_sound))
