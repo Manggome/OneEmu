@@ -305,4 +305,7 @@
     <string name="lib_view_pack">게임팩</string>
     <string name="lib_view_mode">보기 방식</string>
     <string name="lib_favorites_title">즐겨찾기</string>
+    <string name="lib_action_shortcut">홈 화면에 바로가기 추가</string>
+    <string name="lib_shortcut_unsupported">이 런처는 바로가기 추가를 지원하지 않습니다</string>
+    <string name="lib_shortcut_missing">바로가기의 게임을 찾을 수 없습니다. 라이브러리에서 지워졌거나 파일이 옮겨졌습니다.</string>
 </resources>

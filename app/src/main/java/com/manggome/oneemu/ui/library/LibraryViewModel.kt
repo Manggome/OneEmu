@@ -37,6 +37,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -150,6 +152,15 @@ class LibraryViewModel : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
 
     private val collator: Collator = Collator.getInstance(Locale.KOREAN)
+
+    init {
+        // The app icon's long-press menu follows the recently played list.
+        viewModelScope.launch(Dispatchers.IO) {
+            uiState.map { s -> s.recent.map { it.id to (it.thumbnail ?: it.autoIcon) } to s.recent }
+                .distinctUntilChangedBy { it.first }
+                .collect { (_, recent) -> if (!uiState.value.loading) GameShortcuts.updateRecent(app, recent) }
+        }
+    }
 
     private fun buildState(all: List<GameEntity>, p: Prefs, q: String, s: Boolean): LibraryUiState {
         val needle = q.trim()

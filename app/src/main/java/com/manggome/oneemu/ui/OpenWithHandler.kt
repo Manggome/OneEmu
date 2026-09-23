@@ -1,5 +1,7 @@
 package com.manggome.oneemu.ui
 
+import com.manggome.oneemu.ui.library.GameShortcuts
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -16,10 +18,24 @@ import java.io.File
  * library and launched straight away.
  */
 object OpenWithHandler {
-    fun isOpenIntent(intent: Intent?): Boolean = intent?.action == Intent.ACTION_VIEW && intent.data != null
+    fun isOpenIntent(intent: Intent?): Boolean =
+        (intent?.action == Intent.ACTION_VIEW && intent.data != null) || intent?.action == GameShortcuts.ACTION_PLAY
+
+    /** A home-screen shortcut ([GameShortcuts]): the game is already in the library. */
+    private suspend fun playFromShortcut(context: Context, intent: Intent): Boolean {
+        val id = intent.getLongExtra(GameShortcuts.EXTRA_GAME_ID, -1L)
+        val game = withContext(Dispatchers.IO) { OneEmuApp.get().db.games().get(id) }
+        if (game == null || !File(game.path).exists() && !game.path.startsWith("core:")) {
+            Toast.makeText(context, com.manggome.oneemu.R.string.lib_shortcut_missing, Toast.LENGTH_LONG).show()
+            return true
+        }
+        context.startActivity(EmulatorActivity.intent(context, game.id))
+        return true
+    }
 
     /** Returns true when the intent was handled (a game was launched or an error toast shown). */
     suspend fun handle(context: Context, intent: Intent): Boolean {
+        if (intent.action == GameShortcuts.ACTION_PLAY) return playFromShortcut(context, intent)
         val uri: Uri = intent.data ?: return false
         val app = OneEmuApp.get()
         val file: File? = when (uri.scheme) {
