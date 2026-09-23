@@ -1,0 +1,87 @@
+diff --git a/Sources/Jazz2/UI/Menu/CreateLocalGameOptionsSection.cpp b/Sources/Jazz2/UI/Menu/CreateLocalGameOptionsSection.cpp
+index 5805d92..01dc248 100644
+--- a/Sources/Jazz2/UI/Menu/CreateLocalGameOptionsSection.cpp
++++ b/Sources/Jazz2/UI/Menu/CreateLocalGameOptionsSection.cpp
+@@ -194,7 +194,7 @@ namespace Jazz2::UI::Menu
+ 		}
+ 
+ 		if (auto* mainMenu = runtime_cast<MainMenu>(_root)) {
+-			auto* res = mainMenu->_metadata->FindAnimation(LoriExistsCheck);
++			auto* res = mainMenu->FindElement(LoriExistsCheck);
+ 			_availableCharacters = (res != nullptr ? 3 : 2);
+ 		}
+ 
+diff --git a/Sources/Jazz2/UI/Menu/CreateServerOptionsSection.cpp b/Sources/Jazz2/UI/Menu/CreateServerOptionsSection.cpp
+index bb7fe48..74d53b3 100644
+--- a/Sources/Jazz2/UI/Menu/CreateServerOptionsSection.cpp
++++ b/Sources/Jazz2/UI/Menu/CreateServerOptionsSection.cpp
+@@ -54,7 +54,7 @@ namespace Jazz2::UI::Menu
+ 		_animation = 0.0f;
+ 
+ 		if (auto* mainMenu = runtime_cast<MainMenu>(_root)) {
+-			auto* res = mainMenu->_metadata->FindAnimation(LoriExistsCheck);
++			auto* res = mainMenu->FindElement(LoriExistsCheck);
+ 			_availableCharacters = (res != nullptr ? 3 : 2);
+ 		}
+ 	}
+diff --git a/Sources/Jazz2/UI/Menu/MainMenu.cpp b/Sources/Jazz2/UI/Menu/MainMenu.cpp
+index 028b7cf..95f442f 100644
+--- a/Sources/Jazz2/UI/Menu/MainMenu.cpp
++++ b/Sources/Jazz2/UI/Menu/MainMenu.cpp
+@@ -524,7 +524,7 @@ namespace Jazz2::UI::Menu
+ 				Vector2f debrisPos = Vector2f(Random().FastFloat(viewSize.X * -0.3f, viewSize.X * 1.3f),
+ 					Random().NextFloat(viewSize.Y * -0.5f, viewSize.Y * 0.5f));
+ 
+-				auto* res = _metadata->FindAnimation((AnimState)1); // Snow
++				auto* res = FindElement((AnimState)1); // Snow
+ 				if (res != nullptr) {
+ 					auto& resBase = res->Base;
+ 					Vector2i texSize = resBase->TextureDiffuse->GetSize();
+@@ -831,6 +831,9 @@ namespace Jazz2::UI::Menu
+ 
+ 	bool MainMenu::RenderLegacyBackground(RenderQueue& renderQueue)
+ 	{
++		if (_metadata == nullptr) {
++			return false;
++		}
+ 		auto* res16 = _metadata->FindAnimation(Menu16);
+ 		auto* res32 = _metadata->FindAnimation(Menu32);
+ 		auto* res128 = _metadata->FindAnimation(Menu128);
+diff --git a/Sources/Jazz2/UI/Menu/MenuContainerBase.cpp b/Sources/Jazz2/UI/Menu/MenuContainerBase.cpp
+index 1a26b89..c68d757 100644
+--- a/Sources/Jazz2/UI/Menu/MenuContainerBase.cpp
++++ b/Sources/Jazz2/UI/Menu/MenuContainerBase.cpp
+@@ -213,7 +213,9 @@ namespace Jazz2::UI::Menu
+ 		// that are big (the difficulty portraits are true-colour art of a few hundred kilobytes each) or that
+ 		// come in mutually exclusive sets (only one gamepad's button labels are ever drawn), and for the in-game
+ 		// menu, which reloads this metadata inside a level and draws only a fraction of it.
+-		return _metadata->FindAnimation(state);
++		// Null when the menu's metadata could not be loaded - the original game's files are missing, which
++		// the first section then says. Drawing nothing beats a null dereference on the very first frame.
++		return (_metadata != nullptr ? _metadata->FindAnimation(state) : nullptr);
+ 	}
+ 
+ 	void MenuContainerBase::DrawElement(AnimState state, std::int32_t frame, float x, float y, std::uint16_t z, Alignment align, const Colorf& color, float scaleX, float scaleY, bool additiveBlending, bool unaligned)
+@@ -323,6 +325,9 @@ namespace Jazz2::UI::Menu
+ 	void MenuContainerBase::PlaySfx(StringView identifier, float gain)
+ 	{
+ #if defined(WITH_AUDIO)
++		if (_metadata == nullptr) {
++			return;
++		}
+ 		auto it = _metadata->Sounds.find(String::nullTerminatedView(identifier));
+ 		if (it != _metadata->Sounds.end() && ContentResolver::Get().ResolveSound(it->second)) {
+ 			std::int32_t idx = (it->second.Buffers.size() > 1 ? Random().Next(0, (std::int32_t)it->second.Buffers.size()) : 0);
+diff --git a/Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp b/Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp
+index da84262..6d1d8a8 100644
+--- a/Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp
++++ b/Sources/Jazz2/UI/Menu/StartGameOptionsSection.cpp
+@@ -33,7 +33,7 @@ namespace Jazz2::UI::Menu
+ 		_animation = 0.0f;
+ 
+ 		if (auto* mainMenu = runtime_cast<MainMenu>(_root)) {
+-			auto* res = mainMenu->_metadata->FindAnimation(LoriExistsCheck);
++			auto* res = mainMenu->FindElement(LoriExistsCheck);
+ 			_availableCharacters = (res != nullptr ? 3 : 2);
+ 		}
+ 	}
