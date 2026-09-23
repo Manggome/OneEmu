@@ -308,4 +308,32 @@
     <string name="lib_action_shortcut">홈 화면에 바로가기 추가</string>
     <string name="lib_shortcut_unsupported">이 런처는 바로가기 추가를 지원하지 않습니다</string>
     <string name="lib_shortcut_missing">바로가기의 게임을 찾을 수 없습니다. 라이브러리에서 지워졌거나 파일이 옮겨졌습니다.</string>
+    <string name="save_import_action">세이브 가져오기</string>
+    <string name="save_import_title">세이브 가져오기</string>
+    <string name="save_import_apply">넣기</string>
+    <string name="save_import_relabel">지역 맞춰서 넣기</string>
+    <string name="save_import_as_is">그대로 넣기</string>
+    <string name="save_import_close_game">기존 세이브는 지우지 않고 OneEmu/saves/import-backup 에 옮겨 둡니다. 넣은 뒤 게임을 켜서 불러오세요.</string>
+    <string name="save_import_ok">넣었습니다. 게임을 켜서 불러오세요.
+%1$s</string>
+    <string name="save_import_backup">원래 있던 세이브는 여기로 옮겼습니다: %1$s</string>
+    <string name="save_import_io_failed">파일을 읽거나 쓰지 못했습니다.</string>
+    <string name="save_import_plan_battery">%1$s 의 세이브(%2$s)로 넣습니다.</string>
+    <string name="save_import_plan_ps1">%1$s 의 메모리카드 1로 넣습니다.</string>
+    <string name="save_import_plan_gc">게임큐브 세이브 "%1$s"(%2$s)를 %3$s 메모리카드 A에 넣습니다.</string>
+    <string name="save_import_plan_ps2">PS2 세이브 "%1$s"(파일 %2$d개)를 메모리카드 1에 넣습니다.</string>
+    <string name="save_import_plan_psp">PSP 세이브 "%1$s"(파일 %2$d개)를 넣습니다.</string>
+    <string name="save_import_region">이 세이브는 %1$s 판이고 게임은 %2$s 판입니다. 지역이 다르면 게임이 세이브를 못 찾습니다. "지역 맞춰서 넣기"를 권합니다.</string>
+    <string name="save_import_region_usa">북미판</string>
+    <string name="save_import_region_jap">일본판</string>
+    <string name="save_import_region_eur">유럽판</string>
+    <string name="save_import_err_format">이 기종에서 쓸 수 있는 세이브 형식이 아닙니다.
+게임큐브: .gci .gcs .sav · PS2: .psu .max .xps · PSP: 세이브 폴더 .zip · PS1: 메모리카드(.mcr .mcd .srm .gme) · 그 밖: .sav .srm .dsv</string>
+    <string name="save_import_err_system">이 기종은 아직 세이브 가져오기를 지원하지 않습니다.</string>
+    <string name="save_import_err_cbs">코드브레이커(.cbs) 형식은 아직 지원하지 않습니다. 같은 세이브의 .psu 나 .max 파일을 찾아 보세요.</string>
+    <string name="save_import_err_ps2_core">이 게임은 %1$s 코어로 실행됩니다. 세이브 가져오기는 기본 PS2 코어(Play!)에서만 됩니다.</string>
+    <string name="save_import_err_ps1_single">세이브 하나만 든 파일(.mcs .psv 등)은 아직 넣을 수 없습니다. 메모리카드 통째 파일(.mcr .mcd)을 찾아 보세요.</string>
+    <string name="save_import_err_other_game">다른 게임의 세이브입니다 (%1$s).</string>
+    <string name="save_import_err_zip">압축 파일 안에 PSP 세이브 폴더(PARAM.SFO 가 든 폴더)가 없습니다.</string>
+    <string name="save_import_err_large">파일이 너무 큽니다 (64MB 이하만).</string>
 </resources>
