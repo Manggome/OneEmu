@@ -619,6 +619,7 @@ void Frontend::runFrame() {
     if (hwRender_ && !vulkan) video_.waitPresentFence();
     frames_++;
     advanceTurbo();
+    advanceMacro();
     const bool runCore = rewindBeforeRun();
     if (runCore) core_.retro_run();
     rewindAfterRun();
@@ -714,6 +715,27 @@ size_t Frontend::audioSampleBatch(const int16_t* data, size_t frames) {
 // one every 2 frames; a GBA state is ~400 KB and gets fewer, further apart.
 static constexpr size_t kRewindBudgetBytes = 96u * 1024u * 1024u;
 
+// ---------------------------------------------------------------- macros
+// Counted in emulated frames, not wall time, so a fighting-game motion comes out the same at any speed.
+void Frontend::queueMacro(const std::vector<uint32_t>& masks, const std::vector<int>& frames) {
+    std::lock_guard<std::mutex> lock(macroMutex_);
+    for (size_t i = 0; i < masks.size() && i < frames.size(); i++) macroSteps_.emplace_back(masks[i], std::max(1, frames[i]));
+}
+
+void Frontend::clearMacro() {
+    std::lock_guard<std::mutex> lock(macroMutex_);
+    macroSteps_.clear();
+    macroMask_ = 0;
+}
+
+void Frontend::advanceMacro() {
+    std::lock_guard<std::mutex> lock(macroMutex_);
+    if (macroSteps_.empty()) { macroMask_ = 0; return; }
+    auto& step = macroSteps_.front();
+    macroMask_ = step.first;
+    if (--step.second <= 0) macroSteps_.pop_front();
+}
+
 void Frontend::setRewind(int seconds) { rewindSeconds_ = std::max(0, seconds); rewindClear_ = true; }
 void Frontend::setRewinding(bool on) { rewinding_ = on; }
 
@@ -802,12 +824,14 @@ int16_t Frontend::inputState(unsigned port, unsigned device, unsigned index, uns
     switch (device & RETRO_DEVICE_MASK) {
         case RETRO_DEVICE_JOYPAD: {
             uint32_t b = turbo(port, in.buttons.load(std::memory_order_relaxed));
+            if (port == 0) b |= macroMask_.load(std::memory_order_relaxed);
             if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return (int16_t)(b & 0xffff);
             return (b >> id) & 1 ? 1 : 0;
         }
         case RETRO_DEVICE_ANALOG:
             if (index == RETRO_DEVICE_INDEX_ANALOG_BUTTON) {
                 uint32_t b = turbo(port, in.buttons.load(std::memory_order_relaxed));
+                if (port == 0) b |= macroMask_.load(std::memory_order_relaxed);
                 return (b >> id) & 1 ? 0x7fff : 0;
             }
             if (index < 2 && id < 2) return in.analog[index][id].load(std::memory_order_relaxed);

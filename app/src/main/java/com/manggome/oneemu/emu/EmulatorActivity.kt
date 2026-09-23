@@ -8,6 +8,9 @@ import android.view.MotionEvent
 import android.view.Surface
 import com.manggome.oneemu.emu.input.MotionSensors
 import com.manggome.oneemu.emu.input.StickDpad
+import com.manggome.oneemu.emu.input.Macro
+import com.manggome.oneemu.emu.input.MacroStep
+import com.manggome.oneemu.emu.input.Macros
 import com.manggome.oneemu.emu.pad.isPlayStation
 import kotlinx.coroutines.flow.flatMapLatest
 import android.view.WindowManager
@@ -125,6 +128,7 @@ class EmulatorActivity : ComponentActivity() {
                 }
             },
             onHold = { action, down -> if (action == GamepadMapping.REWIND) setRewinding(down) },
+            onMacro = { id -> runMacro(id) },
         )
         gamepad.startWatching { ui.gamepadConnected = gamepad.isGamepadConnected() }
         ui.gamepadConnected = gamepad.isGamepadConnected()
@@ -176,6 +180,7 @@ class EmulatorActivity : ComponentActivity() {
         session.gyroAvailable = motion?.hasGyroscope == true
         NativeBridge.setSensorsAvailable(motion?.hasAccelerometer == true, motion?.hasGyroscope == true)
         ui.session = session
+        lifecycleScope.launch { Macros.observe(settings).collect { macros = it } }
         stickDpadJob?.cancel()
         stickDpadJob = lifecycleScope.launch {
             // The pad can change after load (Dolphin decides Wii Remote or GameCube pad from the disc).
@@ -342,6 +347,40 @@ class EmulatorActivity : ComponentActivity() {
                     else -> R.string.slot_load_failed
                 },
             )
+        }
+    }
+
+    private var macros: List<Macro> = emptyList()
+    private var macroJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Plays a macro on player 1. Button steps go to the frontend in runs and are timed there in emulated
+     * frames; 빠른 저장/불러오기 steps wait for the runs before them and happen here. Pressing the key
+     * again while one plays starts it over.
+     */
+    fun runMacro(id: Int) {
+        val s = ui.session ?: return
+        val macro = macros.firstOrNull { it.id == id } ?: return
+        macroJob?.cancel()
+        NativeBridge.clearMacro()
+        macroJob = lifecycleScope.launch {
+            val masks = ArrayList<Int>()
+            val frames = ArrayList<Int>()
+            suspend fun flush() {
+                if (masks.isEmpty()) return
+                NativeBridge.queueMacro(masks.toIntArray(), frames.toIntArray())
+                val total = frames.sum()
+                masks.clear(); frames.clear()
+                kotlinx.coroutines.delay(total * 1000L / 60 + 20)
+            }
+            for (step in macro.steps) {
+                when (step.action) {
+                    MacroStep.ACTION_QUICK_SAVE -> { flush(); s.saveState(AppDirs.QUICK_SLOT) }
+                    MacroStep.ACTION_QUICK_LOAD -> { flush(); if (s.hasState(AppDirs.QUICK_SLOT)) s.loadState(AppDirs.QUICK_SLOT) }
+                    else -> { masks += step.buttons; frames += step.frames.coerceIn(1, 600) }
+                }
+            }
+            flush()
         }
     }
 

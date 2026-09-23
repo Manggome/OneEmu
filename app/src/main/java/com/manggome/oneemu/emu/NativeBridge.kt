@@ -78,6 +78,9 @@ object NativeBridge {
     external fun setRewind(seconds: Int)
     /** While true the game plays backwards through that history. */
     external fun setRewinding(on: Boolean)
+    /** Plays a button sequence on player 1: masks[i] held for frames[i] emulated frames, in order. */
+    external fun queueMacro(masks: IntArray, frames: IntArray)
+    external fun clearMacro()
     external fun setTurbo(mask: Int, framesPerCycle: Int)
     /** aspect: 0 core, 1 stretch, 2 integer, 3 square pixels. rotation: extra quarter turns (0..3) on top
      *  of what the core asked for, counter-clockwise. */

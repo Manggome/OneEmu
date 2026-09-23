@@ -52,6 +52,10 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
 
     fun withoutKey(keyCode: Int): GamepadMapping = GamepadMapping(keys - keyCode)
 
+    /** Keys that play a macro, with the macro's id. */
+    val macroKeys: List<Pair<Int, Int>>
+        get() = keys.entries.filter { isMacro(it.value) }.map { it.key to macroId(it.value) }.sortedBy { it.first }
+
     /** Only the differences from [base], in the format [parse] reads back. */
     fun overridesOf(base: GamepadMapping = DEFAULT): String = buildList {
         for (k in base.keys.keys) if (k !in keys) add("$k=")
@@ -73,6 +77,12 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
         const val QUICK_LOAD = 1 shl 23
         /** 되감기: held, not tapped. */
         const val REWIND = 1 shl 22
+        /** A key that plays a [Macro]: this flag plus the macro's id in the low 16 bits. */
+        const val MACRO_FLAG = 1 shl 21
+
+        fun macroValue(id: Int): Int = MACRO_FLAG or (id and PAD_BITS)
+        fun isMacro(value: Int): Boolean = value and MACRO_FLAG != 0 && value and (PAD_BITS or MACRO_FLAG).inv() == 0
+        fun macroId(value: Int): Int = value and PAD_BITS
 
         /**
          * PlayStation games take the face buttons by position: a pad's bottom button is ×, right ○, left □,
@@ -153,6 +163,7 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
         /** "A", "MENU", or "A+B" for a combination. */
         fun nameOf(button: Int): String {
             buttonNames.entries.firstOrNull { it.value == button }?.let { return it.key }
+            if (isMacro(button)) return "MACRO:${macroId(button)}"
             if (button and PAD_BITS.inv() == 0 && Integer.bitCount(button) > 1) {
                 val parts = COMBO_BUTTONS.filter { (_, bit) -> button and bit != 0 }
                 if (parts.fold(0) { acc, (_, bit) -> acc or bit } == button) return parts.joinToString("+") { it.first }
@@ -220,6 +231,7 @@ data class GamepadMapping(val keys: Map<Int, Int>) {
                 val value = line.substringAfter('=', "").trim()
                 if (value.isEmpty()) { map.remove(key); continue }
                 val button = buttonNames[value.uppercase()] ?: parseCombo(value)
+                    ?: value.takeIf { it.uppercase().startsWith("MACRO:") }?.substringAfter(':')?.toIntOrNull()?.let { macroValue(it) }
                     ?: value.toIntOrNull()?.let { if (it < 16) 1 shl it else it } ?: continue
                 map[key] = button
             }
@@ -250,6 +262,8 @@ class GamepadInput(
     private val onAction: (Int) -> Unit = {},
     /** [GamepadMapping.HOLD_ACTIONS]: true on press, false on release. */
     private val onHold: (Int, Boolean) -> Unit = { _, _ -> },
+    /** A key bound to a [Macro] went down: its id. */
+    private val onMacro: (Int) -> Unit = {},
 ) {
     private class DeviceState {
         var keyMask = 0
@@ -341,6 +355,11 @@ class GamepadInput(
     fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.repeatCount > 0 && event.action == KeyEvent.ACTION_DOWN) return isMapped(event)
         val button = mappingFor(event.deviceId).buttonFor(event.keyCode) ?: return false
+        if (GamepadMapping.isMacro(button)) {
+            // On press, not release: a motion has to start when the thumb says so.
+            if (event.action == KeyEvent.ACTION_DOWN) onMacro(GamepadMapping.macroId(button))
+            return true
+        }
         if (button in GamepadMapping.HOLD_ACTIONS) {
             onHold(button, event.action == KeyEvent.ACTION_DOWN)
             return true

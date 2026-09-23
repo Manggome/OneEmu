@@ -1,5 +1,9 @@
 package com.manggome.oneemu.ui.settings
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
@@ -35,7 +39,7 @@ import kotlinx.coroutines.launch
  * knowing any key codes.
  */
 @Composable
-internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
+internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit, onMacros: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val settings = OneEmuApp.get().settings
     var mapping by remember { mutableStateOf(GamepadMapping.DEFAULT) }
@@ -45,6 +49,10 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
     // 조합 버튼: first the key is captured, then the buttons it presses are picked.
     var comboCapture by remember { mutableStateOf(false) }
     var comboKey by remember { mutableStateOf<Int?>(null) }
+    // 매크로 버튼: capture the key, then pick which macro it plays.
+    var macroCapture by remember { mutableStateOf(false) }
+    var macroKey by remember { mutableStateOf<Int?>(null) }
+    val macros by remember { com.manggome.oneemu.emu.input.Macros.observe(settings) }.collectAsState(emptyList())
     var resetting by remember { mutableStateOf(false) }
 
     val devices = rememberPadDevices()
@@ -115,6 +123,28 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
             onClick = { comboCapture = true },
         )
         SettingsDivider()
+        SectionHeader(stringResource(R.string.gamepad_macro_keys))
+        NoteText(stringResource(R.string.gamepad_macro_keys_desc))
+        for ((key, id) in mapping.macroKeys) {
+            SettingsRow(
+                title = GamepadCapture.keyName(key),
+                subtitle = macros.firstOrNull { it.id == id }?.name ?: stringResource(R.string.gamepad_macro_missing),
+                trailing = {
+                    IconButton(onClick = { save(mapping.withoutKey(key)) }) {
+                        Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.gamepad_combo_delete))
+                    }
+                },
+                onClick = { macroKey = key },
+            )
+        }
+        SettingsRow(
+            title = stringResource(R.string.gamepad_macro_add),
+            icon = Icons.Outlined.Add,
+            enabled = device != null,
+            onClick = { if (macros.isEmpty()) onMacros() else macroCapture = true },
+        )
+        SettingsRow(title = stringResource(R.string.macros_title), subtitle = stringResource(R.string.macros_row_desc), onClick = onMacros)
+        SettingsDivider()
         SettingsRow(
             title = stringResource(R.string.gamepad_reset),
             subtitle = stringResource(R.string.gamepad_reset_desc),
@@ -152,6 +182,37 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
                 save(if (mask == 0) mapping.withoutKey(key) else mapping.addKey(mask, key))
             },
             onDismiss = { comboKey = null },
+        )
+    }
+
+    if (macroCapture) {
+        CaptureDialog(
+            label = stringResource(R.string.gamepad_macro_key),
+            onCaptured = { keyCode -> macroCapture = false; macroKey = keyCode },
+            onClear = { macroCapture = false },
+            onDismiss = { macroCapture = false },
+        )
+    }
+    macroKey?.let { key ->
+        AlertDialog(
+            onDismissRequest = { macroKey = null },
+            title = { Text(stringResource(R.string.gamepad_macro_pick, GamepadCapture.keyName(key))) },
+            text = {
+                androidx.compose.foundation.lazy.LazyColumn {
+                    items(macros.size) { i ->
+                        val m = macros[i]
+                        Column(
+                            androidx.compose.ui.Modifier.fillMaxWidth()
+                                .clickable { macroKey = null; save(mapping.addKey(GamepadMapping.macroValue(m.id), key)) }
+                                .padding(vertical = 8.dp),
+                        ) {
+                            Text(m.name, style = MaterialTheme.typography.bodyLarge)
+                            Text(m.summary(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { macroKey = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 

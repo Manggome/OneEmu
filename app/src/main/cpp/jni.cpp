@@ -4,7 +4,9 @@
 #include "logsink.h"
 #include <android/native_window_jni.h>
 #include <jni.h>
+#include <algorithm>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -154,6 +156,14 @@ BRIDGE(void, setControllerPortDevice)(JNIEnv*, jobject, jint port, jint device) 
     Frontend::get().setControllerPortDevice((unsigned)port, (unsigned)device);
 }
 BRIDGE(void, setRewind)(JNIEnv*, jobject, jint seconds) { Frontend::get().setRewind((int)seconds); }
+BRIDGE(void, queueMacro)(JNIEnv* env, jobject, jintArray masks, jintArray frames) {
+    jsize n = std::min(env->GetArrayLength(masks), env->GetArrayLength(frames));
+    std::vector<jint> m(n), f(n);
+    env->GetIntArrayRegion(masks, 0, n, m.data());
+    env->GetIntArrayRegion(frames, 0, n, f.data());
+    Frontend::get().queueMacro(std::vector<uint32_t>(m.begin(), m.end()), std::vector<int>(f.begin(), f.end()));
+}
+BRIDGE(void, clearMacro)(JNIEnv*, jobject) { Frontend::get().clearMacro(); }
 BRIDGE(void, setRewinding)(JNIEnv*, jobject, jboolean on) { Frontend::get().setRewinding(on == JNI_TRUE); }
 
 BRIDGE(void, setTurbo)(JNIEnv*, jobject, jint mask, jint framesPerCycle) {

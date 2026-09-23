@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <deque>
 #include <string>
 #include <thread>
 #include <vector>
@@ -92,6 +93,9 @@ public:
     void setRewind(int seconds);
     /** While true the game plays backwards through that history. */
     void setRewinding(bool on);
+    /** Plays a button sequence on port 0: masks[i] held for frames[i] frames, one after the other. */
+    void queueMacro(const std::vector<uint32_t>& masks, const std::vector<int>& frames);
+    void clearMacro();
     void setPointer(int16_t x, int16_t y, bool pressed);
     /**
      * Motion sensors for RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE. The app says which ones the phone has
@@ -246,6 +250,12 @@ private:
     size_t rewindHead_ = 0, rewindCount_ = 0, rewindStateSize_ = 0;
     int rewindInterval_ = 2, rewindPopEvery_ = 1, rewindCounter_ = 0, rewindConfiguredSeconds_ = -1;
     bool rewindMuted_ = false;
+
+    // ---- macro playback: steps queued from the UI thread, advanced once per frame on the emu thread ----
+    std::mutex macroMutex_;
+    std::deque<std::pair<uint32_t, int>> macroSteps_;
+    std::atomic<uint32_t> macroMask_{0};
+    void advanceMacro();
     void rewindConfigure();
     /** Before retro_run: false when this frame should not run the core (showing a rewound frame longer). */
     bool rewindBeforeRun();
