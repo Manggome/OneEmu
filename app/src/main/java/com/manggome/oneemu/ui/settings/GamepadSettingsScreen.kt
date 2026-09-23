@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.SportsEsports
+import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -33,7 +34,7 @@ import kotlinx.coroutines.launch
  * watch it appear.
  */
 @Composable
-internal fun GamepadSettingsScreen(onBack: () -> Unit, onMapping: (deviceKey: String) -> Unit) {
+internal fun GamepadSettingsScreen(onBack: () -> Unit, onMapping: (deviceKey: String) -> Unit, onMacros: () -> Unit = {}) {
     val devices = rememberPadDevices()
     val scope = rememberCoroutineScope()
     val settings = OneEmuApp.get().settings
@@ -68,6 +69,12 @@ internal fun GamepadSettingsScreen(onBack: () -> Unit, onMapping: (deviceKey: St
             selectedIndex = layoutIndex,
             onSelect = { i -> scope.launch { settings.set(GamepadMapping.FACE_LAYOUT, GamepadMapping.LAYOUTS[i]) } },
             icon = Icons.Outlined.SportsEsports,
+        )
+        SettingsRow(
+            title = stringResource(R.string.macros_title),
+            subtitle = stringResource(R.string.macros_row_desc),
+            icon = Icons.Outlined.Keyboard,
+            onClick = onMacros,
         )
         SettingsDivider()
         if (devices.isEmpty()) {

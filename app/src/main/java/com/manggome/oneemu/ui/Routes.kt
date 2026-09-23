@@ -10,6 +10,7 @@ object Routes {
     const val SETTINGS_VIDEO = "settings/video"
     const val SETTINGS_INPUT = "settings/input"
     const val SETTINGS_GAMEPAD = "settings/gamepad"
+    const val SETTINGS_MACROS = "settings/macros"
     const val SETTINGS_LAYOUTS = "settings/layouts"
     const val SETTINGS_CORES = "settings/cores"
     const val SETTINGS_MISC = "settings/misc"

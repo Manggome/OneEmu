@@ -19,13 +19,19 @@ fun NavGraphBuilder.settingsGraph(nav: NavHostController) {
         GamepadSettingsScreen(
             onBack = { nav.popBackStack() },
             onMapping = { deviceKey -> nav.navigate(Routes.gamepadMapping(deviceKey)) },
+            onMacros = { nav.navigate(Routes.SETTINGS_MACROS) },
         )
     }
+    composable(Routes.SETTINGS_MACROS) { MacrosScreen(onBack = { nav.popBackStack() }) }
     composable(
         Routes.GAMEPAD_MAPPING,
         arguments = listOf(navArgument("deviceKey") { type = NavType.StringType }),
     ) { entry ->
-        GamepadMappingScreen(deviceKey = entry.arguments?.getString("deviceKey") ?: "", onBack = { nav.popBackStack() })
+        GamepadMappingScreen(
+            deviceKey = entry.arguments?.getString("deviceKey") ?: "",
+            onBack = { nav.popBackStack() },
+            onMacros = { nav.navigate(Routes.SETTINGS_MACROS) },
+        )
     }
     composable(Routes.SETTINGS_LAYOUTS) {
         LayoutsSettingsScreen(
