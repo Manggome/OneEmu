@@ -89,6 +89,15 @@ public:
     /** Autofire: [mask] buttons are released every other half of a [framesPerCycle]-frame cycle. */
     void setTurbo(uint32_t mask, unsigned framesPerCycle);
     void setPointer(int16_t x, int16_t y, bool pressed);
+    /**
+     * Motion sensors for RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE. The app says which ones the phone has
+     * before a core loads, then streams readings already in libretro units (g, rad/s) and already turned
+     * into the frame the core expects; see MotionSensors.kt.
+     */
+    void setSensorsAvailable(bool accelerometer, bool gyroscope);
+    void setSensor(int kind, float x, float y, float z); // kind 0 = accelerometer, 1 = gyroscope
+    bool sensorState(unsigned port, unsigned action);
+    float sensorInput(unsigned port, unsigned id);
     void setFastForward(int speed);
     void setControllerPortDevice(unsigned port, unsigned device); // 0 = off, 1..N = N×, -1 = unlimited
     void setVideoConfig(bool linear, int aspectMode, int userRotation, int filter, float filterStrength);
@@ -232,6 +241,9 @@ private:
     uint32_t turboPrev_[4]{};
     std::atomic<int16_t> pointerX_{0}, pointerY_{0};
     std::atomic<bool> pointerPressed_{false};
+    std::atomic<bool> accelAvailable_{false}, gyroAvailable_{false};
+    std::atomic<bool> accelOn_{false}, gyroOn_{false};
+    std::atomic<float> accel_[3]{0.f, 0.f, 0.f}, gyro_[3]{0.f, 0.f, 0.f};
     bool supportsBitmasks_ = false;
 
     // options

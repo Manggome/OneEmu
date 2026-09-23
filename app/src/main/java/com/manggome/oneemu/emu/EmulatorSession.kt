@@ -127,6 +127,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         // live anywhere, without writing anything into it (the app has no permission to, outside its own dirs).
         val gameDir = java.io.File(game.path).takeIf { it.isFile }?.parentFile
         val useGameDirAsSystem = core.id == "jazz2" && gameDir != null
+        if (useGameDirAsSystem) hideGameFolderFromGallery(gameDir!!)
         val systemDirForCore = if (useGameDirAsSystem) gameDir!!.absolutePath else dirs.system.absolutePath
         val coreAssetsDir = core.assetsInstallDir.takeIf { it.isNotEmpty() }
             ?.let { java.io.File(dirs.system, it).parentFile?.absolutePath }
@@ -229,6 +230,12 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     /** libretro device for port 0 chosen by [WiiController]; 0 = leave the core's own default. */
     private var wiiDevice = 0
 
+    /** Whether this core reads the phone's motion sensors (only Dolphin does). */
+    val wantsMotion: Boolean get() = core.id == "dolphin"
+
+    /** Set by the activity before [load]: decides whether a Wii Remote points with the gyro by default. */
+    @Volatile var gyroAvailable: Boolean = false
+
     /**
      * GameCube disc or Wii disc, and therefore which controller and which on-screen pad. Dolphin starts a
      * Wii title on a bare Wii Remote, so anything built around the nunchuk stops on "connect the Nunchuk"
@@ -253,6 +260,13 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         // Anything set for this one game sits on top of the core-wide settings. A game with none
         // behaves exactly as before.
         val perGame = app.settings.gameOptionOverrides(game.id)
+        // A Wii Remote aimed by tipping the phone is far easier than aiming with the thumb that also has
+        // to press A and B, so it is the default wherever there is a gyroscope; a choice the user made -
+        // for the core or for this one game - still wins. Mode 3 needs the r4 core; an older one reads
+        // it as the touch pointer, which is what mode 2 was anyway.
+        if (core.id == "dolphin" && IR_MODE !in user && IR_MODE !in perGame) {
+            merged[IR_MODE] = if (gyroAvailable) IR_MODE_GYRO else IR_MODE_TOUCH
+        }
         val vulkan = hwApi == "vulkan"
         BACKEND_OPTIONS[core.id]?.let { (key, vk, gl) -> if (key !in user && key !in perGame) merged[key] = if (vulkan) vk else gl }
         merged.putAll(user)
@@ -262,6 +276,28 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
 
 
 
+
+    /**
+     * Jazz Jackrabbit 2 is a PC game folder, not a ROM: tilesets, sprites, the HTML manual and its pictures,
+     * and the Cache/ the engine writes, all loose. The phone's gallery indexes every image in it. A
+     * `.nomedia` at the top of the game folder hides it, and what was already indexed is handed back to
+     * the scanner once. Nothing else in the folder is touched.
+     */
+    private fun hideGameFolderFromGallery(dir: java.io.File) {
+        val root = if (dir.name.equals("Source", ignoreCase = true)) dir.parentFile ?: dir else dir
+        val marker = java.io.File(root, ".nomedia")
+        if (marker.exists()) return
+        if (!runCatching { marker.createNewFile() }.getOrDefault(false)) return
+        val images = root.walkTopDown().maxDepth(4)
+            .filter { it.isFile && it.extension.lowercase() in GALLERY_IMAGE_EXTENSIONS }
+            .take(5000)
+            .map { it.absolutePath }
+            .toList()
+        if (images.isNotEmpty()) {
+            runCatching { android.media.MediaScannerConnection.scanFile(app, images.toTypedArray(), null, null) }
+        }
+        Log.i("OneEmu", "jazz2: hid ${root.absolutePath} from the gallery (${images.size} images rescanned)")
+    }
 
     /**
      * Jazz² keeps compiled GL programs in Cache/Shaders next to the game. A session killed while that cache is
@@ -435,6 +471,10 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     override fun onRumble(port: Int, strength: Int) { if (port == 0) _rumble.value = strength }
     override fun onGeometryChanged(width: Int, height: Int, aspect: Float) { _geometry.value = Geometry(width, height, aspect) }
     companion object {
+        private const val IR_MODE = "dolphin_ir_mode"
+        private const val IR_MODE_TOUCH = "2"
+        private const val IR_MODE_GYRO = "3"
+        private val GALLERY_IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "bmp", "webp")
         /** Library path of a game that is really "just start this core" (see CoreInfo.supportsNoContent). */
         const val NO_CONTENT_PREFIX = "core:"
 

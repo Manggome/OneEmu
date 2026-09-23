@@ -88,7 +88,8 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             L2 -> if (wii) "눈차크" else "L2"
             R2 -> if (wii) "흔들기" else if (system == SystemId.NDS) "터치" else "R2"
             // melonDS DS reads these as its microphone and screen-layout controls.
-            L3 -> if (system == SystemId.NDS) "마이크" else "L3"
+            // The core recentres the gyro pointer on L3 when the Wii Remote aims with the phone's motion.
+            L3 -> if (wii) "재조준" else if (system == SystemId.NDS) "마이크" else "L3"
             R3 -> if (wii) "HOME" else if (system == SystemId.NDS) "화면" else "R3"
             START -> if (wii) "1" else "START"
             SELECT -> if (wii) "2" else "SELECT"
@@ -137,6 +138,7 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
         SELECT -> "2 버튼"
         LEFT_STICK -> "눈차크 스틱"
         RIGHT_STICK -> "위모컨 기울이기"
+        L3 -> "재조준 (자이로 조준 가운데로)"
         else -> displayName
     }
 

@@ -15,7 +15,12 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
@@ -41,6 +46,7 @@ import java.io.File
  */
 @Composable
 internal fun WiiControllerCard(game: GameEntity, onEditWiiLayout: () -> Unit) {
+    val context = LocalContext.current
     val settings = OneEmuApp.get().settings
     val scope = rememberCoroutineScope()
     val platform by produceState(RomInfo.DiscPlatform.UNKNOWN, game.path) {
@@ -90,6 +96,46 @@ internal fun WiiControllerCard(game: GameEntity, onEditWiiLayout: () -> Unit) {
                 }
             }
             if (choice.padProfile(platform).isWiimote) {
+                // How the remote points. Stored as this game's dolphin_ir_mode, so it sits with the rest
+                // of the game's core options; 자동 removes it and lets EmulatorSession decide (gyro when
+                // the phone has one).
+                val gyro = remember { hasGyroscope(context) }
+                var aim by remember(game.id) { mutableStateOf<String?>(null) }
+                LaunchedEffect(game.id) { aim = settings.gameOptionOverrides(game.id)[IR_MODE] }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    stringResource(R.string.lib_wii_aim_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+                Text(
+                    stringResource(if (gyro) R.string.lib_wii_aim_desc else R.string.lib_wii_aim_desc_no_gyro),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                )
+                val options = buildList {
+                    add(null to R.string.lib_wii_aim_auto)
+                    if (gyro) add("3" to R.string.lib_wii_aim_gyro)
+                    add("2" to R.string.lib_wii_aim_touch)
+                    add("1" to R.string.lib_wii_aim_stick)
+                }
+                options.forEach { (value, label) ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                aim = value
+                                scope.launch { settings.setGameOptionOverride(game.id, IR_MODE, value) }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = aim == value, onClick = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(label), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
                 OutlinedButton(
                     onClick = onEditWiiLayout,
@@ -101,3 +147,9 @@ internal fun WiiControllerCard(game: GameEntity, onEditWiiLayout: () -> Unit) {
         }
     }
 }
+
+private const val IR_MODE = "dolphin_ir_mode"
+
+private fun hasGyroscope(context: android.content.Context): Boolean =
+    (context.getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager)
+        ?.getDefaultSensor(android.hardware.Sensor.TYPE_GYROSCOPE) != null

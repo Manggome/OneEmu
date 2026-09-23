@@ -144,6 +144,12 @@ BRIDGE(void, setInput)(JNIEnv*, jobject, jint port, jint buttons, jint lx, jint 
 BRIDGE(void, setPointer)(JNIEnv*, jobject, jint x, jint y, jboolean pressed) {
     Frontend::get().setPointer((int16_t)x, (int16_t)y, pressed);
 }
+BRIDGE(void, setSensorsAvailable)(JNIEnv*, jobject, jboolean accel, jboolean gyro) {
+    Frontend::get().setSensorsAvailable(accel, gyro);
+}
+BRIDGE(void, setSensor)(JNIEnv*, jobject, jint kind, jfloat x, jfloat y, jfloat z) {
+    Frontend::get().setSensor(kind, x, y, z);
+}
 BRIDGE(void, setControllerPortDevice)(JNIEnv*, jobject, jint port, jint device) {
     Frontend::get().setControllerPortDevice((unsigned)port, (unsigned)device);
 }
