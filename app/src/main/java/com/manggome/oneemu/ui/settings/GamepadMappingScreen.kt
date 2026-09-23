@@ -146,7 +146,7 @@ internal fun GamepadMappingScreen(deviceKey: String, onBack: () -> Unit) {
     comboKey?.let { key ->
         ComboDialog(
             keyName = GamepadCapture.keyName(key),
-            initial = mapping.buttonFor(key)?.takeIf { it !in GamepadMapping.ACTIONS } ?: 0,
+            initial = mapping.buttonFor(key)?.takeIf { it and GamepadMapping.PAD_BITS.inv() == 0 } ?: 0,
             onSave = { mask ->
                 comboKey = null
                 save(if (mask == 0) mapping.withoutKey(key) else mapping.addKey(mask, key))
@@ -203,6 +203,9 @@ private fun buttonLabel(name: String): String = when (name) {
     "SPEED" -> stringResource(R.string.gamepad_btn_speed)
     "SAVE_STATE" -> stringResource(R.string.gamepad_btn_save)
     "LOAD_STATE" -> stringResource(R.string.gamepad_btn_load)
+    "QUICK_SAVE" -> stringResource(R.string.gamepad_btn_quick_save)
+    "QUICK_LOAD" -> stringResource(R.string.gamepad_btn_quick_load)
+    "REWIND" -> stringResource(R.string.gamepad_btn_rewind)
     "UP" -> stringResource(R.string.gamepad_btn_up)
     "DOWN" -> stringResource(R.string.gamepad_btn_down)
     "LEFT" -> stringResource(R.string.gamepad_btn_left)

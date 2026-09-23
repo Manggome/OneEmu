@@ -53,17 +53,9 @@ fun VirtualPad(
     onPointer: (x: Float, y: Float, pressed: Boolean) -> Unit,
     onMenu: () -> Unit,
     onFastForward: (Boolean) -> Unit,
-    /** Text drawn on the 배속 button, e.g. "3×"; a tap asks for the next step. */
-    speedLabel: String = "1×",
-    onSpeedCycle: () -> Unit = {},
     modifier: Modifier = Modifier,
-    /** True while autofire is on, which keeps the 연사 button lit. */
-    turboActive: Boolean = false,
-    /** A tap on the 연사 button asks to flip autofire. */
-    onTurbo: () -> Unit = {},
-    /** Taps on the 저장 / 불러오기 buttons open the slot list, as the pause menu does. */
-    onSaveState: () -> Unit = {},
-    onLoadState: () -> Unit = {},
+    /** The app buttons (배속, 연사, 저장, 빠른 저장, 되감기...). */
+    actions: PadActions = PadActions(),
 ) {
     val density = LocalDensity.current.density
     var size by remember { mutableStateOf(Size.Zero) }
@@ -83,10 +75,7 @@ fun VirtualPad(
     val onPointerState = rememberUpdatedState(onPointer)
     val onMenuState = rememberUpdatedState(onMenu)
     val onFfState = rememberUpdatedState(onFastForward)
-    val onSpeedState = rememberUpdatedState(onSpeedCycle)
-    val onTurboState = rememberUpdatedState(onTurbo)
-    val onSaveState = rememberUpdatedState(onSaveState)
-    val onLoadStateState = rememberUpdatedState(onLoadState)
+    val actionsState = rememberUpdatedState(actions)
 
     // Visual state read by the canvas.
     var pressedMask by remember { mutableIntStateOf(0) }
@@ -155,6 +144,7 @@ fun VirtualPad(
                             Tracker.Stick(hit.element.id, hit.rect.center, hit.rect.width / 2f).also { it.update(p) }
                         PadElementId.Kind.SMALL -> Tracker.Small(hit.element.id, hit.rect, System.currentTimeMillis(), ffState.value).also {
                             if (it.id == PadElementId.FAST_FORWARD) onFfState.value(true)
+                            if (it.id == PadElementId.REWIND) actionsState.value.onRewind(true)
                         }
                         else -> Tracker.Btn().also { it.update(p, hit) }
                     }
@@ -181,14 +171,19 @@ fun VirtualPad(
                             } else if (t.id == PadElementId.FAST_FORWARD) {
                                 val held = System.currentTimeMillis() - t.downAt
                                 onFfState.value(if (held < LONG_PRESS_MS) !t.ffWasActive else t.ffWasActive)
-                            } else if (t.id == PadElementId.SPEED) {
-                                if (inside) onSpeedState.value()
-                            } else if (t.id == PadElementId.TURBO) {
-                                if (inside) onTurboState.value()
-                            } else if (t.id == PadElementId.SAVE_STATE) {
-                                if (inside) onSaveState.value()
-                            } else if (t.id == PadElementId.LOAD_STATE) {
-                                if (inside) onLoadStateState.value()
+                            } else if (t.id == PadElementId.REWIND) {
+                                actionsState.value.onRewind(false)
+                            } else if (inside) {
+                                val a = actionsState.value
+                                when (t.id) {
+                                    PadElementId.SPEED -> a.onSpeedCycle()
+                                    PadElementId.TURBO -> a.onTurbo()
+                                    PadElementId.SAVE_STATE -> a.onSaveState()
+                                    PadElementId.LOAD_STATE -> a.onLoadState()
+                                    PadElementId.QUICK_SAVE -> a.onQuickSave()
+                                    PadElementId.QUICK_LOAD -> a.onQuickLoad()
+                                    else -> {}
+                                }
                             }
                         }
                         is Tracker.GameTouch -> onPointerState.value(t.lastX, t.lastY, false)
@@ -223,9 +218,10 @@ fun VirtualPad(
                     else -> Offset.Zero
                 }
                 val lit = (element.id == PadElementId.FAST_FORWARD && fastForwardActive) ||
-                    (element.id == PadElementId.TURBO && turboActive)
+                    (element.id == PadElementId.TURBO && actions.turboActive) ||
+                    (element.id == PadElementId.REWIND && actions.rewinding)
                 val elements = if (lit) pressedElements + element.id else pressedElements
-                val labelOverride = if (element.id == PadElementId.SPEED) speedLabel else null
+                val labelOverride = if (element.id == PadElementId.SPEED) actions.speedLabel else null
                 drawPadElement(element, rect, profile, PadElementVisual(pressedMask, elements, stick, labelOverride = labelOverride), textMeasurer)
             }
         }

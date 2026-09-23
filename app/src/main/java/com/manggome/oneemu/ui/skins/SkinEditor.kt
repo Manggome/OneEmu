@@ -157,9 +157,7 @@ fun SkinEditor(
     // The 배속 button lives in the vector layout even while a skin is active (PadHost draws it on top).
     val padLayout by remember(system, config) { PadLayoutStore.observe(profile, config) }.collectAsState(initial = null)
     // Controls a RetroArch overlay has no concept of; PadHost draws them over the skin.
-    val overlayExtras = listOf(
-        PadElementId.SPEED, PadElementId.TURBO, PadElementId.SAVE_STATE, PadElementId.LOAD_STATE,
-    )
+    val overlayExtras = com.manggome.oneemu.emu.skin.OVERLAY_EXTRAS
     var layout by remember { mutableStateOf<SkinLayout?>(null) }
     var viewport by remember { mutableStateOf<ViewportRect?>(null) }
     var viewportSelected by remember { mutableStateOf(false) }

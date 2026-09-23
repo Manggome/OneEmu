@@ -88,6 +88,10 @@ public:
     void setInput(unsigned port, uint32_t buttons, int16_t lx, int16_t ly, int16_t rx, int16_t ry);
     /** Autofire: [mask] buttons are released every other half of a [framesPerCycle]-frame cycle. */
     void setTurbo(uint32_t mask, unsigned framesPerCycle);
+    /** Keep about [seconds] of history for rewinding (0 = off). Light cores only; the app decides which. */
+    void setRewind(int seconds);
+    /** While true the game plays backwards through that history. */
+    void setRewinding(bool on);
     void setPointer(int16_t x, int16_t y, bool pressed);
     /**
      * Motion sensors for RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE. The app says which ones the phone has
@@ -233,6 +237,19 @@ private:
 
     InputState input_[4];
     std::atomic<uint32_t> turboMask_{0};
+
+    // ---- rewind (emu thread only, except the atomics) ----
+    std::atomic<int> rewindSeconds_{0};
+    std::atomic<bool> rewinding_{false};
+    std::atomic<bool> rewindClear_{false};
+    std::vector<std::vector<uint8_t>> rewindRing_;
+    size_t rewindHead_ = 0, rewindCount_ = 0, rewindStateSize_ = 0;
+    int rewindInterval_ = 2, rewindPopEvery_ = 1, rewindCounter_ = 0, rewindConfiguredSeconds_ = -1;
+    bool rewindMuted_ = false;
+    void rewindConfigure();
+    /** Before retro_run: false when this frame should not run the core (showing a rewound frame longer). */
+    bool rewindBeforeRun();
+    void rewindAfterRun();
     std::atomic<unsigned> turboPeriod_{6};
     /** Frames run since load; only ever touched on the emu thread, which is where autofire reads it. */
     uint64_t frames_ = 0;

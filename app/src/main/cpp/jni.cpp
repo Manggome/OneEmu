@@ -153,6 +153,9 @@ BRIDGE(void, setSensor)(JNIEnv*, jobject, jint kind, jfloat x, jfloat y, jfloat 
 BRIDGE(void, setControllerPortDevice)(JNIEnv*, jobject, jint port, jint device) {
     Frontend::get().setControllerPortDevice((unsigned)port, (unsigned)device);
 }
+BRIDGE(void, setRewind)(JNIEnv*, jobject, jint seconds) { Frontend::get().setRewind((int)seconds); }
+BRIDGE(void, setRewinding)(JNIEnv*, jobject, jboolean on) { Frontend::get().setRewinding(on == JNI_TRUE); }
+
 BRIDGE(void, setTurbo)(JNIEnv*, jobject, jint mask, jint framesPerCycle) {
     Frontend::get().setTurbo((uint32_t)mask, (unsigned)framesPerCycle);
 }
