@@ -213,4 +213,14 @@
     <string name="le_per_game">이 게임만 따로 배치</string>
     <string name="le_per_game_desc">켜면 이 게임은 버튼 배치·화면 위치·스킨을 따로 저장합니다. 따로 저장한 게 없으면 기종 배치를 그대로 씁니다.</string>
     <string name="le_per_game_badge">이 게임 전용</string>
+    <string name="qs_deinterlace">디인터레이스</string>
+    <string name="qs_deinterlace_desc">이 게임에만 적용되고, 다음에 켤 때도 마지막 값을 기억합니다. 화면이 떨리거나 겹쳐 보이면 바꿔 보세요.</string>
+    <string name="qs_per_game_suffix">%1$s (이 게임만)</string>
+    <string name="deint_auto">자동</string>
+    <string name="deint_off">끄기</string>
+    <string name="deint_on">켜기</string>
+    <string name="deint_weave">위브</string>
+    <string name="deint_bob">밥</string>
+    <string name="deint_blend">블렌드</string>
+    <string name="deint_adaptive">적응형</string>
 </resources>
