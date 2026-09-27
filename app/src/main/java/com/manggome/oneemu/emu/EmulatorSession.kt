@@ -495,9 +495,15 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         NativeBridge.setOption(key, value)
     }
 
+    /**
+     * Applies [value] now and remembers it: for this game alone when the option is one whose right value
+     * depends on the game ([PerGameOptions], e.g. deinterlacing), for every game on the core otherwise.
+     */
     suspend fun setCoreOption(key: String, value: String) {
         NativeBridge.setOption(key, value)
-        app.settings.setCoreOptionOverride(core.id, key, value)
+        if (PerGameOptions.isPerGame(key)) app.settings.setGameOptionOverride(game.id, key, value)
+        else app.settings.setCoreOptionOverride(core.id, key, value)
+        explicitOptions = explicitOptions + key
     }
 
     // ---- NativeBridge.Listener ----

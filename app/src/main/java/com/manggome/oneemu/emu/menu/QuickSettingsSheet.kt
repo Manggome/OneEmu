@@ -49,6 +49,7 @@ import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.EmulatorSession
+import com.manggome.oneemu.emu.PerGameOptions
 import com.manggome.oneemu.emu.NativeBridge
 import com.manggome.oneemu.ui.theme.OneEmuColors
 import kotlinx.coroutines.launch
@@ -118,6 +119,31 @@ fun QuickSettingsSheet(session: EmulatorSession, onEditLayout: () -> Unit, onDis
                     stringResource(R.string.qs_rotation_0), stringResource(R.string.qs_rotation_90),
                     stringResource(R.string.qs_rotation_180), stringResource(R.string.qs_rotation_270),
                 )
+                // 디인터레이스, straight on the first page for the cores that have it, remembered per game.
+                var deinterlace by remember { mutableStateOf<EmulatorSession.CoreOption?>(null) }
+                LaunchedEffect(Unit) {
+                    deinterlace = session.coreOptions().firstOrNull { it.visible && PerGameOptions.isPerGame(it.key) }
+                }
+                deinterlace?.let { opt ->
+                    val labels = opt.values.map { deinterlaceLabel(it.first, it.second) }
+                    val current = opt.values.indexOfFirst { it.first == opt.current }
+                    DropdownRow(
+                        stringResource(R.string.qs_deinterlace),
+                        if (current >= 0) labels[current] else opt.current,
+                        labels,
+                    ) { idx ->
+                        scope.launch {
+                            session.setCoreOption(opt.key, opt.values[idx].first)
+                            deinterlace = session.coreOptions().firstOrNull { it.key == opt.key }
+                        }
+                    }
+                    Text(
+                        stringResource(R.string.qs_deinterlace_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OneEmuColors.OnSurfaceMuted,
+                        modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 6.dp),
+                    )
+                }
                 DropdownRow(stringResource(R.string.qs_rotation), rotationLabels.getOrElse(rotation) { rotationLabels[0] }, rotationLabels) { idx ->
                     put(rotationKey, idx); pushVideo(rotationNow = idx)
                 }
@@ -239,9 +265,11 @@ private fun CoreOptionsPage(session: EmulatorSession, onBack: () -> Unit) {
             grouped.forEach { (category, list) ->
                 item(key = "cat-$category") { SectionLabel(category) }
                 items(list, key = { it.key }) { opt ->
-                    val labels = opt.values.map { it.second }
-                    val currentLabel = opt.values.firstOrNull { it.first == opt.current }?.second ?: opt.current
-                    DropdownRow(opt.desc.ifBlank { opt.key }, currentLabel, labels) { idx ->
+                    val perGame = PerGameOptions.isPerGame(opt.key)
+                    val labels = opt.values.map { if (perGame) deinterlaceLabel(it.first, it.second) else it.second }
+                    val currentLabel = opt.values.indexOfFirst { it.first == opt.current }.let { if (it >= 0) labels[it] else opt.current }
+                    val title = opt.desc.ifBlank { opt.key }
+                    DropdownRow(if (perGame) stringResource(R.string.qs_per_game_suffix, title) else title, currentLabel, labels) { idx ->
                         val value = opt.values[idx].first
                         scope.launch {
                             session.setCoreOption(opt.key, value)
@@ -253,4 +281,21 @@ private fun CoreOptionsPage(session: EmulatorSession, onBack: () -> Unit) {
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
+}
+
+/** "블렌드 (TFF)" for a deinterlace value; anything unknown keeps the core's own label. */
+@Composable
+private fun deinterlaceLabel(value: String, coreLabel: String): String {
+    val (word, field) = PerGameOptions.deinterlaceWord(value)
+    val base = when (word) {
+        PerGameOptions.DeinterlaceWord.AUTO -> stringResource(R.string.deint_auto)
+        PerGameOptions.DeinterlaceWord.OFF -> stringResource(R.string.deint_off)
+        PerGameOptions.DeinterlaceWord.ON -> stringResource(R.string.deint_on)
+        PerGameOptions.DeinterlaceWord.WEAVE -> stringResource(R.string.deint_weave)
+        PerGameOptions.DeinterlaceWord.BOB -> stringResource(R.string.deint_bob)
+        PerGameOptions.DeinterlaceWord.BLEND -> stringResource(R.string.deint_blend)
+        PerGameOptions.DeinterlaceWord.ADAPTIVE -> stringResource(R.string.deint_adaptive)
+        PerGameOptions.DeinterlaceWord.OTHER -> return coreLabel
+    }
+    return if (field.isEmpty()) base else "$base ($field)"
 }
