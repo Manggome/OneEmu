@@ -146,6 +146,8 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
         }
     }
 
+    // Declared first so search and selection, which sit on top of an open folder, close before it does.
+    BackHandler(enabled = state.openFolder != null) { vm.closeFolder() }
     BackHandler(enabled = state.searching) { vm.setSearching(false) }
     BackHandler(enabled = selectionMode) { selectedIds = emptySet() }
 
@@ -185,7 +187,14 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
                     onAddGame = { pickFiles.launch(arrayOf("*/*")) },
                     onAddFolder = { pickFolder.launch(null) },
                 )
-                state.sections.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                state.showingFolders -> SystemFolderGrid(
+                    state = state,
+                    onOpen = { vm.openFolder(it) },
+                    onPlay = { if (selectionMode) toggle(it) else tryLaunch(it) },
+                    onLongClick = { if (selectionMode) toggle(it) else selectedIds = setOf(it.id) },
+                    bottomPadding = BottomPadding,
+                )
+                state.sections.all { it.games.isEmpty() } -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                     Text(
                         stringResource(R.string.lib_search_empty, state.query),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -306,13 +315,29 @@ private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavH
         return
     }
 
+    val folder = state.openFolder
     TopAppBar(
+        navigationIcon = {
+            if (folder != null) {
+                IconButton(onClick = { vm.closeFolder() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.lib_folder_close))
+                }
+            }
+        },
         title = {
             Column {
-                Text(stringResource(R.string.lib_title))
+                Text(
+                    when {
+                        folder == null -> stringResource(R.string.lib_title)
+                        folder.favorites -> stringResource(R.string.lib_favorites_title)
+                        else -> folder.system?.shortName ?: stringResource(R.string.lib_section_unknown)
+                    },
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
                 if (state.totalCount > 0) {
                     Text(
-                        stringResource(R.string.lib_game_count, state.totalCount),
+                        stringResource(R.string.lib_game_count, folder?.games?.size ?: state.totalCount),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -374,6 +399,9 @@ private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavH
                     )
                     HorizontalDivider()
                     CheckItem(R.string.lib_menu_group_by_system, state.groupBySystem) { vm.setGroupBySystem(!state.groupBySystem) }
+                    if (state.groupBySystem) {
+                        CheckItem(R.string.lib_menu_system_folders, state.foldersEnabled) { vm.setSystemFolders(!state.foldersEnabled) }
+                    }
                     CheckItem(R.string.lib_menu_show_file_name, state.showFileName) { vm.setShowFileName(!state.showFileName) }
                     if (state.viewMode != ViewMode.LIST) {
                         DropdownMenuItem(
@@ -455,12 +483,13 @@ private fun GameList(
     onMore: (GameEntity) -> Unit,
     selectedIds: Set<Long> = emptySet(),
 ) {
+    val inFolder = state.openFolder != null
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = BottomPadding)) {
-        if (state.recent.isNotEmpty() && !state.searching) {
+        if (state.recent.isNotEmpty() && !state.searching && !inFolder) {
             item(key = "recent", contentType = "recent") { RecentRow(state.recent, onClick, onLongClick) }
         }
         for (section in state.sections) {
-            if (state.groupBySystem || section.favorites) {
+            if ((state.groupBySystem || section.favorites) && !inFolder) {
                 stickyHeader(key = "h_${section.key}", contentType = "header") { _ ->
                     SectionHeader(section, onToggle = { onToggleSection(section) })
                 }
@@ -471,7 +500,7 @@ private fun GameList(
                     GameListItem(
                         game = game,
                         showFileName = state.showFileName,
-                        showSystemChip = !state.groupBySystem,
+                        showSystemChip = !state.groupBySystem || (inFolder && section.favorites),
                         onClick = { onClick(game) },
                         onLongClick = { onLongClick(game) },
                         onMore = { onMore(game) },
@@ -501,13 +530,14 @@ private fun GameGrid(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        if (state.recent.isNotEmpty() && !state.searching) {
+        val inFolder = state.openFolder != null
+        if (state.recent.isNotEmpty() && !state.searching && !inFolder) {
             item(key = "recent", span = { GridItemSpan(maxLineSpan) }, contentType = "recent") {
                 RecentRow(state.recent, onClick, onLongClick)
             }
         }
         for (section in state.sections) {
-            if (state.groupBySystem || section.favorites) {
+            if ((state.groupBySystem || section.favorites) && !inFolder) {
                 item(key = "h_${section.key}", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
                     SectionHeader(section, onToggle = { onToggleSection(section) })
                 }
@@ -524,7 +554,7 @@ private fun GameGrid(
                     } else {
                         GameGridItem(
                             game = game,
-                            showSystemChip = !state.groupBySystem,
+                            showSystemChip = !state.groupBySystem || (inFolder && section.favorites),
                             onClick = { onClick(game) },
                             onLongClick = { onLongClick(game) },
                             columns = state.gridColumns,

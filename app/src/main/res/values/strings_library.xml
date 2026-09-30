@@ -16,6 +16,8 @@
     <string name="lib_menu_rescan">다시 스캔</string>
     <string name="lib_menu_unhide">숨긴 게임 되살리기</string>
     <string name="lib_menu_group_by_system">기종별로 묶기</string>
+    <string name="lib_menu_system_folders">기종별 폴더로 보기</string>
+    <string name="lib_folder_close">폴더 닫기</string>
     <string name="lib_menu_show_file_name">파일 이름 표시</string>
     <string name="lib_menu_grid_columns">그리드 열 수: %1$d</string>
     <string name="lib_menu_settings">설정</string>

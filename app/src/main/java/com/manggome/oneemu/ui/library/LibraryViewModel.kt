@@ -3,6 +3,7 @@ package com.manggome.oneemu.ui.library
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -72,6 +73,12 @@ data class LibraryUiState(
     val showFileName: Boolean = true,
     val query: String = "",
     val searching: Boolean = false,
+    /** 기종별 폴더: the home screen is one tile per section, and a tap opens that section alone. */
+    val foldersEnabled: Boolean = true,
+    /** Tiles are showing ([sections] are the tiles). */
+    val showingFolders: Boolean = false,
+    /** Inside one folder: [sections] is that folder's section only. */
+    val openFolder: LibrarySection? = null,
 ) {
     val isEmpty: Boolean get() = !loading && totalCount == 0
     val filteredCount: Int get() = sections.filter { !it.favorites }.sumOf { it.games.size }
@@ -132,6 +139,7 @@ class LibraryViewModel : ViewModel() {
         val groupBySystem: Boolean,
         val showFileName: Boolean,
         val collapsed: Set<String>,
+        val folders: Boolean = true,
     )
 
     private val prefs: Flow<Prefs> = combine(
@@ -144,11 +152,14 @@ class LibraryViewModel : ViewModel() {
         Prefs(view, sort, cols.coerceIn(MIN_GRID_COLUMNS, MAX_GRID_COLUMNS), group, fileName, emptySet())
     }.combine(settings.observe(KEY_COLLAPSED_SECTIONS, "")) { p, collapsed ->
         p.copy(collapsed = collapsed.split(',').filter { it.isNotBlank() }.toSet())
-    }
+    }.combine(settings.observe(KEY_SYSTEM_FOLDERS, true)) { p, folders -> p.copy(folders = folders) }
+
+    /** Key of the open 기종별 폴더 ([LibrarySection.key]), null on the folder tiles. */
+    private val openFolderKey = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<LibraryUiState> = combine(
-        db.games().observeAll(), prefs, query, searching,
-    ) { games, p, q, s -> buildState(games, p, q, s) }
+        db.games().observeAll(), prefs, query, searching, openFolderKey,
+    ) { games, p, q, s, open -> buildState(games, p, q, s, open) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
 
     private val collator: Collator = Collator.getInstance(Locale.KOREAN)
@@ -162,7 +173,7 @@ class LibraryViewModel : ViewModel() {
         }
     }
 
-    private fun buildState(all: List<GameEntity>, p: Prefs, q: String, s: Boolean): LibraryUiState {
+    private fun buildState(all: List<GameEntity>, p: Prefs, q: String, s: Boolean, openKey: String?): LibraryUiState {
         val needle = q.trim()
         val filtered = if (needle.isEmpty()) all else all.filter {
             it.title.contains(needle, ignoreCase = true) || File(it.path).name.contains(needle, ignoreCase = true)
@@ -182,10 +193,19 @@ class LibraryViewModel : ViewModel() {
         val withFavorites = if (favorites.isEmpty()) sections
         else listOf(LibrarySection(null, favorites, LibrarySection.FAVORITES_KEY in p.collapsed, favorites = true)) + sections
         val recent = all.filter { it.lastPlayedAt > 0 }.sortedByDescending { it.lastPlayedAt }.take(RECENT_LIMIT)
+        // Folders need the grouping. Inside one, a search looks in that folder; on the tiles it looks
+        // everywhere and shows the usual grouped list, since a tile per hit would hide the games.
+        val folders = p.folders && p.groupBySystem
+        // A search with no hits in the open folder keeps it open (and empty); a folder whose last game went
+        // away closes back to the tiles.
+        val open = if (!folders || openKey == null) null
+        else withFavorites.firstOrNull { it.key == openKey }?.copy(collapsed = false)
+            ?: if (needle.isNotEmpty()) emptySection(openKey) else null
+        val showingFolders = folders && open == null && needle.isEmpty()
         return LibraryUiState(
             loading = false,
             totalCount = all.size,
-            sections = withFavorites,
+            sections = if (open != null) listOf(open) else withFavorites,
             recent = recent,
             viewMode = p.viewMode,
             sortMode = p.sortMode,
@@ -194,7 +214,15 @@ class LibraryViewModel : ViewModel() {
             showFileName = p.showFileName,
             query = q,
             searching = s,
+            foldersEnabled = folders,
+            showingFolders = showingFolders,
+            openFolder = open,
         )
+    }
+
+    private fun emptySection(key: String) = when (key) {
+        LibrarySection.FAVORITES_KEY -> LibrarySection(null, emptyList(), false, favorites = true)
+        else -> LibrarySection(SystemId.fromId(key), emptyList(), false)
     }
 
     /** Favorites first, then the chosen order. Title order uses a Korean collator so 가나다 sorts naturally. */
@@ -222,6 +250,10 @@ class LibraryViewModel : ViewModel() {
     fun setGridColumns(cols: Int) = launchIo { settings.set(Settings.Keys.gridColumns, cols.coerceIn(MIN_GRID_COLUMNS, MAX_GRID_COLUMNS)) }
     fun setGroupBySystem(on: Boolean) = launchIo { settings.set(Settings.Keys.groupBySystem, on) }
     fun setShowFileName(on: Boolean) = launchIo { settings.set(Settings.Keys.showFileName, on) }
+
+    fun setSystemFolders(on: Boolean) = launchIo { settings.set(KEY_SYSTEM_FOLDERS, on) }
+    fun openFolder(section: LibrarySection) { openFolderKey.value = section.key }
+    fun closeFolder() { openFolderKey.value = null }
 
     fun toggleSection(section: LibrarySection) = launchIo {
         val current = settings.get(KEY_COLLAPSED_SECTIONS, "").split(',').filter { it.isNotBlank() }.toMutableSet()
@@ -601,5 +633,8 @@ class LibraryViewModel : ViewModel() {
 
         /** Comma-separated SystemId.ids (or "unknown") whose library section is collapsed. Library-local key. */
         val KEY_COLLAPSED_SECTIONS = stringPreferencesKey("lib_collapsed_sections")
+
+        /** 기종별 폴더로 보기: the home screen starts as one folder per system. Library-local key. */
+        val KEY_SYSTEM_FOLDERS = booleanPreferencesKey("lib_system_folders")
     }
 }
