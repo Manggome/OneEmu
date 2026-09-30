@@ -77,6 +77,11 @@ def render(cores):
     w('- **Dolphin 런타임 파일** (`cores/dolphin/assets/`) — Dolphin 이 자기 저장소에서 공개 배포하는')
     w('  파일만 복사했습니다. 폰트는 Droid Sans 기반으로 Dolphin 팀이 직접 만든 것이며')
     w('  (Apache-2.0, `GC/font-licenses.txt` 에 전문 포함), 닌텐도의 파일은 들어 있지 않습니다.\n')
+    w('- **피처폰 WIPI 코어** (`cores/wipi`) — wie 와 함께 들어가는 라이브러리: RustJava·arm32_cpu·smaf')
+    w('  (dlunch, MIT), [rustysynth](https://github.com/sinshu/rustysynth) (MIT), 그 밖의 Rust 크레이트')
+    w('  (MIT/Apache-2.0). 화면 글꼴은 wie 저장소의 Neo둥근모(SIL OFL 1.1)입니다.')
+    w('- **GeneralUser GS 사운드폰트** v2.0.3 (S. Christian Collins) — 피처폰 배경음악 합성용 코어 에셋.')
+    w('  자유 사용·재배포 허용, 전문은 `cores/wipi/assets/LICENSE-GeneralUser-GS.txt`.\n')
 
     w('## 포함되지 않은 것\n')
     w('OneEmu 는 **게임 ROM, BIOS, 펌웨어, 암호화 키를 포함하거나 배포하지 않습니다.**')
