@@ -23,6 +23,7 @@
 | 게임큐브 · Wii | 기기를 탑니다 · 코어를 따로 받습니다 |
 | 플레이스테이션 2 | 아직 느립니다 · 코어를 따로 받습니다 |
 | 재즈 잭래빗 2 | 원본 PC 게임 파일이 있어야 합니다 |
+| 피처폰 (WIPI · KTF/LGT/SKT, J2ME) | 시험 중 · 게임마다 다릅니다 ([호환 목록](cores/wipi/COMPAT.md)) · 세이브 스테이트 대신 게임 안에서 저장 |
 
 ## 무엇을 할 수 있나요
 
@@ -68,6 +69,7 @@
 | 게임큐브 / Wii | `iso` `gcm` `gcz` `rvz` `wbfs` `wia` `ciso` `dol` |
 | 3DS | `3ds` `cci` `cxi` `app` `3dsx` (`cia` 는 안 됩니다) |
 | 아케이드 | `zip` (파일 이름 = MAME 짧은 이름, 예: `sf2.zip`) |
+| 피처폰 (WIPI) | `zip` (게임 하나 = zip 하나, 안에 `__adf__`·`app_info`·`.msd` 와 `jar`), `jar`, `jad`(+`jar`) |
 
 </details>
 
