@@ -40,15 +40,33 @@ data class PhoneLayout(val game: Rect, val keys: List<PlacedKey>, val menuAt: Of
  *
  * [WipiPrefs.State.screenScale] shrinks the picture's area around its centre (top for PHONE).
  */
-fun layoutPhone(w: Float, h: Float, dp: Float, state: WipiPrefs.State, landscape: Boolean, keypadVisible: Boolean): PhoneLayout {
+fun layoutPhone(
+    w: Float,
+    h: Float,
+    dp: Float,
+    state: WipiPrefs.State,
+    landscape: Boolean,
+    keypadVisible: Boolean,
+    /** Game picture width / height (240x320 -> 0.75). The picture keeps it exactly; nothing is ever stretched. */
+    gameAspect: Float = 0.75f,
+): PhoneLayout {
     val arrangement = state.arrangement(landscape)
     val margin = 8f * dp
     val bar = 36f * dp
     val ss = state.screenScale
 
+    // The picture: as large as fits [area] at the game's own aspect, times the screen-size setting, centred
+    // horizontally (and vertically unless topAnchored).
+    val aspect = if (gameAspect > 0.1f && gameAspect < 10f) gameAspect else 0.75f
     fun shrink(area: Rect, topAnchored: Boolean): Rect {
-        val nw = area.width * ss
-        val nh = area.height * ss
+        var nw = area.width
+        var nh = nw / aspect
+        if (nh > area.height) {
+            nh = area.height
+            nw = nh * aspect
+        }
+        nw *= ss
+        nh *= ss
         val left = area.left + (area.width - nw) / 2f
         val top = if (topAnchored) area.top else area.top + (area.height - nh) / 2f
         return Rect(left, top, left + nw, top + nh)
@@ -81,7 +99,9 @@ fun layoutPhone(w: Float, h: Float, dp: Float, state: WipiPrefs.State, landscape
 
     // Portrait bar phone (also the portrait overlay).
     val block = PhoneBlocks.phone(state.foldDpad)
-    val s = (w - 2 * margin) / block.width * state.keypadScale
+    // Full width at 100%, but never more than about half the screen's height: on wide screens (foldable covers,
+    // tablets) a width-filling keypad would leave the game a strip.
+    val s = min((w - 2 * margin) / block.width, h * 0.46f / block.height) * state.keypadScale
     val kh = block.height * s
     val origin = Offset((w - block.width * s) / 2f, h - margin - kh)
     val overlay = arrangement == WipiPrefs.Arrangement.OVERLAY
@@ -106,6 +126,7 @@ fun PhoneScreen(
     landscape: Boolean,
     keypadVisible: Boolean,
     fastForward: Boolean,
+    gameAspect: Float,
     onBits: (Int) -> Unit,
     onTick: () -> Unit,
     onViewport: (x: Float, y: Float, w: Float, h: Float) -> Unit,
@@ -117,7 +138,7 @@ fun PhoneScreen(
     BoxWithConstraints(modifier.fillMaxSize()) {
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
-        val layout = remember(w, h, state, landscape, keypadVisible) { layoutPhone(w, h, dp, state, landscape, keypadVisible) }
+        val layout = remember(w, h, state, landscape, keypadVisible, gameAspect) { layoutPhone(w, h, dp, state, landscape, keypadVisible, gameAspect) }
 
         LaunchedEffect(layout.game, w, h) {
             if (w > 0f && h > 0f) onViewport(layout.game.left / w, layout.game.top / h, layout.game.width / w, layout.game.height / h)
@@ -133,13 +154,15 @@ fun PhoneScreen(
             )
         }
 
-        SmallButton("☰", layout.menuAt, active = false, onClick = onMenu)
-        SmallButton("▶▶", layout.speedAt, active = fastForward, onClick = onFastForward)
+        SmallButton(layout.menuAt, active = false, onClick = onMenu) { c -> drawMenuGlyph(c) }
+        SmallButton(layout.speedAt, active = fastForward, onClick = onFastForward) { c -> drawFastForwardGlyph(c) }
     }
 }
 
+/** Drawn glyphs: text arrows and ☰ render as colour emoji on many phones. */
 @Composable
-private fun SmallButton(text: String, at: Offset, active: Boolean, onClick: () -> Unit) {
+private fun SmallButton(at: Offset, active: Boolean, onClick: () -> Unit, glyph: androidx.compose.ui.graphics.drawscope.DrawScope.(Color) -> Unit) {
+    val ink = if (active) Color(0xFF111111) else Color(0xFFE6E6E6)
     Box(
         Modifier
             .offset { IntOffset(at.x.roundToInt(), at.y.roundToInt()) }
@@ -149,6 +172,27 @@ private fun SmallButton(text: String, at: Offset, active: Boolean, onClick: () -
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = if (active) Color(0xFF111111) else Color(0xFFE6E6E6), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        androidx.compose.foundation.Canvas(Modifier.size(18.dp, 14.dp)) { glyph(ink) }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMenuGlyph(c: Color) {
+    val t = size.height * 0.14f
+    for (i in 0..2) {
+        val y = size.height * (0.15f + i * 0.35f)
+        drawRect(c, Offset(0f, y), androidx.compose.ui.geometry.Size(size.width, t))
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawFastForwardGlyph(c: Color) {
+    val w = size.width / 2f
+    for (i in 0..1) {
+        val x0 = i * w
+        drawPath(
+            androidx.compose.ui.graphics.Path().apply {
+                moveTo(x0, 0f); lineTo(x0 + w, size.height / 2f); lineTo(x0, size.height); close()
+            },
+            c,
+        )
     }
 }

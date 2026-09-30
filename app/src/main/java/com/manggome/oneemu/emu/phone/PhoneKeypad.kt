@@ -248,6 +248,22 @@ private fun DrawScope.drawKey(k: PlacedKey, design: WipiPrefs.Design, down: Bool
         else -> KeyColors.label
     }
     val base = minOf(r.height, r.width)
+    if (key.isArrow) {
+        // A drawn triangle: the text arrows render as colour emoji on many phones.
+        val t = base * 0.2f
+        val c = r.center
+        val path = androidx.compose.ui.graphics.Path().apply {
+            when (key) {
+                PhoneKey.UP -> { moveTo(c.x, c.y - t); lineTo(c.x + t, c.y + t * 0.7f); lineTo(c.x - t, c.y + t * 0.7f) }
+                PhoneKey.DOWN -> { moveTo(c.x, c.y + t); lineTo(c.x + t, c.y - t * 0.7f); lineTo(c.x - t, c.y - t * 0.7f) }
+                PhoneKey.LEFT -> { moveTo(c.x - t, c.y); lineTo(c.x + t * 0.7f, c.y - t); lineTo(c.x + t * 0.7f, c.y + t) }
+                else -> { moveTo(c.x + t, c.y); lineTo(c.x - t * 0.7f, c.y - t); lineTo(c.x - t * 0.7f, c.y + t) }
+            }
+            close()
+        }
+        drawPath(path, color)
+        return
+    }
     if (key.sub.isNotEmpty()) {
         val main = measurer.measure(key.label, TextStyle(color = color, fontSize = (base * 0.40f / density).sp, fontWeight = FontWeight.Bold))
         val sub = measurer.measure(key.sub, TextStyle(color = KeyColors.sub, fontSize = (base * 0.20f / density).sp))

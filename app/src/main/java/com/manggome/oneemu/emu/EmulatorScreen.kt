@@ -168,6 +168,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     landscape = config.landscape,
                     keypadVisible = wipiState.showKeypad && !hidePad,
                     fastForward = ui.fastForward,
+                    gameAspect = if (geometry.height > 0) geometry.width.toFloat() / geometry.height else 0.75f,
                     onBits = { bits -> host.onPadInput(com.manggome.oneemu.emu.pad.PadInput(phone = bits)) },
                     onTick = { if (vibration) host.haptics.tick(vibrationMs) },
                     onViewport = { x, y, w, h -> NativeBridge.setViewport(x, y, w, h) },

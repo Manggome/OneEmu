@@ -138,7 +138,11 @@ public:
     void videoRefresh(const void* data, unsigned w, unsigned h, size_t pitch);
     void audioSample(int16_t l, int16_t r);
     size_t audioSampleBatch(const int16_t* data, size_t frames);
-    void inputPoll() {}
+    /** Frame boundary for the phone keypad latch: taps shorter than a frame still reach the core once. */
+    void inputPoll() {
+        phoneFrame_.store(phonePending_.exchange(0, std::memory_order_relaxed) | phoneKeys_.load(std::memory_order_relaxed),
+                          std::memory_order_relaxed);
+    }
     uintptr_t hwFramebufferForCore();
     bool rumble(unsigned port, unsigned strength);
     int16_t inputState(unsigned port, unsigned device, unsigned index, unsigned id);
@@ -271,6 +275,8 @@ private:
     std::atomic<int16_t> pointerX_{0}, pointerY_{0};
     std::atomic<bool> pointerPressed_{false};
     std::atomic<uint32_t> phoneKeys_{0};
+    std::atomic<uint32_t> phonePending_{0}; // pressed since the last poll
+    std::atomic<uint32_t> phoneFrame_{0};   // what the core sees this frame
     std::atomic<bool> accelAvailable_{false}, gyroAvailable_{false};
     std::atomic<bool> accelOn_{false}, gyroOn_{false};
     std::atomic<float> accel_[3]{0.f, 0.f, 0.f}, gyro_[3]{0.f, 0.f, 0.f};
