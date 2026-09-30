@@ -35,7 +35,10 @@ fun GameGridItem(
     modifier: Modifier = Modifier,
     columns: Int = 3,
     selected: Boolean = false,
+    /** 그리드 · 작게: a square cover and a one-line title instead of the 3:4 card. */
+    square: Boolean = false,
 ) {
+    val ratio = if (square) 1f else 3f / 4f
     val system = SystemId.fromId(game.system)
     val initialsSize = when {
         columns <= 2 -> 34.sp
@@ -47,10 +50,10 @@ fun GameGridItem(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(ratio)) {
             GameThumbnail(
                 game,
-                Modifier.fillMaxWidth().aspectRatio(3f / 4f),
+                Modifier.fillMaxWidth().aspectRatio(ratio),
                 shape = RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp),
                 titleSize = initialsSize,
                 badgeSize = 20.dp,
@@ -62,11 +65,11 @@ fun GameGridItem(
                 ArcadeStatusDot(rememberArcadeResolution(game), Modifier.align(Alignment.BottomEnd).padding(6.dp), size = 12.dp)
             }
         }
-        Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp).height(if (columns >= 4) 34.dp else 38.dp)) {
+        Column(Modifier.padding(horizontal = if (square) 6.dp else 8.dp, vertical = if (square) 4.dp else 6.dp).height(if (square) 18.dp else if (columns >= 4) 34.dp else 38.dp)) {
             Text(
                 game.title,
                 style = if (columns >= 4) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
+                maxLines = if (square) 1 else 2,
                 overflow = TextOverflow.Ellipsis,
                 lineHeight = if (columns >= 4) 15.sp else 17.sp,
             )
