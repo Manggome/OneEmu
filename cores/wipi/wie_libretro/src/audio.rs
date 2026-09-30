@@ -269,13 +269,8 @@ impl Mixer {
                         render_synth(pb.synth.as_mut(), &mut self.tmp_l, &mut self.tmp_r, &mut self.left, &mut self.right, offset, until, midi_gain);
                         offset = until;
                     }
+                    // `until` reaches the end of the run once no event is left inside it.
                     if offset >= n {
-                        break;
-                    }
-                    if pb.next_event >= pb.sequence.events.len() {
-                        // Nothing left to dispatch: finish the run.
-                        render_synth(pb.synth.as_mut(), &mut self.tmp_l, &mut self.tmp_r, &mut self.left, &mut self.right, offset, n, midi_gain);
-                        offset = n;
                         break;
                     }
                 }
