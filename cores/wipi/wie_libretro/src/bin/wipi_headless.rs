@@ -48,6 +48,24 @@ fn write_ppm(path: &PathBuf, pixels: &[u32], w: u32, h: u32) -> std::io::Result<
 }
 
 fn main() -> anyhow::Result<()> {
+    // Same 16 MiB stack the libretro core's worker gets; wie's runtime recurses deeply.
+    std::thread::Builder::new()
+        .name("wie-headless".into())
+        .stack_size(16 << 20)
+        .spawn(run)?
+        .join()
+        .map_err(|_| anyhow::anyhow!("emulator thread panicked"))?
+}
+
+fn run() -> anyhow::Result<()> {
+    // wie's own warnings (unimplemented APIs etc.) to stderr; WIPI_LOG=info|debug for more.
+    let level = match std::env::var("WIPI_LOG").as_deref() {
+        Ok("debug") => tracing::Level::DEBUG,
+        Ok("info") => tracing::Level::INFO,
+        _ => tracing::Level::WARN,
+    };
+    let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).without_time().with_max_level(level).try_init();
+
     let mut args = std::env::args().skip(1);
     let mut game = None;
     let mut frames = 1800u64;
