@@ -95,6 +95,16 @@ fn text_field(data: &[u8], key: &str) -> Option<String> {
 pub fn normalize(files: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Vec<u8>> {
     let mut files = strip_common_folder(files);
 
+    // The jar inside may carry the same broken Unicode path fields as the outer zip.
+    for data in files.iter_mut().filter(|(k, _)| lower(k).ends_with(".jar")).map(|(_, v)| v) {
+        if extract_zip(data).is_err() {
+            let mut copy = data.clone();
+            if neutralize_unicode_path_fields(&mut copy) && extract_zip(&copy).is_ok() {
+                *data = copy;
+            }
+        }
+    }
+
     // KTF resources live under "P/" and wie strips exactly that prefix; some dumps (이노티아 연대기2) use "p/".
     if files.contains_key("__adf__") || files.keys().any(|k| !k.contains('/') && lower(k).ends_with(".adf")) {
         let lower_p: Vec<String> = files.keys().filter(|k| k.starts_with("p/")).cloned().collect();
@@ -137,6 +147,76 @@ pub fn normalize(files: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Vec<u8>> 
     }
 
     files
+}
+
+/// Renames every Info-ZIP Unicode Path extra field (0x7075) in the central directory and local headers to an
+/// id nobody reads. Some re-packed dumps carry one whose CRC doesn't match the plain name (메이플스토리 해적편),
+/// and the zip crate rejects the whole archive for it; the plain file name is what WIPI uses anyway.
+fn neutralize_unicode_path_fields(data: &mut [u8]) -> bool {
+    fn u16_at(d: &[u8], o: usize) -> Option<usize> {
+        d.get(o..o + 2).map(|b| u16::from_le_bytes([b[0], b[1]]) as usize)
+    }
+    fn u32_at(d: &[u8], o: usize) -> Option<usize> {
+        d.get(o..o + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+    }
+    fn patch_extra(d: &mut [u8], mut at: usize, len: usize) -> bool {
+        let end = at + len;
+        let mut changed = false;
+        while at + 4 <= end && at + 4 <= d.len() {
+            let (Some(id), Some(size)) = (u16_at(d, at), u16_at(d, at + 2)) else { break };
+            if id == 0x7075 {
+                d[at] = 0xff;
+                d[at + 1] = 0xff;
+                changed = true;
+            }
+            at += 4 + size;
+        }
+        changed
+    }
+
+    // End of central directory: last "PK\x05\x06" (a trailing comment can follow it).
+    let Some(eocd) = (0..data.len().saturating_sub(21)).rev().find(|&i| data[i..].starts_with(b"PK\x05\x06")) else {
+        return false;
+    };
+    let (Some(count), Some(mut at)) = (u16_at(data, eocd + 10), u32_at(data, eocd + 16)) else {
+        return false;
+    };
+    let mut changed = false;
+    for _ in 0..count {
+        if !data.get(at..).is_some_and(|d| d.starts_with(b"PK\x01\x02")) {
+            break;
+        }
+        let (Some(name_len), Some(extra_len), Some(comment_len), Some(local)) =
+            (u16_at(data, at + 28), u16_at(data, at + 30), u16_at(data, at + 32), u32_at(data, at + 42))
+        else {
+            break;
+        };
+        changed |= patch_extra(data, at + 46 + name_len, extra_len);
+        if data.get(local..).is_some_and(|d| d.starts_with(b"PK\x03\x04"))
+            && let (Some(lname), Some(lextra)) = (u16_at(data, local + 26), u16_at(data, local + 28))
+        {
+            changed |= patch_extra(data, local + 30 + lname, lextra);
+        }
+        at += 46 + name_len + extra_len + comment_len;
+    }
+    changed
+}
+
+/// wie's zip reader, retried once without Unicode Path extra fields when it rejects the archive.
+fn extract_zip_lenient(data: &[u8]) -> anyhow::Result<BTreeMap<String, Vec<u8>>> {
+    match extract_zip(data) {
+        Ok(files) => Ok(files),
+        Err(first) => {
+            let mut copy = data.to_vec();
+            if neutralize_unicode_path_fields(&mut copy)
+                && let Ok(files) = extract_zip(&copy)
+            {
+                tracing::info!("zip: ignored broken Unicode path fields");
+                return Ok(files);
+            }
+            Err(anyhow::anyhow!("not a zip archive: {first}"))
+        }
+    }
 }
 
 fn detect_archive(files: &BTreeMap<String, Vec<u8>>) -> Option<Carrier> {
@@ -185,7 +265,7 @@ pub fn open(path: &Path, forced: Option<Carrier>) -> anyhow::Result<Game> {
         }
         "jar" => Ok(from_jar(file_name(&path_str).to_string(), data, forced)),
         _ => {
-            let files = normalize(extract_zip(&data).map_err(|e| anyhow::anyhow!("not a zip archive: {e}"))?);
+            let files = normalize(extract_zip_lenient(&data)?);
             if let Some(carrier) = forced.filter(|c| *c != Carrier::J2me).or_else(|| detect_archive(&files)) {
                 let (title, id) = match carrier {
                     Carrier::Ktf => (KtfEmulator::archive_title(&files), KtfEmulator::archive_id(&files)),

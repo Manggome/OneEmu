@@ -52,7 +52,9 @@ if [[ ! -d "$SRC_DIR/.git" ]]; then
 	log "cloning $SRC_REPO"
 	rm -rf "$SRC_DIR"
 	mkdir -p "$(dirname "$SRC_DIR")"
-	git clone "$SRC_REPO" "$SRC_DIR"
+	# No CRLF conversion: patches/ are LF and must apply on Windows checkouts too.
+	git -c core.autocrlf=false clone "$SRC_REPO" "$SRC_DIR"
+	git -C "$SRC_DIR" config core.autocrlf false
 fi
 if [[ "$(git -C "$SRC_DIR" rev-parse HEAD)" != "$SRC_COMMIT" ]]; then
 	git -C "$SRC_DIR" cat-file -e "$SRC_COMMIT^{commit}" 2>/dev/null || git -C "$SRC_DIR" fetch --all --tags
@@ -78,8 +80,9 @@ awk '{ print } /^members = \[/ { print "    \"wie-libretro\"," }' "$SRC_DIR/Carg
 mv "$SRC_DIR/Cargo.toml.new" "$SRC_DIR/Cargo.toml"
 grep -q '"wie-libretro"' "$SRC_DIR/Cargo.toml" || die "could not add wie-libretro to the workspace"
 
-# Cargo output lives outside the clone so a fresh clone keeps the incremental build.
-TARGET_DIR="$BUILD_DIR/target"
+# Cargo output lives outside the clone so a fresh clone keeps the incremental build. Override with
+# CARGO_TARGET_DIR when the project path has non-ASCII characters (MinGW's ld can't write there).
+TARGET_DIR="${CARGO_TARGET_DIR:-$BUILD_DIR/target}"
 export CARGO_TARGET_DIR="$TARGET_DIR"
 if (( CLEAN )); then
 	log "cleaning $BUILD_DIR"
