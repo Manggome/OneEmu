@@ -356,7 +356,8 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     private fun resolveRomPath(): String? {
         val f = File(game.path)
         if (!f.exists()) return null
-        if (!f.extension.equals("zip", true) || !core.needFullPath || system == SystemId.ARCADE) return f.absolutePath
+        // Arcade sets and feature-phone packages (descriptor + jar + resources) are the zip itself.
+        if (!f.extension.equals("zip", true) || !core.needFullPath || system == SystemId.ARCADE || system == SystemId.WIPI) return f.absolutePath
         return runCatching {
             ZipFile(f).use { zip ->
                 val wanted = system.extensions
@@ -405,6 +406,9 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     fun setInput(buttons: Int, lx: Int = 0, ly: Int = 0, rx: Int = 0, ry: Int = 0, port: Int = 0) =
         NativeBridge.setInput(port, buttons, lx, ly, rx, ry)
 
+    /** Feature-phone keypad bits ([com.manggome.oneemu.emu.pad.PhoneKeys]); only the WIPI core reads them. */
+    fun setPhoneKeys(bits: Int) = NativeBridge.setPhoneKeys(bits)
+
     /** [x],[y] normalized 0..1 over the core's framebuffer (for NDS the whole 2-screen image). */
     fun setPointer(x: Float, y: Float, pressed: Boolean) {
         val px = ((x.coerceIn(0f, 1f) * 2f - 1f) * 0x7fff).toInt()
@@ -427,6 +431,8 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     fun stateThumbPath(slot: Int): File = dirs.stateThumbPath(system.id, romBaseName, slot)
 
     suspend fun saveState(slot: Int): Boolean = withContext(Dispatchers.IO) {
+        // Feature phones (WIPI): the core can't snapshot; games save in-game to files instead.
+        if (!system.supportsStates) return@withContext false
         val ok = NativeBridge.saveState(statePath(slot).absolutePath)
         if (ok) screenshotBitmap()?.let { bmp ->
             val small = Bitmap.createScaledBitmap(bmp, 320, (320f * bmp.height / bmp.width).toInt().coerceAtLeast(1), true)
@@ -436,6 +442,7 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
     }
 
     suspend fun loadState(slot: Int): Boolean = withContext(Dispatchers.IO) {
+        if (!system.supportsStates) return@withContext false
         val f = statePath(slot)
         f.exists() && NativeBridge.loadState(f.absolutePath)
     }

@@ -29,8 +29,11 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.hypot
 
-/** Live values the overlay reports; the emulator screen merges them with the physical gamepad. */
-data class PadInput(val mask: Int = 0, val lx: Int = 0, val ly: Int = 0, val rx: Int = 0, val ry: Int = 0)
+/**
+ * Live values the overlay reports; the emulator screen merges them with the physical gamepad.
+ * [phone] carries the feature-phone keypad ([PhoneKeys]) bits, which don't fit the RetroPad mask.
+ */
+data class PadInput(val mask: Int = 0, val lx: Int = 0, val ly: Int = 0, val rx: Int = 0, val ry: Int = 0, val phone: Int = 0)
 
 /**
  * The on-screen controller. Handles every pointer itself so multi-touch and finger slides between
@@ -99,12 +102,13 @@ fun VirtualPad(
 
                 fun recompute() {
                     var mask = 0
+                    var phone = 0
                     val els = HashSet<PadElementId>()
                     var l = Offset.Zero
                     var r = Offset.Zero
                     for (t in trackers.values) when (t) {
                         is Tracker.Dpad -> mask = mask or t.mask
-                        is Tracker.Btn -> { mask = mask or t.mask; els += t.elements }
+                        is Tracker.Btn -> { mask = mask or t.mask; phone = phone or t.phone; els += t.elements }
                         is Tracker.Stick -> {
                             els += t.id
                             if (t.id == PadElementId.LEFT_STICK) l = t.value else r = t.value
@@ -116,7 +120,7 @@ fun VirtualPad(
                     pressedElements = els
                     leftStick = l
                     rightStick = r
-                    val input = PadInput(mask, (l.x * 32767).toInt(), (l.y * 32767).toInt(), (r.x * 32767).toInt(), (r.y * 32767).toInt())
+                    val input = PadInput(mask, (l.x * 32767).toInt(), (l.y * 32767).toInt(), (r.x * 32767).toInt(), (r.y * 32767).toInt(), phone)
                     if (input != lastInput) {
                         lastInput = input
                         onInputState.value(input)
@@ -252,15 +256,17 @@ private sealed class Tracker {
     /** A finger on face buttons; may slide between them. */
     class Btn : Tracker() {
         var mask = 0
+        var phone = 0
         var elements: Set<PadElementId> = emptySet()
         fun update(p: Offset, hit: Placed?) {
-            if (hit == null) { mask = 0; elements = emptySet(); return }
+            if (hit == null) { mask = 0; phone = 0; elements = emptySet(); return }
             if (hit.element.id.kind == PadElementId.Kind.CLUSTER) {
                 elements = clusterHit(p, hit.rect)
             } else {
                 elements = setOf(hit.element.id)
             }
             mask = elements.fold(0) { acc, e -> acc or e.mask }
+            phone = elements.fold(0) { acc, e -> acc or e.phone }
         }
     }
 

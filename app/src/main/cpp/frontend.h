@@ -97,6 +97,8 @@ public:
     void queueMacro(const std::vector<uint32_t>& masks, const std::vector<int>& frames);
     void clearMacro();
     void setPointer(int16_t x, int16_t y, bool pressed);
+    /** Feature-phone keypad (WIPI): bit i = kPhoneKeys[i], reported to the core as RETRO_DEVICE_KEYBOARD keys. */
+    void setPhoneKeys(uint32_t bits);
     /**
      * Motion sensors for RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE. The app says which ones the phone has
      * before a core loads, then streams readings already in libretro units (g, rad/s) and already turned
@@ -268,6 +270,7 @@ private:
     uint32_t turboPrev_[4]{};
     std::atomic<int16_t> pointerX_{0}, pointerY_{0};
     std::atomic<bool> pointerPressed_{false};
+    std::atomic<uint32_t> phoneKeys_{0};
     std::atomic<bool> accelAvailable_{false}, gyroAvailable_{false};
     std::atomic<bool> accelOn_{false}, gyroOn_{false};
     std::atomic<float> accel_[3]{0.f, 0.f, 0.f}, gyro_[3]{0.f, 0.f, 0.f};

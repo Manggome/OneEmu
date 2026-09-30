@@ -218,6 +218,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     fastForwardLabel = ffLabel,
                     turboLabel = turboLabel,
                     showGyroCenter = host.gyroAiming,
+                    showStates = session.system.supportsStates,
                     onDismiss = { ui.menuOpen = false },
                     onAction = { action ->
                         ui.menuOpen = false

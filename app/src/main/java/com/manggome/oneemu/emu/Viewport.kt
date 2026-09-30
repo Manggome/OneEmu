@@ -75,6 +75,8 @@ object ViewportStore {
         SystemId.MD, SystemId.SMS -> 4f / 3f
         SystemId.GG -> 10f / 9f
         SystemId.JAZZ2 -> 16f / 9f
+        // Most WIPI games are 240x320 portrait; others report their size through SET_GEOMETRY.
+        SystemId.WIPI -> 240f / 320f
         SystemId.NES -> 4f / 3f
         SystemId.GB, SystemId.GBC -> 160f / 144f
         SystemId.GBA -> 3f / 2f
@@ -99,7 +101,10 @@ object ViewportStore {
             return ViewportRect(0f, 0f, 1f, h.coerceIn(ViewportRect.MIN_SIZE, 1f))
         }
         if (config.landscape) return ViewportRect.FULL
-        val h = (screen.width / nominalAspect(system)) / screen.height
+        var h = (screen.width / nominalAspect(system)) / screen.height
+        // A portrait phone picture at full width would run into the keypad (it starts at ~0.6) on shorter
+        // screens; keep it above and let the image narrow instead.
+        if (system == SystemId.WIPI) h = h.coerceAtMost(0.58f)
         return ViewportRect(0f, 0f, 1f, h.coerceIn(ViewportRect.MIN_SIZE, 1f))
     }
 

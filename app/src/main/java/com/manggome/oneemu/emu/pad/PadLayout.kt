@@ -14,8 +14,9 @@ import kotlinx.serialization.json.Json
 /**
  * Every control the virtual pad can show. Buttons carry the libretro mask they press; the arcade
  * buttons follow MAME 2003-Plus' RetroPad wiring (1→B, 2→A, 3→Y, 4→X, 5→L, 6→R, COIN→SELECT).
+ * The feature-phone keys (WIPI) press [phone] bits instead, sent with NativeBridge.setPhoneKeys.
  */
-enum class PadElementId(val mask: Int, val kind: Kind) {
+enum class PadElementId(val mask: Int, val kind: Kind, val phone: Int = 0) {
     DPAD(0, Kind.DPAD),
     BUTTON_A(Buttons.A, Kind.ROUND),
     BUTTON_B(Buttons.B, Kind.ROUND),
@@ -50,7 +51,33 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
     QUICK_SAVE(0, Kind.SMALL),
     QUICK_LOAD(0, Kind.SMALL),
     /** Held: the game runs backwards (light systems only, see Rewind). */
-    REWIND(0, Kind.SMALL);
+    REWIND(0, Kind.SMALL),
+
+    // Feature-phone keypad (WIPI). Only offered on that system (see isPhoneKey).
+    PHONE_1(0, Kind.PILL, PhoneKeys.D1),
+    PHONE_2(0, Kind.PILL, PhoneKeys.D2),
+    PHONE_3(0, Kind.PILL, PhoneKeys.D3),
+    PHONE_4(0, Kind.PILL, PhoneKeys.D4),
+    PHONE_5(0, Kind.PILL, PhoneKeys.D5),
+    PHONE_6(0, Kind.PILL, PhoneKeys.D6),
+    PHONE_7(0, Kind.PILL, PhoneKeys.D7),
+    PHONE_8(0, Kind.PILL, PhoneKeys.D8),
+    PHONE_9(0, Kind.PILL, PhoneKeys.D9),
+    PHONE_STAR(0, Kind.PILL, PhoneKeys.STAR),
+    PHONE_0(0, Kind.PILL, PhoneKeys.D0),
+    PHONE_HASH(0, Kind.PILL, PhoneKeys.HASH),
+    PHONE_LSK(0, Kind.PILL, PhoneKeys.LSK),
+    PHONE_RSK(0, Kind.PILL, PhoneKeys.RSK),
+    PHONE_OK(0, Kind.PILL, PhoneKeys.OK),
+    PHONE_CLR(0, Kind.PILL, PhoneKeys.CLR),
+    PHONE_CALL(0, Kind.PILL, PhoneKeys.CALL),
+    PHONE_END(0, Kind.PILL, PhoneKeys.END);
+
+    /** A feature-phone keypad key: offered only on WIPI. */
+    val isPhoneKey: Boolean get() = phone != 0
+
+    /** The 3x4 number grid (bigger, rounder keys than the soft/function keys). */
+    val isPhoneDigit: Boolean get() = phone and PhoneKeys.GRID != 0
 
     enum class Kind { DPAD, ROUND, CLUSTER, PILL, STICK, SMALL }
 
@@ -63,7 +90,7 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             Kind.DPAD -> 150f
             Kind.ROUND -> 62f
             Kind.CLUSTER -> 170f
-            Kind.PILL -> if (this == L || this == R || this == L2 || this == R2 || this == L3 || this == R3) 84f else 72f
+            Kind.PILL -> if (isPhoneDigit) 62f else if (this == L || this == R || this == L2 || this == R2 || this == L3 || this == R3) 84f else 72f
             Kind.STICK -> 120f
             // The state buttons carry a word rather than a glyph, so they need the room for it.
             Kind.SMALL -> when (this) {
@@ -74,7 +101,7 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
         }
     val baseHeightDp: Float
         get() = when (kind) {
-            Kind.PILL -> 34f
+            Kind.PILL -> if (isPhoneDigit) 42f else 34f
             Kind.SMALL -> 32f
             else -> baseWidthDp
         }
@@ -117,6 +144,24 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             ARCADE_4 -> "4"
             ARCADE_5 -> "5"
             ARCADE_6 -> "6"
+            PHONE_1 -> "1"
+            PHONE_2 -> "2"
+            PHONE_3 -> "3"
+            PHONE_4 -> "4"
+            PHONE_5 -> "5"
+            PHONE_6 -> "6"
+            PHONE_7 -> "7"
+            PHONE_8 -> "8"
+            PHONE_9 -> "9"
+            PHONE_STAR -> "*"
+            PHONE_0 -> "0"
+            PHONE_HASH -> "#"
+            PHONE_LSK -> "좌소프트"
+            PHONE_RSK -> "우소프트"
+            PHONE_OK -> "확인"
+            PHONE_CLR -> "취소"
+            PHONE_CALL -> "통화"
+            PHONE_END -> "종료"
             DPAD, ABXY_CLUSTER, LEFT_STICK, RIGHT_STICK -> ""
         }
     }
@@ -191,6 +236,15 @@ enum class PadElementId(val mask: Int, val kind: Kind) {
             ARCADE_4 -> "버튼 4"
             ARCADE_5 -> "버튼 5"
             ARCADE_6 -> "버튼 6"
+            PHONE_1, PHONE_2, PHONE_3, PHONE_4, PHONE_5, PHONE_6, PHONE_7, PHONE_8, PHONE_9, PHONE_0 -> "키패드 ${label(SystemId.WIPI)}"
+            PHONE_STAR -> "키패드 *"
+            PHONE_HASH -> "키패드 #"
+            PHONE_LSK -> "왼쪽 소프트키"
+            PHONE_RSK -> "오른쪽 소프트키"
+            PHONE_OK -> "확인 (가운데 버튼)"
+            PHONE_CLR -> "취소 (CLR)"
+            PHONE_CALL -> "통화 버튼"
+            PHONE_END -> "종료 버튼 (게임이 꺼질 수 있음)"
         }
 }
 
