@@ -819,10 +819,11 @@ uint32_t Frontend::turbo(unsigned port, uint32_t buttons) const {
 }
 
 // Feature-phone keypad bits (NativeBridge.setPhoneKeys) as the keyboard keys the WIPI core reads:
-// 0-9, *, #, left/right soft key (F1/F2), CLR (Backspace), OK (Enter), call/end (F3/F4).
+// 0-9, *, #, left/right soft key (F1/F2), CLR (Backspace), OK (Enter), call/end (F3/F4), then the four arrows.
 static const unsigned kPhoneKeys[] = {
     RETROK_0, RETROK_1, RETROK_2, RETROK_3, RETROK_4, RETROK_5, RETROK_6, RETROK_7, RETROK_8, RETROK_9,
     RETROK_ASTERISK, RETROK_HASH, RETROK_F1, RETROK_F2, RETROK_BACKSPACE, RETROK_RETURN, RETROK_F3, RETROK_F4,
+    RETROK_UP, RETROK_DOWN, RETROK_LEFT, RETROK_RIGHT,
 };
 
 int16_t Frontend::inputState(unsigned port, unsigned device, unsigned index, unsigned id) {

@@ -28,4 +28,46 @@
     <string name="wipi_info_hash">파일 SHA-256</string>
     <string name="wipi_method_auto">자동 테스트 (화면이 멈추지 않고 그려지는지)</string>
     <string name="wipi_method_manual">실기기에서 직접 확인</string>
+    <!-- 피처폰 화면·키패드 설정 (게임 중 메뉴) -->
+    <string name="wipi_settings_title">화면 · 키패드</string>
+    <string name="wipi_settings_portrait">세로로 들었을 때</string>
+    <string name="wipi_settings_landscape">가로로 들었을 때</string>
+    <string name="wipi_arr_phone">피처폰</string>
+    <string name="wipi_arr_two_hand">양손</string>
+    <string name="wipi_arr_overlay">투명 오버레이</string>
+    <string name="wipi_settings_design">키패드 디자인</string>
+    <string name="wipi_design_classic">클래식 · 블랙</string>
+    <string name="wipi_design_flat">심플 · 플랫</string>
+    <string name="wipi_settings_fold">십자키 접기 (기능키 한 줄)</string>
+    <string name="wipi_settings_keypad_size">키패드 크기 · %1$d%%</string>
+    <string name="wipi_settings_screen_size">게임 화면 크기 · %1$d%%</string>
+    <string name="wipi_settings_opacity">오버레이 불투명도 · %1$d%%</string>
+    <string name="wipi_settings_show_keypad">화면 키패드 표시</string>
+    <string name="wipi_settings_show_keypad_desc">끄면 게임패드·키보드로만 조작합니다.</string>
+    <string name="wipi_settings_mapping">게임패드 키매핑</string>
+    <string name="wipi_menu_keypad">화면 · 키패드 설정</string>
+
+    <!-- 게임패드 키매핑 -->
+    <string name="wipi_map_title">게임패드 키매핑</string>
+    <string name="wipi_map_connected">연결된 게임패드: %1$s</string>
+    <string name="wipi_map_none">연결된 게임패드 없음</string>
+    <string name="wipi_map_style_retro">레트로</string>
+    <string name="wipi_map_style_xbox">Xbox</string>
+    <string name="wipi_map_style_ps">PlayStation</string>
+    <string name="wipi_map_hint">패드 버튼을 누르면 해당 버튼이 켜집니다 · 버튼을 눌러 피처폰 키를 지정</string>
+    <string name="wipi_map_per_game">이 게임만 따로 설정</string>
+    <string name="wipi_map_reset">기본값으로</string>
+    <string name="wipi_map_unassigned">미지정</string>
+    <string name="wipi_map_pick">%1$s 버튼에 줄 키</string>
+    <string name="wipi_map_apply">적용</string>
+
+    <!-- 저장 백업 -->
+    <string name="wipi_save_export">저장 파일 내보내기</string>
+    <string name="wipi_save_import">저장 파일 가져오기</string>
+    <string name="wipi_save_exported">저장 파일을 내보냈습니다: %1$s</string>
+    <string name="wipi_save_none">아직 저장된 진행이 없습니다. 게임 안에서 저장한 뒤 내보내세요.</string>
+    <string name="wipi_save_imported">저장 파일을 가져왔습니다. 게임을 실행하면 이어서 할 수 있습니다.</string>
+    <string name="wipi_save_import_failed">가져오지 못했습니다: %1$s</string>
+    <string name="wipi_save_import_confirm">이 게임의 현재 저장을 가져온 파일로 바꿉니다. 계속할까요?</string>
+    <string name="wipi_save_hint">피처폰 게임은 게임 안의 저장 메뉴로 저장합니다. 저장은 자동으로 보관되고, 여기서 백업하고 되돌릴 수 있습니다.</string>
 </resources>

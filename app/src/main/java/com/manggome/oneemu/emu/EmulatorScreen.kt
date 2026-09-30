@@ -67,7 +67,7 @@ import com.manggome.oneemu.ui.theme.OneEmuColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class Sheet { NONE, SAVE, LOAD, CHEATS, SETTINGS }
+private enum class Sheet { NONE, SAVE, LOAD, CHEATS, SETTINGS, WIPI_KEYPAD }
 
 /**
  * Core OSD lines we never show. melonDS DS prints "Layout 1/2" (its `melonds_show_current_layout` option)
@@ -147,15 +147,34 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
             val viewport = savedViewport ?: ViewportStore.default(session.system, config, Size(surfaceSize.width.toFloat(), surfaceSize.height.toFloat()))
             // Applied on session start and whenever it changes; re-applied after the editor closes because the
             // editor previews its unsaved rectangle live on the paused frame.
+            // Feature phones draw their own handset screen (PhoneScreen), which places the picture itself.
+            val isPhone = session.system == com.manggome.oneemu.model.SystemId.WIPI
+            val wipiState by remember { com.manggome.oneemu.emu.phone.WipiPrefs.observe(settings) }
+                .collectAsState(com.manggome.oneemu.emu.phone.WipiPrefs.State())
+            LaunchedEffect(session) {
+                if (isPhone) com.manggome.oneemu.emu.phone.WipiPadMapping.observe(settings, session.game.id).collect { host.wipiMapping = it.first }
+            }
             LaunchedEffect(session, viewport, editorOpen, surfaceSize) {
-                if (!editorOpen && surfaceSize != IntSize.Zero) NativeBridge.setViewport(viewport.x, viewport.y, viewport.w, viewport.h)
+                if (!isPhone && !editorOpen && surfaceSize != IntSize.Zero) NativeBridge.setViewport(viewport.x, viewport.y, viewport.w, viewport.h)
             }
             // Touch on the game image is the DS stylus, and on a Wii Remote it is where the remote points.
             val pointerOnScreen = session.system.hasTouchScreen || padProfile.isWiimote
             val gameRect = if (pointerOnScreen) computeGameRect(surfaceSize, geometry, aspectMode, viewport = viewport) else null
             val hidePad = hideWithGamepad && ui.gamepadConnected
 
-            if (!editorOpen) {
+            if (!editorOpen && isPhone) {
+                com.manggome.oneemu.emu.phone.PhoneScreen(
+                    state = wipiState,
+                    landscape = config.landscape,
+                    keypadVisible = wipiState.showKeypad && !hidePad,
+                    fastForward = ui.fastForward,
+                    onBits = { bits -> host.onPadInput(com.manggome.oneemu.emu.pad.PadInput(phone = bits)) },
+                    onTick = { if (vibration) host.haptics.tick(vibrationMs) },
+                    onViewport = { x, y, w, h -> NativeBridge.setViewport(x, y, w, h) },
+                    onMenu = { ui.menuOpen = true },
+                    onFastForward = { host.setFastForward(!ui.fastForward) },
+                )
+            } else if (!editorOpen) {
                 PadHost(
                     layout = if (hidePad) PadLayout(emptyList()) else layout,
                     profile = padProfile,
@@ -219,6 +238,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     turboLabel = turboLabel,
                     showGyroCenter = host.gyroAiming,
                     showStates = session.system.supportsStates,
+                    phone = isPhone,
                     onDismiss = { ui.menuOpen = false },
                     onAction = { action ->
                         ui.menuOpen = false
@@ -230,7 +250,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                             // A moment after the menu closes, so the phone can be pointed first.
                             MenuAction.GYRO_CENTER -> host.recenterGyro(delayMs = 1500, announce = true)
                             MenuAction.CHEATS -> sheet = Sheet.CHEATS
-                            MenuAction.LAYOUT -> editorOpen = true
+                            MenuAction.LAYOUT -> if (isPhone) sheet = Sheet.WIPI_KEYPAD else editorOpen = true
                             MenuAction.SETTINGS -> sheet = Sheet.SETTINGS
                             MenuAction.SCREENSHOT -> scope.launch {
                                 val file = session.saveScreenshot()
@@ -270,7 +290,13 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                 )
                 Sheet.SETTINGS -> QuickSettingsSheet(
                     session = session,
-                    onEditLayout = { sheet = Sheet.NONE; editorOpen = true },
+                    onEditLayout = { if (isPhone) sheet = Sheet.WIPI_KEYPAD else { sheet = Sheet.NONE; editorOpen = true } },
+                    onDismiss = { sheet = Sheet.NONE },
+                )
+                Sheet.WIPI_KEYPAD -> com.manggome.oneemu.emu.phone.WipiSettingsSheet(
+                    gameId = session.game.id,
+                    padConnected = com.manggome.oneemu.emu.input.GamepadDevices.connected().firstOrNull()?.name,
+                    lastPadMask = { host.lastPadMask },
                     onDismiss = { sheet = Sheet.NONE },
                 )
                 Sheet.NONE -> {}
