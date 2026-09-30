@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        core: [mgba, fceumm, melondsds, ppsspp, mame2003plus, play, azaharplus, pcsx_rearmed, jazz2, genesisplusgx]
+        core: [mgba, fceumm, melondsds, ppsspp, mame2003plus, play, azaharplus, pcsx_rearmed, jazz2, genesisplusgx, wipi]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,7 +52,7 @@ jobs:
           path: |
             app/src/main/jniLibs/arm64-v8a/lib${{ matrix.core }}_libretro.so
             app/src/main/jniLibs/arm64-v8a/libopenal.so
-          key: core-${{ env.CORE_CACHE_SALT }}-${{ runner.os }}-${{ matrix.core }}-${{ hashFiles(format('cores/{0}/build.sh', matrix.core), format('cores/{0}/core.json', matrix.core), format('cores/{0}/patches/**', matrix.core)) }}
+          key: core-${{ env.CORE_CACHE_SALT }}-${{ runner.os }}-${{ matrix.core }}-${{ hashFiles(format('cores/{0}/build.sh', matrix.core), format('cores/{0}/core.json', matrix.core), format('cores/{0}/patches/**', matrix.core), format('cores/{0}/wie_libretro/**', matrix.core)) }}
 
       - name: Install build tools
         if: steps.cache.outputs.cache-hit != 'true'
@@ -186,6 +186,10 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "ndk;${NDK_VERSION}" "cmake;${CMAKE_VERSION}"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      # The WIPI core's General MIDI SoundFont is a core asset too large for git; fetch the pinned file.
+      - name: Fetch WIPI SoundFont
+        run: bash cores/wipi/fetch-soundfont.sh
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
