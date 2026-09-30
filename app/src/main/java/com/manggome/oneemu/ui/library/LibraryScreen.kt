@@ -402,7 +402,7 @@ private fun LibraryTopBar(
                     Icon(
                         when (state.viewMode) {
                             ViewMode.LIST -> Icons.AutoMirrored.Filled.ViewList
-                            ViewMode.GRID -> Icons.Filled.GridView
+                            ViewMode.GRID -> if (state.gridSmall) Icons.Filled.Apps else Icons.Filled.GridView
                             ViewMode.PACK -> Icons.Filled.VideogameAsset
                         },
                         contentDescription = stringResource(R.string.lib_view_mode),
@@ -410,7 +410,12 @@ private fun LibraryTopBar(
                 }
                 DropdownMenu(expanded = viewMenu, onDismissRequest = { viewMenu = false }) {
                     CheckItem(R.string.lib_view_list, state.viewMode == ViewMode.LIST) { vm.setViewMode(ViewMode.LIST); viewMenu = false }
-                    CheckItem(R.string.lib_view_grid, state.viewMode == ViewMode.GRID) { vm.setViewMode(ViewMode.GRID); viewMenu = false }
+                    CheckItem(R.string.lib_view_grid_large, state.viewMode == ViewMode.GRID && !state.gridSmall) {
+                        vm.setViewMode(ViewMode.GRID); vm.setGridSmall(false); viewMenu = false
+                    }
+                    CheckItem(R.string.lib_view_grid_small, state.viewMode == ViewMode.GRID && state.gridSmall) {
+                        vm.setViewMode(ViewMode.GRID); vm.setGridSmall(true); viewMenu = false
+                    }
                     CheckItem(R.string.lib_view_pack, state.viewMode == ViewMode.PACK) { vm.setViewMode(ViewMode.PACK); viewMenu = false }
                 }
             }
@@ -443,7 +448,7 @@ private fun LibraryTopBar(
                     CheckItem(R.string.lib_menu_show_file_name, state.showFileName) { vm.setShowFileName(!state.showFileName) }
                     if (state.viewMode != ViewMode.LIST && !state.showingFolders) {
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.lib_menu_grid_columns, state.gridColumns)) },
+                            text = { Text(stringResource(R.string.lib_menu_grid_columns, state.gridColumnsShown)) },
                             onClick = {
                                 val next = if (state.gridColumns >= LibraryViewModel.MAX_GRID_COLUMNS) LibraryViewModel.MIN_GRID_COLUMNS else state.gridColumns + 1
                                 vm.setGridColumns(next)
@@ -562,7 +567,7 @@ private fun GameGrid(
     pack: Boolean = false,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Fixed(state.gridColumns),
+        columns = GridCells.Fixed(state.gridColumnsShown),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = BottomPadding),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -595,7 +600,8 @@ private fun GameGrid(
                             showSystemChip = !state.groupBySystem || (inFolder && section.favorites),
                             onClick = { onClick(game) },
                             onLongClick = { onLongClick(game) },
-                            columns = state.gridColumns,
+                            columns = state.gridColumnsShown,
+                            square = state.gridSmall && !pack,
                             selected = game.id in selectedIds,
                         )
                     }

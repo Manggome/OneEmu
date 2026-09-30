@@ -69,6 +69,8 @@ data class LibraryUiState(
     val viewMode: ViewMode = ViewMode.LIST,
     val sortMode: SortMode = SortMode.TITLE,
     val gridColumns: Int = 3,
+    /** 그리드 · 작게: square covers, one more to a row than [gridColumns]. */
+    val gridSmall: Boolean = false,
     val groupBySystem: Boolean = true,
     val showFileName: Boolean = true,
     val query: String = "",
@@ -86,6 +88,8 @@ data class LibraryUiState(
     val folderOrder: List<String> = emptyList(),
 ) {
     val isEmpty: Boolean get() = !loading && totalCount == 0
+    /** Columns the game grid actually uses: the 작게 grid fits one more square to a row. */
+    val gridColumnsShown: Int get() = if (gridSmall && viewMode == ViewMode.GRID) gridColumns + 1 else gridColumns
     val filteredCount: Int get() = sections.filter { !it.favorites }.sumOf { it.games.size }
 }
 
@@ -145,6 +149,7 @@ class LibraryViewModel : ViewModel() {
         val showFileName: Boolean,
         val collapsed: Set<String>,
         val folders: Boolean = true,
+        val gridSmall: Boolean = false,
         val folderSort: FolderSort = FolderSort.CUSTOM,
         val folderSize: FolderSize = FolderSize.LARGE,
         val folderOrder: List<String> = emptyList(),
@@ -161,6 +166,7 @@ class LibraryViewModel : ViewModel() {
     }.combine(settings.observe(KEY_COLLAPSED_SECTIONS, "")) { p, collapsed ->
         p.copy(collapsed = collapsed.split(',').filter { it.isNotBlank() }.toSet())
     }.combine(settings.observe(KEY_SYSTEM_FOLDERS, true)) { p, folders -> p.copy(folders = folders) }
+        .combine(settings.observe(KEY_GRID_SMALL, false)) { p, small -> p.copy(gridSmall = small) }
         .combine(
             combine(
                 settings.observe(KEY_FOLDER_SORT, FolderSort.CUSTOM.name),
@@ -236,6 +242,7 @@ class LibraryViewModel : ViewModel() {
             viewMode = p.viewMode,
             sortMode = p.sortMode,
             gridColumns = p.gridColumns,
+            gridSmall = p.gridSmall,
             groupBySystem = p.groupBySystem,
             showFileName = p.showFileName,
             query = q,
@@ -276,6 +283,7 @@ class LibraryViewModel : ViewModel() {
 
     fun setViewMode(mode: ViewMode) = launchIo { settings.set(Settings.Keys.viewMode, mode.name) }
     fun setSortMode(mode: SortMode) = launchIo { settings.set(Settings.Keys.sortMode, mode.name) }
+    fun setGridSmall(small: Boolean) = launchIo { settings.set(KEY_GRID_SMALL, small) }
     fun setGridColumns(cols: Int) = launchIo { settings.set(Settings.Keys.gridColumns, cols.coerceIn(MIN_GRID_COLUMNS, MAX_GRID_COLUMNS)) }
     fun setGroupBySystem(on: Boolean) = launchIo { settings.set(Settings.Keys.groupBySystem, on) }
     fun setShowFileName(on: Boolean) = launchIo { settings.set(Settings.Keys.showFileName, on) }
@@ -676,6 +684,7 @@ class LibraryViewModel : ViewModel() {
         /** 기종별 폴더로 보기: the home screen starts as one folder per system. Library-local key. */
         val KEY_SYSTEM_FOLDERS = booleanPreferencesKey("lib_system_folders")
         val KEY_FOLDER_SORT = stringPreferencesKey("lib_folder_sort")
+        val KEY_GRID_SMALL = booleanPreferencesKey("lib_grid_small")
         val KEY_FOLDER_SIZE = stringPreferencesKey("lib_folder_size")
         /** Comma-separated [LibrarySection.key]s, the 사용자 지정 folder order. */
         val KEY_FOLDER_ORDER = stringPreferencesKey("lib_folder_order")
