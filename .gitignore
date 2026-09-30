@@ -26,3 +26,6 @@ cores/out/
 cores/*/src/
 cores/*/build/
 scripts/__pycache__/
+
+# WIPI core SoundFont (downloaded by cores/wipi/fetch-soundfont.sh)
+cores/wipi/assets/GeneralUser-GS.sf2*

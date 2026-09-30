@@ -1,0 +1,33 @@
+# WIPI 게임별 설정표 (코어에 내장됨)
+#
+# 사용자가 <시스템 폴더>/wipi/quirks.toml 을 만들면 그 파일을 먼저 읽고, 같은 게임이면 사용자 항목이 이긴다.
+# 항목은 aid / pid / id / title 중 하나라도 로드된 게임과 같으면 적용된다 (대소문자 무시).
+# 확인 방법: 게임을 실행하면 로그에 "KTF game "<제목>"" 과 AID/PID 가 찍힌다. wipi_headless 도 출력한다.
+#
+# 필드 (모두 선택):
+#   carrier        = "ktf" | "lgt" | "skt" | "j2me"   통신사 강제
+#   pad_profile    = "standard" | "numpad"            게임패드 배치 (numpad: 방향키 = 2/4/6/8, A = 5)
+#   speed          = 100                               게임 시간 속도 % (타이머가 빠르거나 느린 게임 보정)
+#   cpu_budget_ms  = 12                                프레임당 에뮬레이션 시간 (무거운 게임은 16~24)
+#   fixed_date     = "2010-05-01"                      게임이 보는 날짜 (날짜 API 문제·기간 한정 이벤트)
+#   midi_polyphony = 32                                MIDI 동시 발음 수
+#   midi_volume    = 100                               배경음악 볼륨 %
+#   pcm_volume     = 100                               효과음 볼륨 %
+#   key_repeat_ms  = 100                               키 반복 간격 (0 = 반복 없음)
+#   note           = "메모"
+#
+# 코어 옵션을 "auto" 로 두면 이 표의 값을 쓰고, 옵션을 직접 고르면 그 값이 이긴다.
+#
+# 검증된 값만 넣는다. 1차 목표 14종(cores/wipi/COMPAT.md)은 실제 덤프로 확인한 뒤 aid/pid 와 함께 채운다.
+#
+# 예시:
+# [[game]]
+# name = "미니게임천국2"
+# pid = "PD000000"
+# pad_profile = "numpad"
+# note = "숫자키로 조작"
+
+[[game]]
+name = "wie 샘플 (Hello, world!)"
+pid = "PD000000"
+note = "wie 저장소의 helloworld 테스트 앱. 설정표 로딩 확인용."

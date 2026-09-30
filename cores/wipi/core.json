@@ -1,0 +1,44 @@
+{
+  "id": "wipi",
+  "displayName": "피처폰 WIPI (wie)",
+  "libFile": "libwipi_libretro.so",
+  "distribution": "bundled",
+  "systems": ["wipi"],
+  "extensions": ["zip", "jar", "jad"],
+  "needFullPath": true,
+  "keepLoaded": true,
+  "hwRender": "none",
+  "bios": [
+    {
+      "system": "wipi",
+      "file": "wipi/soundfont.sf2",
+      "required": false,
+      "description": "(선택) 배경음악용 General MIDI 사운드폰트. 넣으면 기본 GeneralUser GS 대신 사용합니다."
+    },
+    {
+      "system": "wipi",
+      "file": "wipi/quirks.toml",
+      "required": false,
+      "description": "(선택) 게임별 설정표. 형식은 wipi/quirks.example.toml 참고."
+    }
+  ],
+  "sourceRepo": "https://github.com/dlunch/wie",
+  "sourceCommit": "25e2fd65b14959d2332bb7ea93d9899b38602d33",
+  "license": "MIT",
+  "assetsInstallDir": "wipi",
+  "defaultOptions": {
+    "wipi_carrier": "auto",
+    "wipi_pad_profile": "auto",
+    "wipi_stick_deadzone": "35",
+    "wipi_key_repeat": "auto",
+    "wipi_speed": "auto",
+    "wipi_cpu_budget": "auto",
+    "wipi_date": "auto",
+    "wipi_midi": "on",
+    "wipi_midi_polyphony": "auto",
+    "wipi_reverb": "off",
+    "wipi_midi_volume": "auto",
+    "wipi_pcm_volume": "auto"
+  },
+  "notes": "dlunch/wie (Rust, MIT) 를 libretro 코어로 감싼 한국 피처폰 게임 에뮬레이터. KTF(WIPI-C/Java, __adf__ + client.bin jar), LGT(app_info + binary.mod), SKT(SK-VM, *.msd), 일반 J2ME(jar/jad) 를 지원한다. 코어 소스는 cores/wipi/wie_libretro (build.sh 가 고정 커밋 wie 워크스페이스에 넣어 빌드).\n\n실행: 게임 zip 을 통째로 넘긴다 (need_fullpath, block_extract - 프론트엔드가 zip 을 풀면 안 됨). wie 의 비동기 JVM/ARM 런타임이 스택을 깊게 쓰므로 코어가 16MB 스택 워커 스레드에서 돌리고 retro_run 과 lockstep 으로 동작한다. 시간은 가상 시계(1 프레임 = 1/60초 게임 시간)라 일시정지/빨리감기 때 타이머가 폭주하지 않는다.\n\n저장: 게임 내 저장만 지원 (<세이브 폴더>/<AID>/fs, db 에 즉시 기록). 세이브 스테이트는 wie 상태가 직렬화 불가능한 Rust future 라 지원하지 않는다 (retro_serialize_size = 0).\n\n입력: RetroPad(D패드/왼쪽 스틱 = 방향, A = 확인, B = 취소, X = 5, Y = 0, L/R = 소프트키, L2 = *, R2 = #, 오른쪽 스틱 = 숫자 1~9 링) + 키보드 장치(숫자, *, #, 방향, Enter, Backspace, F1~F4). 게임별 배치는 wipi_pad_profile / quirks.toml.\n\n소리: SMAF/MMF 를 wie 가 MIDI+PCM 이벤트로 풀고, 코어가 재생 핸들마다 rustysynth 신디사이저(GeneralUser GS 사운드폰트, 코어 에셋)로 합성한다."
+}
