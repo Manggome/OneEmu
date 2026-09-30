@@ -79,6 +79,11 @@ data class LibraryUiState(
     val showingFolders: Boolean = false,
     /** Inside one folder: [sections] is that folder's section only. */
     val openFolder: LibrarySection? = null,
+    /** The tiles' own order and size; the games inside a folder use [sortMode]/[viewMode]. */
+    val folderSort: FolderSort = FolderSort.CUSTOM,
+    val folderSize: FolderSize = FolderSize.LARGE,
+    /** Every system folder in the saved 사용자 지정 order, for the order editor. */
+    val folderOrder: List<String> = emptyList(),
 ) {
     val isEmpty: Boolean get() = !loading && totalCount == 0
     val filteredCount: Int get() = sections.filter { !it.favorites }.sumOf { it.games.size }
@@ -140,6 +145,9 @@ class LibraryViewModel : ViewModel() {
         val showFileName: Boolean,
         val collapsed: Set<String>,
         val folders: Boolean = true,
+        val folderSort: FolderSort = FolderSort.CUSTOM,
+        val folderSize: FolderSize = FolderSize.LARGE,
+        val folderOrder: List<String> = emptyList(),
     )
 
     private val prefs: Flow<Prefs> = combine(
@@ -153,6 +161,19 @@ class LibraryViewModel : ViewModel() {
     }.combine(settings.observe(KEY_COLLAPSED_SECTIONS, "")) { p, collapsed ->
         p.copy(collapsed = collapsed.split(',').filter { it.isNotBlank() }.toSet())
     }.combine(settings.observe(KEY_SYSTEM_FOLDERS, true)) { p, folders -> p.copy(folders = folders) }
+        .combine(
+            combine(
+                settings.observe(KEY_FOLDER_SORT, FolderSort.CUSTOM.name),
+                settings.observe(KEY_FOLDER_SIZE, FolderSize.LARGE.name),
+                settings.observe(KEY_FOLDER_ORDER, ""),
+            ) { sort, size, order -> Triple(sort, size, order) },
+        ) { p, (sort, size, order) ->
+            p.copy(
+                folderSort = runCatching { FolderSort.valueOf(sort) }.getOrDefault(FolderSort.CUSTOM),
+                folderSize = runCatching { FolderSize.valueOf(size) }.getOrDefault(FolderSize.LARGE),
+                folderOrder = order.split(',').filter { it.isNotBlank() },
+            )
+        }
 
     /** Key of the open 기종별 폴더 ([LibrarySection.key]), null on the folder tiles. */
     private val openFolderKey = MutableStateFlow<String?>(null)
@@ -202,10 +223,15 @@ class LibraryViewModel : ViewModel() {
         else withFavorites.firstOrNull { it.key == openKey }?.copy(collapsed = false)
             ?: if (needle.isNotEmpty()) emptySection(openKey) else null
         val showingFolders = folders && open == null && needle.isEmpty()
+        val shown = when {
+            open != null -> listOf(open)
+            showingFolders -> FolderOrder.sort(withFavorites, p.folderSort, p.folderOrder, collator)
+            else -> withFavorites
+        }
         return LibraryUiState(
             loading = false,
             totalCount = all.size,
-            sections = if (open != null) listOf(open) else withFavorites,
+            sections = shown,
             recent = recent,
             viewMode = p.viewMode,
             sortMode = p.sortMode,
@@ -217,6 +243,9 @@ class LibraryViewModel : ViewModel() {
             foldersEnabled = folders,
             showingFolders = showingFolders,
             openFolder = open,
+            folderSort = p.folderSort,
+            folderSize = p.folderSize,
+            folderOrder = FolderOrder.custom(sections, p.folderOrder).map { it.key },
         )
     }
 
@@ -253,6 +282,16 @@ class LibraryViewModel : ViewModel() {
 
     fun setSystemFolders(on: Boolean) = launchIo { settings.set(KEY_SYSTEM_FOLDERS, on) }
     fun openFolder(section: LibrarySection) { openFolderKey.value = section.key }
+    fun setFolderSort(sort: FolderSort) = launchIo { settings.set(KEY_FOLDER_SORT, sort.name) }
+    fun setFolderSize(size: FolderSize) = launchIo { settings.set(KEY_FOLDER_SIZE, size.name) }
+
+    /** Saves the 사용자 지정 order and switches to it, so the edit is what the tiles then show. */
+    fun setFolderOrder(keys: List<String>) = launchIo {
+        // Folders not on screen right now (no games at the moment) keep their place after the ones shown.
+        val kept = settings.get(KEY_FOLDER_ORDER, "").split(',').filter { it.isNotBlank() && it !in keys }
+        settings.set(KEY_FOLDER_ORDER, (keys + kept).joinToString(","))
+        settings.set(KEY_FOLDER_SORT, FolderSort.CUSTOM.name)
+    }
     fun closeFolder() { openFolderKey.value = null }
 
     fun toggleSection(section: LibrarySection) = launchIo {
@@ -636,5 +675,9 @@ class LibraryViewModel : ViewModel() {
 
         /** 기종별 폴더로 보기: the home screen starts as one folder per system. Library-local key. */
         val KEY_SYSTEM_FOLDERS = booleanPreferencesKey("lib_system_folders")
+        val KEY_FOLDER_SORT = stringPreferencesKey("lib_folder_sort")
+        val KEY_FOLDER_SIZE = stringPreferencesKey("lib_folder_size")
+        /** Comma-separated [LibrarySection.key]s, the 사용자 지정 folder order. */
+        val KEY_FOLDER_ORDER = stringPreferencesKey("lib_folder_order")
     }
 }

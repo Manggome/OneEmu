@@ -18,6 +18,16 @@
     <string name="lib_menu_group_by_system">기종별로 묶기</string>
     <string name="lib_menu_system_folders">기종별 폴더로 보기</string>
     <string name="lib_folder_close">폴더 닫기</string>
+    <string name="lib_folder_sort_name">이름순</string>
+    <string name="lib_folder_sort_recent">최근 플레이순</string>
+    <string name="lib_folder_sort_custom">사용자 지정</string>
+    <string name="lib_folder_order_edit">순서 바꾸기…</string>
+    <string name="lib_folder_order_title">폴더 순서 바꾸기</string>
+    <string name="lib_folder_move_up">위로</string>
+    <string name="lib_folder_move_down">아래로</string>
+    <string name="lib_folder_size">폴더 크기</string>
+    <string name="lib_folder_size_large">크게</string>
+    <string name="lib_folder_size_small">작게</string>
     <string name="lib_menu_show_file_name">파일 이름 표시</string>
     <string name="lib_menu_grid_columns">그리드 열 수: %1$d</string>
     <string name="lib_menu_settings">설정</string>

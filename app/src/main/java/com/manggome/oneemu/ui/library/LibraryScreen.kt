@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CreateNewFolder
@@ -114,6 +115,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
     var launchBlock by remember { mutableStateOf<LaunchCheck?>(null) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
     var showHidden by rememberSaveable { mutableStateOf(false) }
+    var editFolderOrder by rememberSaveable { mutableStateOf(false) }
     var fabExpanded by rememberSaveable { mutableStateOf(false) }
     var thumbnailTarget by rememberSaveable { mutableStateOf(-1L) }
 
@@ -163,7 +165,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
                         onRemove = { confirmRemoveMany = true },
                     )
                 } else {
-                    LibraryTopBar(state, vm, nav, onShowHidden = { showHidden = true })
+                    LibraryTopBar(state, vm, nav, onShowHidden = { showHidden = true }, onEditFolderOrder = { editFolderOrder = true })
                 }
                 ScanProgressBar(progress)
                 BoxArtProgressBar(boxArtProgress, onCancel = { vm.cancelBoxArt() })
@@ -192,6 +194,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
                     onOpen = { vm.openFolder(it) },
                     onPlay = { if (selectionMode) toggle(it) else tryLaunch(it) },
                     onLongClick = { if (selectionMode) toggle(it) else selectedIds = setOf(it.id) },
+                    onEditOrder = { editFolderOrder = true },
                     bottomPadding = BottomPadding,
                 )
                 state.sections.all { it.games.isEmpty() } -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -265,6 +268,13 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
     }
     launchBlock?.let { LaunchCheckDialog(it) { launchBlock = null } }
     if (showHidden) HiddenGamesDialog(vm) { showHidden = false }
+    if (editFolderOrder) {
+        FolderOrderDialog(
+            keys = state.folderOrder,
+            onSave = { vm.setFolderOrder(it); editFolderOrder = false },
+            onDismiss = { editFolderOrder = false },
+        )
+    }
     if (showHelp) HelpDialog(vm.dirs.system, vm.cores) { showHelp = false }
 }
 
@@ -272,7 +282,13 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavHostController, onShowHidden: () -> Unit) {
+private fun LibraryTopBar(
+    state: LibraryUiState,
+    vm: LibraryViewModel,
+    nav: NavHostController,
+    onShowHidden: () -> Unit,
+    onEditFolderOrder: () -> Unit,
+) {
     var sortMenu by remember { mutableStateOf(false) }
     var viewMenu by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
@@ -352,14 +368,36 @@ private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavH
                 IconButton(onClick = { sortMenu = true }) {
                     Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.lib_sort))
                 }
-                DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                // On the folder tiles the menu orders the folders; inside one (or without folders) it orders games.
+                if (state.showingFolders) DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                    CheckItem(R.string.lib_folder_sort_name, state.folderSort == FolderSort.NAME) { vm.setFolderSort(FolderSort.NAME); sortMenu = false }
+                    CheckItem(R.string.lib_folder_sort_recent, state.folderSort == FolderSort.RECENT) { vm.setFolderSort(FolderSort.RECENT); sortMenu = false }
+                    CheckItem(R.string.lib_folder_sort_custom, state.folderSort == FolderSort.CUSTOM) { vm.setFolderSort(FolderSort.CUSTOM); sortMenu = false }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.lib_folder_order_edit)) },
+                        onClick = { sortMenu = false; onEditFolderOrder() },
+                        leadingIcon = { Spacer(Modifier.width(24.dp)) },
+                    )
+                } else DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                     SortItem(R.string.lib_sort_title, state.sortMode == SortMode.TITLE) { vm.setSortMode(SortMode.TITLE); sortMenu = false }
                     SortItem(R.string.lib_sort_recent, state.sortMode == SortMode.RECENT) { vm.setSortMode(SortMode.RECENT); sortMenu = false }
                     SortItem(R.string.lib_sort_added, state.sortMode == SortMode.ADDED) { vm.setSortMode(SortMode.ADDED); sortMenu = false }
                 }
             }
             // 목록 / 그리드 / 게임팩: the icon shows the current one, the menu picks.
-            Box {
+            if (state.showingFolders) Box {
+                IconButton(onClick = { viewMenu = true }) {
+                    Icon(
+                        if (state.folderSize == FolderSize.SMALL) Icons.Filled.Apps else Icons.Filled.GridView,
+                        contentDescription = stringResource(R.string.lib_folder_size),
+                    )
+                }
+                DropdownMenu(expanded = viewMenu, onDismissRequest = { viewMenu = false }) {
+                    CheckItem(R.string.lib_folder_size_large, state.folderSize == FolderSize.LARGE) { vm.setFolderSize(FolderSize.LARGE); viewMenu = false }
+                    CheckItem(R.string.lib_folder_size_small, state.folderSize == FolderSize.SMALL) { vm.setFolderSize(FolderSize.SMALL); viewMenu = false }
+                }
+            } else Box {
                 IconButton(onClick = { viewMenu = true }) {
                     Icon(
                         when (state.viewMode) {
@@ -403,7 +441,7 @@ private fun LibraryTopBar(state: LibraryUiState, vm: LibraryViewModel, nav: NavH
                         CheckItem(R.string.lib_menu_system_folders, state.foldersEnabled) { vm.setSystemFolders(!state.foldersEnabled) }
                     }
                     CheckItem(R.string.lib_menu_show_file_name, state.showFileName) { vm.setShowFileName(!state.showFileName) }
-                    if (state.viewMode != ViewMode.LIST) {
+                    if (state.viewMode != ViewMode.LIST && !state.showingFolders) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.lib_menu_grid_columns, state.gridColumns)) },
                             onClick = {
