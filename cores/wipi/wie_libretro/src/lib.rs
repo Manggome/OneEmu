@@ -11,6 +11,7 @@ mod log;
 mod options;
 mod quirks;
 mod session;
+mod storage;
 mod worker;
 
 pub use crate::{
