@@ -137,14 +137,18 @@ else
 	die "Android NDK $NDK_VERSION not found (set ANDROID_NDK_HOME or ANDROID_HOME)"
 fi
 
+EXE=""
 case "$(uname -s)" in
 	Darwin) HOST_TAG="darwin-x86_64" ;;
 	Linux)  HOST_TAG="linux-x86_64" ;;
+	MINGW*|MSYS*|CYGWIN*) HOST_TAG="windows-x86_64"; EXE=".exe" ;;
 	*) die "unsupported host: $(uname -s)" ;;
 esac
 LLVM_BIN="$NDK/toolchains/llvm/prebuilt/$HOST_TAG/bin"
 CLANG="$LLVM_BIN/${RUST_TARGET}${ANDROID_API}-clang"
-[[ -x "$CLANG" ]] || die "NDK clang not found: $CLANG"
+# Windows NDKs ship the clang wrappers as .cmd scripts.
+[[ -n "$EXE" && -f "$CLANG.cmd" ]] && CLANG="$CLANG.cmd"
+[[ -e "$CLANG" ]] || die "NDK clang not found: $CLANG"
 log "NDK     : $NDK"
 
 if command -v rustup >/dev/null; then
@@ -153,7 +157,7 @@ fi
 
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CLANG"
 export CC_aarch64_linux_android="$CLANG"
-export AR_aarch64_linux_android="$LLVM_BIN/llvm-ar"
+export AR_aarch64_linux_android="$LLVM_BIN/llvm-ar$EXE"
 # 16 KB page alignment: required on Android 15+ devices, harmless on 4 KB ones.
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
 
@@ -168,12 +172,12 @@ BUILT_SO="$TARGET_DIR/$RUST_TARGET/release/libwipi_libretro.so"
 # ---------------------------------------------------------------------------
 mkdir -p "$OUT_DIR" "$BUILD_DIR"
 STRIPPED_SO="$BUILD_DIR/lib${CORE_ID}_libretro.so"
-"$LLVM_BIN/llvm-strip" --strip-unneeded -o "$STRIPPED_SO" "$BUILT_SO"
+"$LLVM_BIN/llvm-strip$EXE" --strip-unneeded -o "$STRIPPED_SO" "$BUILT_SO"
 cp -f "$STRIPPED_SO" "$OUT_SO"
 
-ELF_HEADER="$("$LLVM_BIN/llvm-readelf" -h "$OUT_SO")"
+ELF_HEADER="$("$LLVM_BIN/llvm-readelf$EXE" -h "$OUT_SO")"
 grep -q AArch64 <<<"$ELF_HEADER" || die "output is not AArch64"
-DYN_SYMS="$("$LLVM_BIN/llvm-nm" -D "$OUT_SO")"
+DYN_SYMS="$("$LLVM_BIN/llvm-nm$EXE" -D "$OUT_SO")"
 for sym in retro_run retro_load_game retro_api_version retro_get_system_info retro_get_system_av_info retro_serialize_size; do
 	grep -qE " T ${sym}$" <<<"$DYN_SYMS" || die "missing exported symbol: $sym"
 done

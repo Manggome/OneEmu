@@ -846,7 +846,7 @@ int16_t Frontend::inputState(unsigned port, unsigned device, unsigned index, uns
             return 0;
         case RETRO_DEVICE_KEYBOARD: {
             if (port != 0) return 0;
-            const uint32_t bits = phoneKeys_.load(std::memory_order_relaxed);
+            const uint32_t bits = phoneFrame_.load(std::memory_order_relaxed) | phoneKeys_.load(std::memory_order_relaxed);
             if (bits == 0) return 0;
             for (unsigned i = 0; i < sizeof(kPhoneKeys) / sizeof(kPhoneKeys[0]); i++)
                 if (kPhoneKeys[i] == id) return (bits >> i) & 1 ? 1 : 0;
@@ -882,6 +882,7 @@ void Frontend::setTurbo(uint32_t mask, unsigned framesPerCycle) {
 
 void Frontend::setPhoneKeys(uint32_t bits) {
     phoneKeys_.store(bits, std::memory_order_relaxed);
+    phonePending_.fetch_or(bits, std::memory_order_relaxed);
 }
 
 void Frontend::setPointer(int16_t x, int16_t y, bool pressed) {
