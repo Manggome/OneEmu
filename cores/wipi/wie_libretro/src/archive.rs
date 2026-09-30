@@ -95,6 +95,16 @@ fn text_field(data: &[u8], key: &str) -> Option<String> {
 pub fn normalize(files: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Vec<u8>> {
     let mut files = strip_common_folder(files);
 
+    // KTF resources live under "P/" and wie strips exactly that prefix; some dumps (이노티아 연대기2) use "p/".
+    if files.contains_key("__adf__") || files.keys().any(|k| !k.contains('/') && lower(k).ends_with(".adf")) {
+        let lower_p: Vec<String> = files.keys().filter(|k| k.starts_with("p/")).cloned().collect();
+        for k in lower_p {
+            if let Some(v) = files.remove(&k) {
+                files.entry(format!("P/{}", &k[2..])).or_insert(v);
+            }
+        }
+    }
+
     // KTF: descriptor saved as "<name>.adf" instead of "__adf__".
     if !files.contains_key("__adf__")
         && !files.contains_key("app_info")
@@ -273,6 +283,18 @@ mod tests {
         let files = normalize(map(&[("Game/app_info", b"AID:1"), ("Game/a.jar", b"x")]));
         assert!(files.contains_key("app_info"));
         assert!(files.contains_key("a.jar"));
+    }
+
+    #[test]
+    fn wrapped_ktf_with_lowercase_resource_dir() {
+        let files = normalize(map(&[
+            ("Game-wipi1.2/__adf__", b"AID:010100D5\n"),
+            ("Game-wipi1.2/010100D5.jar", b"x"),
+            ("Game-wipi1.2/p/i_pack.dat", b"data"),
+        ]));
+        assert!(files.contains_key("__adf__"));
+        assert!(files.contains_key("P/i_pack.dat"));
+        assert!(!files.contains_key("p/i_pack.dat"));
     }
 
     #[test]
