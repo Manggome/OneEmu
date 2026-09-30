@@ -92,7 +92,12 @@ impl Session {
 
         let shared = Shared::new(epoch_base_ms, DEFAULT_WIDTH, DEFAULT_HEIGHT);
         let font = Font::try_from_static(FONT).map_err(|e| anyhow::anyhow!("font: {e}"))?;
-        let platform = Box::new(LibretroPlatform::new(shared.clone(), req.save_dir.clone(), font));
+        // One save folder per game: KTF/LGT by PID (product id; several KTF games share an AID such as
+        // 010100D5, and wie scopes files by AID), anything else by file name. OneEmu's save export/import
+        // (WipiSaves.kt) derives the same key.
+        let save_key = save_key(&game, &req.path);
+        tracing::info!("saves: {}", save_key);
+        let platform = Box::new(LibretroPlatform::new(shared.clone(), req.save_dir.join(&save_key), font));
 
         let title = game.title.clone().unwrap_or_else(|| "WIPI".into());
         let carrier = game.carrier;
@@ -252,6 +257,17 @@ impl Session {
     pub fn exit_requested(&self) -> bool {
         self.shared.exit_requested.load(Ordering::Acquire)
     }
+}
+
+/// Folder name for a game's saves under the libretro save directory.
+pub fn save_key(game: &archive::Game, path: &std::path::Path) -> String {
+    let raw = match game.carrier {
+        Carrier::Ktf | Carrier::Lgt => game.id.clone().filter(|id| !id.trim().is_empty()),
+        _ => None,
+    }
+    .unwrap_or_else(|| path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "game".into()));
+    let clean: String = raw.trim().chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' }).collect();
+    if clean.is_empty() || clean == "." || clean == ".." { "game".into() } else { clean }
 }
 
 pub fn panic_message(panic: &Box<dyn std::any::Any + Send>) -> String {

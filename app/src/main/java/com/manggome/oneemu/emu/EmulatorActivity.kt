@@ -97,6 +97,10 @@ class EmulatorActivity : ComponentActivity() {
     private var padInput = PadInput()
     /** Feature-phone keys held on a hardware keyboard ([PhoneKeys]); merged with the on-screen keypad. */
     private var keyboardPhoneKeys = 0
+    /** Feature phones: gamepad button -> handset key table in effect (set by the screen from the settings). */
+    @Volatile var wipiMapping: com.manggome.oneemu.emu.phone.WipiPadMapping = com.manggome.oneemu.emu.phone.WipiPadMapping.DEFAULT
+    /** Last RetroPad mask of player 1's physical pad, for the key-mapping screen to light the pressed button. */
+    @Volatile var lastPadMask = 0
     /** [StickDpad] for the pad being played; read on every input push. */
     @Volatile private var stickDpad = false
     /** The face buttons go by position in this game ([GamepadMapping.FACE_LAYOUT]). */
@@ -321,6 +325,14 @@ class EmulatorActivity : ComponentActivity() {
             return
         }
         val p = padInput
+        if (s.system == SystemId.WIPI) {
+            // Feature phones: the on-screen keypad, a keyboard and the mapped gamepad all arrive as handset keys.
+            // No RetroPad buttons go to the core (it would map them a second time); the sticks still do.
+            lastPadMask = g.mask
+            s.setPhoneKeys(p.phone or keyboardPhoneKeys or wipiMapping.toPhone(g.mask))
+            s.setInput(0, g.lx, g.ly, g.rx, g.ry)
+            return
+        }
         s.setPhoneKeys(p.phone or keyboardPhoneKeys)
         val leftFromPad = p.lx != 0 || p.ly != 0
         val rightFromPad = p.rx != 0 || p.ry != 0

@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.db.GameEntity
 import com.manggome.oneemu.model.SystemId
+import com.manggome.oneemu.library.WipiSaves
 import com.manggome.oneemu.library.ArcadeCoreRouter
 import com.manggome.oneemu.library.ArcadeRomChecker
 import com.manggome.oneemu.ui.common.ConfirmDialog
@@ -123,8 +124,22 @@ fun GameActionSheet(
                 if (game.favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
                 stringResource(if (game.favorite) R.string.lib_action_favorite_remove else R.string.lib_action_favorite_add),
             ) { vm.toggleFavorite(game) }
+            if (system == SystemId.WIPI) {
+                // Feature phones save in-game; back those saves up or put one back (WIPI-X-style).
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val exportedMsg = stringResource(R.string.wipi_save_exported, "%s")
+                val noneMsg = stringResource(R.string.wipi_save_none)
+                SheetItem(Icons.Filled.CloudDownload, stringResource(R.string.wipi_save_export)) {
+                    val out = runCatching { WipiSaves.export(com.manggome.oneemu.OneEmuApp.get().dirs, File(game.path), game.title) }.getOrNull()
+                    android.widget.Toast.makeText(context, if (out != null) exportedMsg.format(out.absolutePath) else noneMsg, android.widget.Toast.LENGTH_LONG).show()
+                    onDismiss()
+                }
+            }
             if (onImportSave != null) {
-                SheetItem(Icons.Filled.FileOpen, stringResource(R.string.save_import_action)) { onDismiss(); onImportSave(game) }
+                SheetItem(
+                    Icons.Filled.FileOpen,
+                    stringResource(if (system == SystemId.WIPI) R.string.wipi_save_import else R.string.save_import_action),
+                ) { onDismiss(); onImportSave(game) }
             }
             val shortcutFailed = stringResource(R.string.lib_shortcut_unsupported)
             val context = androidx.compose.ui.platform.LocalContext.current

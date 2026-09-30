@@ -24,6 +24,10 @@ object PhoneKeys {
     const val OK = 1 shl 15
     const val CALL = 1 shl 16
     const val END = 1 shl 17
+    const val UP = 1 shl 18
+    const val DOWN = 1 shl 19
+    const val LEFT = 1 shl 20
+    const val RIGHT = 1 shl 21
 
     /** The 3x4 number grid. */
     const val GRID = 0xFFF

@@ -205,8 +205,11 @@ class RomScanner(
             val gameDir = if (dir?.name.equals("Source", ignoreCase = true)) dir?.parentFile else dir
             title = gameDir?.name?.takeIf { it.isNotBlank() } ?: SystemId.JAZZ2.displayName
         }
-        if (system == SystemId.WIPI && ext == "zip") {
-            WipiArchive.icon(f)?.let { autoIcon = saveIcon(it, f) }
+        if (system == SystemId.WIPI) {
+            // "게임_LGT_wipiX호환.zip" -> "게임 LGT": the distribution tag goes, the carrier moves to the end.
+            val m = Regex("^(.*?)[ _](KTF|LGT|SKT)[ _]?wipiX호환$", RegexOption.IGNORE_CASE).find(f.nameWithoutExtension)
+            if (m != null) title = "${m.groupValues[1].replace('_', ' ').trim()} ${m.groupValues[2].uppercase()}"
+            if (ext == "zip") WipiArchive.icon(f)?.let { autoIcon = saveIcon(it, f) }
         }
         if (system == SystemId.NDS) {
             RomInfo.ndsBanner(f)?.let { b ->
