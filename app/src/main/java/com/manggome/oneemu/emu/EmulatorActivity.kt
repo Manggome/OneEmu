@@ -32,6 +32,7 @@ import com.manggome.oneemu.emu.input.GamepadDevices
 import com.manggome.oneemu.emu.input.GamepadInput
 import com.manggome.oneemu.emu.input.GamepadMapping
 import com.manggome.oneemu.emu.pad.PadInput
+import com.manggome.oneemu.emu.pad.PhoneKeys
 import com.manggome.oneemu.library.ArcadeCoreRouter
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.ui.theme.OneEmuTheme
@@ -94,6 +95,8 @@ class EmulatorActivity : ComponentActivity() {
     private var overlayOpen = false
     private var closed = false
     private var padInput = PadInput()
+    /** Feature-phone keys held on a hardware keyboard ([PhoneKeys]); merged with the on-screen keypad. */
+    private var keyboardPhoneKeys = 0
     /** [StickDpad] for the pad being played; read on every input push. */
     @Volatile private var stickDpad = false
     /** The face buttons go by position in this game ([GamepadMapping.FACE_LAYOUT]). */
@@ -121,8 +124,10 @@ class EmulatorActivity : ComponentActivity() {
                 when (action) {
                     GamepadMapping.FAST_FORWARD -> setFastForward(!ui.fastForward)
                     GamepadMapping.SPEED -> cycleSpeed()
-                    GamepadMapping.SAVE_STATE -> if (ui.session != null) ui.slotRequest = SlotRequest.SAVE
-                    GamepadMapping.LOAD_STATE -> if (ui.session != null) ui.slotRequest = SlotRequest.LOAD
+                    GamepadMapping.SAVE_STATE, GamepadMapping.LOAD_STATE -> ui.session?.let { s ->
+                        if (!s.system.supportsStates) ui.toast = getString(R.string.states_unsupported)
+                        else ui.slotRequest = if (action == GamepadMapping.SAVE_STATE) SlotRequest.SAVE else SlotRequest.LOAD
+                    }
                     GamepadMapping.QUICK_SAVE -> quickSave()
                     GamepadMapping.QUICK_LOAD -> quickLoad()
                 }
@@ -316,6 +321,7 @@ class EmulatorActivity : ComponentActivity() {
             return
         }
         val p = padInput
+        s.setPhoneKeys(p.phone or keyboardPhoneKeys)
         val leftFromPad = p.lx != 0 || p.ly != 0
         val rightFromPad = p.rx != 0 || p.ry != 0
         val lx = if (leftFromPad) p.lx else g.lx
@@ -332,6 +338,7 @@ class EmulatorActivity : ComponentActivity() {
     /** 빠른 저장: the quick slot, straight away. */
     fun quickSave() {
         val s = ui.session ?: return
+        if (!s.system.supportsStates) { ui.toast = getString(R.string.states_unsupported); return }
         lifecycleScope.launch {
             ui.toast = getString(if (s.saveState(AppDirs.QUICK_SLOT)) R.string.quick_saved else R.string.slot_save_failed)
         }
@@ -339,6 +346,7 @@ class EmulatorActivity : ComponentActivity() {
 
     fun quickLoad() {
         val s = ui.session ?: return
+        if (!s.system.supportsStates) { ui.toast = getString(R.string.states_unsupported); return }
         lifecycleScope.launch {
             ui.toast = getString(
                 when {
@@ -433,6 +441,15 @@ class EmulatorActivity : ComponentActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Feature phones: number / * / # / soft keys from a hardware keyboard go to the keypad, not the gamepad.
+        if (ui.session?.system == SystemId.WIPI) {
+            val bit = PhoneKeys.fromKeyCode(event.keyCode)
+            if (bit != 0 && (event.action == KeyEvent.ACTION_DOWN || event.action == KeyEvent.ACTION_UP)) {
+                keyboardPhoneKeys = if (event.action == KeyEvent.ACTION_DOWN) keyboardPhoneKeys or bit else keyboardPhoneKeys and bit.inv()
+                pushInput(0)
+                return true
+            }
+        }
         if (event.keyCode != KeyEvent.KEYCODE_BACK && GamepadInput.isControllerEvent(event) && gamepad.onKeyEvent(event)) return true
         return super.dispatchKeyEvent(event)
     }

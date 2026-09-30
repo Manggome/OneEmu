@@ -14,6 +14,8 @@ enum class SystemId(
     val extensions: Set<String>,
     val hasTouchScreen: Boolean = false,
     val hasAnalog: Boolean = false,
+    /** The core can snapshot the game (save states, rewind). False hides those controls. */
+    val supportsStates: Boolean = true,
 ) {
     NES("nes", "닌텐도 패미컴", "NES", Color(0xFFE05A5A), setOf("nes", "fds", "unf", "unif")),
     GB("gb", "게임보이", "GB", Color(0xFF9AA5B1), setOf("gb", "sgb")),
@@ -34,7 +36,14 @@ enum class SystemId(
     ARCADE("arcade", "아케이드 (MAME)", "MAME", Color(0xFFF0C24B), setOf("zip")),
 
     /** Not an emulated console: an open-source remake that reads the original PC game's data files. */
-    JAZZ2("jazz2", "재즈 잭래빗 2", "JJ2", Color(0xFF4CAF50), setOf("j2a"));
+    JAZZ2("jazz2", "재즈 잭래빗 2", "JJ2", Color(0xFF4CAF50), setOf("j2a")),
+
+    /**
+     * Korean feature phones (WIPI: KTF / LGT / SKT, plus plain J2ME) on the wie core. Game dumps are usually a
+     * .zip of descriptor + jar; RomScanner recognises those by their contents, since .zip alone means arcade.
+     * No save states: the core can't snapshot wie's runtime, games save in-game to files instead.
+     */
+    WIPI("wipi", "피처폰 (WIPI)", "WIPI", Color(0xFFFF8A3D), setOf("jar", "jad"), supportsStates = false);
 
     companion object {
         fun fromId(id: String?): SystemId? = entries.firstOrNull { it.id == id }

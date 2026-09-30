@@ -112,6 +112,7 @@ object SkinStore {
     fun defaultSkinId(system: SystemId): String = when (system) {
         SystemId.MD, SystemId.SMS, SystemId.GG -> "" // no Sega skin bundled yet; the vector pad is the default
         SystemId.JAZZ2 -> "" // no skin: the game is not a console
+        SystemId.WIPI -> "" // image skins can't press the keypad keys; the vector phone pad is the default
         SystemId.NES -> "nes-classic"
         SystemId.GB, SystemId.GBC -> "gameboy-classic"
         SystemId.GBA -> "gba-classic"

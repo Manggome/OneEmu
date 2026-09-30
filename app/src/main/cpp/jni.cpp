@@ -143,6 +143,9 @@ BRIDGE(jboolean, isRunning)(JNIEnv*, jobject) { return Frontend::get().isRunning
 BRIDGE(void, setInput)(JNIEnv*, jobject, jint port, jint buttons, jint lx, jint ly, jint rx, jint ry) {
     Frontend::get().setInput((unsigned)port, (uint32_t)buttons, (int16_t)lx, (int16_t)ly, (int16_t)rx, (int16_t)ry);
 }
+BRIDGE(void, setPhoneKeys)(JNIEnv*, jobject, jint bits) {
+    Frontend::get().setPhoneKeys((uint32_t)bits);
+}
 BRIDGE(void, setPointer)(JNIEnv*, jobject, jint x, jint y, jboolean pressed) {
     Frontend::get().setPointer((int16_t)x, (int16_t)y, pressed);
 }

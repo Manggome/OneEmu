@@ -59,7 +59,9 @@ enum class PackShape(
     DISC(1f, floatArrayOf(0f, 0f, 1f, 1f)),
     MINI_DISC(1f, floatArrayOf(0f, 0f, 1f, 1f)),
     ARCADE(1.2f, floatArrayOf(0.08f, 0.10f, 0.84f, 0.62f)),
-    PC_BOX(0.78f, floatArrayOf(0.12f, 0.10f, 0.76f, 0.70f));
+    PC_BOX(0.78f, floatArrayOf(0.12f, 0.10f, 0.76f, 0.70f)),
+    /** A candybar feature phone: the game's icon on its screen, a keypad below. */
+    PHONE(0.56f, floatArrayOf(0.14f, 0.10f, 0.72f, 0.44f));
 
     companion object {
         fun of(system: SystemId?): PackShape = when (system) {
@@ -73,6 +75,7 @@ enum class PackShape(
             SystemId.PSX, SystemId.PS2 -> DISC
             SystemId.GC -> MINI_DISC
             SystemId.ARCADE -> ARCADE
+            SystemId.WIPI -> PHONE
             else -> PC_BOX
         }
     }
@@ -237,6 +240,21 @@ private fun DrawScope.drawShell(shape: PackShape, tint: Color) {
             }
             drawRect(Color(0xFF111111), Offset(w * 0.12f, h * 0.76f), Size(w * 0.18f, h * 0.08f))
             drawRect(Color(0xFF111111), Offset(w * 0.40f, h * 0.76f), Size(w * 0.18f, h * 0.08f))
+        }
+        PackShape.PHONE -> {
+            // Rounded handset body, earpiece slot, and a 3x4 grid of keys under the screen.
+            drawRoundRect(body, cornerRadius = CornerRadius(w * 0.18f))
+            drawRoundRect(shade, cornerRadius = CornerRadius(w * 0.18f))
+            drawRoundRect(edge, Offset(w * 0.38f, h * 0.04f), Size(w * 0.24f, h * 0.02f), CornerRadius(h * 0.01f))
+            drawRoundRect(edge, Offset(w * 0.36f, h * 0.58f), Size(w * 0.28f, h * 0.07f), CornerRadius(h * 0.035f))
+            for (row in 0 until 4) for (col in 0 until 3) {
+                drawRoundRect(
+                    Color.White.copy(alpha = 0.22f),
+                    Offset(w * (0.16f + col * 0.24f), h * (0.69f + row * 0.07f)),
+                    Size(w * 0.20f, h * 0.05f),
+                    CornerRadius(h * 0.02f),
+                )
+            }
         }
         PackShape.PC_BOX -> {
             drawRoundRect(body, cornerRadius = CornerRadius(r * 0.5f))

@@ -103,6 +103,7 @@ object DefaultLayouts {
         SystemId.ARCADE -> arcade(landscape)
         // Jazz Jackrabbit 2: run/jump/shoot on the face buttons, weapon switching on the shoulders.
         SystemId.JAZZ2 -> fourButton(landscape, shoulders = true, leftStick = false, rightStick = false, triggers = false, lowPortrait = false)
+        SystemId.WIPI -> phone(landscape)
     }
 
     private fun e(id: PadElementId, x: Float, y: Float, scale: Float = 1f) = PadElement(id, x, y, scale)
@@ -224,6 +225,47 @@ object DefaultLayouts {
                 list.replaceAll { if (it.id == SELECT) it.copy(x = 0.42f, y = 0.98f) else if (it.id == START) it.copy(x = 0.58f, y = 0.98f) else it }
             }
         }
+        return PadLayout(list)
+    }
+
+    /**
+     * Feature phone: soft keys, d-pad with 확인/취소, and the 3x4 number grid. Portrait keeps the phone's own
+     * order (soft keys and navigation above the numbers) under the picture; landscape puts navigation left
+     * of the picture and the number grid right of it. 통화/종료 start hidden (종료 quits many games).
+     */
+    private fun phone(landscape: Boolean): PadLayout {
+        val grid = listOf(
+            PHONE_1, PHONE_2, PHONE_3,
+            PHONE_4, PHONE_5, PHONE_6,
+            PHONE_7, PHONE_8, PHONE_9,
+            PHONE_STAR, PHONE_0, PHONE_HASH,
+        )
+        val list = mutableListOf<PadElement>()
+        if (landscape) {
+            list += e(MENU, 0.04f, 0.07f)
+            list += e(FAST_FORWARD, 0.96f, 0.07f)
+            list += e(PHONE_LSK, 0.10f, 0.20f)
+            list += e(PHONE_CLR, 0.23f, 0.20f)
+            list += e(DPAD, 0.13f, 0.58f)
+            list += e(PHONE_OK, 0.26f, 0.84f)
+            list += e(PHONE_RSK, 0.80f, 0.18f)
+            val xs = listOf(0.745f, 0.845f, 0.945f)
+            val ys = listOf(0.36f, 0.52f, 0.68f, 0.84f)
+            grid.forEachIndexed { i, id -> list += e(id, xs[i % 3], ys[i / 3], 0.9f) }
+        } else {
+            list += e(MENU, 0.44f, 0.60f)
+            list += e(FAST_FORWARD, 0.56f, 0.60f)
+            list += e(PHONE_LSK, 0.13f, 0.62f)
+            list += e(PHONE_RSK, 0.87f, 0.62f)
+            list += e(DPAD, 0.20f, 0.77f, 0.85f)
+            list += e(PHONE_OK, 0.11f, 0.93f, 0.9f)
+            list += e(PHONE_CLR, 0.30f, 0.93f, 0.9f)
+            val xs = listOf(0.56f, 0.71f, 0.86f)
+            val ys = listOf(0.69f, 0.77f, 0.85f, 0.93f)
+            grid.forEachIndexed { i, id -> list += e(id, xs[i % 3], ys[i / 3], 0.9f) }
+        }
+        list += PadElement(PHONE_CALL, 0.40f, 0.50f, 1f, visible = false)
+        list += PadElement(PHONE_END, 0.60f, 0.50f, 1f, visible = false)
         return PadLayout(list)
     }
 

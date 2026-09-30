@@ -60,6 +60,8 @@ object NativeBridge {
 
     // ---- input ----
     external fun setInput(port: Int, buttons: Int, lx: Int, ly: Int, rx: Int, ry: Int)
+    /** Feature-phone keypad (WIPI) as keyboard keys for the core; bits are [com.manggome.oneemu.emu.pad.PhoneKeys]. */
+    external fun setPhoneKeys(bits: Int)
     /** x/y in libretro pointer space: -0x7fff..0x7fff across the core's framebuffer. */
     external fun setPointer(x: Int, y: Int, pressed: Boolean)
     /** retro_set_controller_port_device(port, device) on the emu thread. */
