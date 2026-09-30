@@ -1,0 +1,649 @@
+{
+ "schema": 1,
+ "updated": "2026-09-30",
+ "_comment": "피처폰(WIPI) 게임 호환 목록. 파일 단위(SHA-256)로 판정하고, 같은 PID 의 다른 파일은 '다른 판본'으로 표시한다. status: perfect(완벽 호환: 끝까지·저장·재실행 확인) > playable > menu > intro > broken. verified: manual(사람이 실기기에서 확인) | auto(wipi_headless 자동 테스트). 게임 파일은 포함하지 않는다.",
+ "games": [
+  {
+   "title": "놈3",
+   "carrier": "KTF",
+   "pid": "PD005376",
+   "aid": "010390DD",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "b665ede83645e56828cb9cc93a1d32ed60303cb5efee286865f84df183fa43c8",
+     "size": 499053
+    }
+   ]
+  },
+  {
+   "title": "놈투",
+   "carrier": "KTF",
+   "pid": "PD001896",
+   "aid": "010269AA",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "8ac1d682de08419bc5410f1a3d17df9fce7d21f0740a746f46e23d1130bd48ec",
+     "size": 276476
+    }
+   ]
+  },
+  {
+   "title": "던전앤파이터",
+   "carrier": "KTF",
+   "pid": "PD004840",
+   "aid": "010366DA",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "8b01d4ae6af4e61306a32288577f503f33ba47b4b84200df73258d065f0b2a23",
+     "size": 554387
+    }
+   ]
+  },
+  {
+   "title": "던전앤파이터 거너편",
+   "carrier": "KTF",
+   "pid": "PD005237",
+   "aid": "010209E1",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "d254cab24501e00938f6bd3a5da1b14f3cd3369124f1bdf3494c336402d6993c",
+     "size": 637036
+    }
+   ]
+  },
+  {
+   "title": "던전앤파이터 격투가편",
+   "carrier": "KTF",
+   "pid": "PD006079",
+   "aid": "0103BF27",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "4120f27288abc27eb5ff318a2daf79f07823b5781af94f22fa5c0d1905e29295",
+     "size": 731523
+    }
+   ]
+  },
+  {
+   "title": "리듬스타",
+   "carrier": "KTF",
+   "pid": "PD006539",
+   "aid": "010100D2",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "936cd9d28b14ef9e8085d215b07d70594ae379591f391cd3ba1a2b0a878442ab",
+     "size": 1806856
+    }
+   ]
+  },
+  {
+   "title": "메이플스토리 도적편",
+   "carrier": "KTF",
+   "pid": "PD006654",
+   "aid": "010100D5",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "db8ef04a6504d9b011a89b032bbfcb585ab17eaa6a34a275603bc64e67f516c5",
+     "size": 1310557
+    }
+   ],
+   "note": "첫 실행 때 속도 체크 후 재실행하라고 나옵니다. 다시 켜면 이어집니다."
+  },
+  {
+   "title": "미니게임천국",
+   "carrier": "KTF",
+   "pid": "PD002246",
+   "aid": "0102CA89",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "bf4e57e3c194793a9edfbe35e552325f5809db9339af19e6fee31380ee6f14b4",
+     "size": 351183
+    }
+   ]
+  },
+  {
+   "title": "미니게임천국 2",
+   "carrier": "KTF",
+   "pid": "PD004335",
+   "aid": "010219EC",
+   "status": "playable",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "ef5450374e2d87eaec7b2354412deb3254b8f836812461f9fe5e596de62d65cd",
+     "size": 239807
+    }
+   ],
+   "note": "미니게임 진입까지 확인."
+  },
+  {
+   "title": "미니게임천국 4",
+   "carrier": "KTF",
+   "pid": "PD007720",
+   "aid": "01040357",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "468a0d52e618ddcb3515aca0717db91b577ad3899c65cb0b7fcd7437c0feeec7",
+     "size": 692071
+    }
+   ]
+  },
+  {
+   "title": "붕어빵타이쿤 3",
+   "carrier": "KTF",
+   "pid": "PD004489",
+   "aid": "01035578",
+   "status": "broken",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "5bfe10a82849eb02bd49db9ed264139f7a5b5eb04bdf2083cca227bb3ba73ec6",
+     "size": 552226
+    }
+   ],
+   "note": "시작 직후 메모리 할당 오류로 멈춥니다."
+  },
+  {
+   "title": "액션퍼즐패밀리 1",
+   "carrier": "KTF",
+   "pid": "PD005489",
+   "aid": "01039913",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "79d9bc10be823a1a7119598bd6f7791583ae2af97c366cf338e5d55262c9f3ba",
+     "size": 368670
+    }
+   ]
+  },
+  {
+   "title": "영웅서기 1",
+   "carrier": "KTF",
+   "pid": "PD002678",
+   "aid": "010100D5",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "ead25bc6ffa7777862328ba6fa057911645d69ad47c2e8d922a1d545a1728d2d",
+     "size": 1044629
+    }
+   ]
+  },
+  {
+   "title": "영웅서기 2",
+   "carrier": "KTF",
+   "pid": "PD004517",
+   "aid": "01035D0B",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "0afb3c87273b2ed4731f756b0cd43bbbd25c532088391b196c8267405feea282",
+     "size": 890972
+    }
+   ]
+  },
+  {
+   "title": "영웅서기 3",
+   "carrier": "KTF",
+   "pid": "PD007102",
+   "aid": "0103EFD4",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "503d5d2f196b378c3ce38c12fccf62b718c4169e84f6fe1b62eaabcfd2fcc133",
+     "size": 1804711
+    }
+   ]
+  },
+  {
+   "title": "영웅서기 4",
+   "carrier": "KTF",
+   "pid": "PD008712",
+   "aid": "010100D4",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "49ade89578c59befbcc12945fa38070e0e31b625d9eff9975b5b5916d7055c42",
+     "size": 2497815
+    }
+   ]
+  },
+  {
+   "title": "영웅서기 Zero",
+   "carrier": "KTF",
+   "pid": "PD005576",
+   "aid": "010100D5",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "df5f0261a2f9315a745d181a52eb76ea6a89a0ab4bd4554a78e19cca076f4012",
+     "size": 1326663
+    }
+   ]
+  },
+  {
+   "title": "이노티아 연대기",
+   "carrier": "KTF",
+   "pid": "PD005362",
+   "aid": "010100D3",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "93d5b6b8ceb5cf4ce15784e369a7af9cd8ef7a49d6f15816d665aedadc487a4a",
+     "size": 985530
+    }
+   ]
+  },
+  {
+   "title": "이노티아 연대기 2",
+   "carrier": "KTF",
+   "pid": "PD007974",
+   "aid": "010100D5",
+   "status": "intro",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "974e0df9ab1e51751efdef21a0fe324ad79917f41cd049fcfaf7c46c14f9e324",
+     "size": 3804168
+    }
+   ],
+   "note": "타이틀 뒤 확인을 누르면 게임이 오류 화면을 띄웁니다."
+  },
+  {
+   "title": "질주쾌감 스케쳐 1",
+   "carrier": "KTF",
+   "pid": "PD004547",
+   "aid": "01035B5F",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "e159b9727dbdbfab7d69bea44df52ffc822db0c291a670faa9e5024eddbc09a7",
+     "size": 288130
+    }
+   ]
+  },
+  {
+   "title": "질주쾌감 스케쳐 2",
+   "carrier": "KTF",
+   "pid": "PD006714",
+   "aid": "010100D5",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "04159045a7eaf257328ac1b2fb9e83fc5aadf5fbc2aba19cabaf24438a390c3c",
+     "size": 848935
+    }
+   ]
+  },
+  {
+   "title": "크로노스 윙",
+   "carrier": "KTF",
+   "pid": "PD007589",
+   "aid": "010100D2",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "1fe6c1c897d708dbb587a083dc450727c12de152de5e9e6458af75294a3061bb",
+     "size": 2240884
+    }
+   ]
+  },
+  {
+   "title": "2010 슈퍼사커",
+   "carrier": "LGT",
+   "pid": "PD140600",
+   "aid": "0002D8A6",
+   "status": "playable",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "c9b287e3edcf5647e530b706723c720f6210629c8369067bc5f3d49599c406de",
+     "size": 1535977
+    }
+   ],
+   "note": "경기 진입까지 확인."
+  },
+  {
+   "title": "2010 프로야구",
+   "carrier": "LGT",
+   "pid": "PD135777",
+   "aid": "0002C663",
+   "status": "broken",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "01f05f8231f4e4b288a4ad5ac461840d7af28f9993877bd42ce083b24cafa62f",
+     "size": 1807119
+    }
+   ],
+   "note": "화면이 나오지 않습니다 (미구현 LGT 함수)."
+  },
+  {
+   "title": "검은방 2",
+   "carrier": "LGT",
+   "pid": "PD132640",
+   "aid": "0002BA0E",
+   "status": "playable",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "af7d82e5e2393867ee2d7031fc4e4637a9d21d5ccb0a3c8098ddd9d425537e23",
+     "size": 1677668
+    }
+   ],
+   "note": "네트워크 접속 실패 안내 뒤 게임이 진행됩니다."
+  },
+  {
+   "title": "놈 ZERO",
+   "carrier": "LGT",
+   "pid": "PD129126",
+   "aid": "0002AC84",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "2a8a3dcd07eb3fe804707b0fe50cca42f4efdefcb8f8233a54c22f98521f2d3c",
+     "size": 1086595
+    }
+   ]
+  },
+  {
+   "title": "레전드 오브 마스터",
+   "carrier": "LGT",
+   "pid": "PD127080",
+   "aid": "0002A4B1",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "735a579d82ac53bb205b04250ce44586c6d9375e64c2d6f3324796b3ae24d031",
+     "size": 2260948
+    }
+   ]
+  },
+  {
+   "title": "메이플스토리 시그너스기사단",
+   "carrier": "LGT",
+   "pid": "PD144800",
+   "aid": "0002E88E",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "7857506333bdea137109a8148bcf8b8f9b55dbb16afe067770990227e9f72803",
+     "size": 2759624
+    }
+   ]
+  },
+  {
+   "title": "메이플스토리 해적편",
+   "carrier": "LGT",
+   "pid": "PD127143",
+   "aid": "0002A4F0",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "e675bbafa361c8b207692dec0e5e1dbe068fa242033058083ec13cf058fe6380",
+     "size": 1600373
+    }
+   ]
+  },
+  {
+   "title": "슈퍼액션히어로 1",
+   "carrier": "LGT",
+   "pid": "PD140617",
+   "aid": "00013FFA",
+   "status": "broken",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "c046d43d429b3671b316655b77e0e8d760c866e63017f0c85448be8291fa49bf",
+     "size": 402959
+    }
+   ],
+   "note": "시작 직후 오류로 멈춥니다."
+  },
+  {
+   "title": "슈퍼액션히어로 3",
+   "carrier": "LGT",
+   "pid": "PD121120",
+   "aid": "00028E76",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "8cbd82eaeddc2fadbbd07997ba3b993c0b80b1a31ad31a87dd144fbcd3861d06",
+     "size": 777549
+    }
+   ]
+  },
+  {
+   "title": "액션퍼즐패밀리 3",
+   "carrier": "LGT",
+   "pid": "PD137085",
+   "aid": "0002CB6A",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "953dff25ba9442de116eb4c1d8e9f5f09a0d2517007024981bdb23069752c16c",
+     "size": 768082
+    }
+   ]
+  },
+  {
+   "title": "액션퍼즐패밀리 4",
+   "carrier": "LGT",
+   "pid": "PD149574",
+   "aid": "000315C6",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "0e6575c16be76c41320f097792e2ceb2ba6385c1a0831cdec95752ecb1b5aebf",
+     "size": 1298814
+    }
+   ],
+   "note": "진행 중(약 10초) 오류로 멈춥니다."
+  },
+  {
+   "title": "오세아누스",
+   "carrier": "LGT",
+   "pid": "PD147489",
+   "aid": "0002D6C4",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "d76ad718d4f46320d025807f19340e302a353725c5f89e76f686f8f0cfd49d1c",
+     "size": 3879395
+    }
+   ]
+  },
+  {
+   "title": "제노니아",
+   "carrier": "LGT",
+   "pid": "PD116132",
+   "aid": "00027BAA",
+   "status": "playable",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "a947f46eebb25552043c750ac1c2f78182994ec15664f7a277797c3e6f050b98",
+     "size": 1549005
+    }
+   ],
+   "note": "스토리 장면 진입까지 확인."
+  },
+  {
+   "title": "제노니아 2",
+   "carrier": "LGT",
+   "pid": "PD134155",
+   "aid": "0002C004",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "e24d57118a9c2487cdb62ecee1012843b81e2c7e9841df3dbc9a10563c76cfc1",
+     "size": 2498172
+    }
+   ]
+  },
+  {
+   "title": "제노니아 3",
+   "carrier": "LGT",
+   "pid": "PD147468",
+   "aid": "0002FE78",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "fc1a60e68ea0e9845d4a0f0051abbe3381f4d2cde0e15c9ed1ea0d593ef3cb56",
+     "size": 3289008
+    }
+   ]
+  },
+  {
+   "title": "테일즈위버 루시안칼츠편 (작업본)",
+   "carrier": "LGT",
+   "pid": "PD145765",
+   "aid": "0002EC43",
+   "status": "broken",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "65630d8b37283050b2809e4f0c7993dcecc62cffccd66d63ea8abd7e117bc298",
+     "size": 3199998
+    }
+   ],
+   "note": "그래픽 초기화 직후 오류로 멈춥니다."
+  },
+  {
+   "title": "테일즈위버 막시민편",
+   "carrier": "LGT",
+   "pid": "PD123388",
+   "aid": "00029747",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "f5e21001612d95d72f20277f9c42d19f6c2ee07c0dc93151ecccc257f95217b6",
+     "size": 1813234
+    }
+   ]
+  },
+  {
+   "title": "테일즈위버 이스핀편",
+   "carrier": "LGT",
+   "pid": "PD109677",
+   "aid": "00026308",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "1045007289d80420f2f11808f6312e57e9d287f21da0186d57cdded92363e984",
+     "size": 1269282
+    }
+   ]
+  },
+  {
+   "title": "하이브리드",
+   "carrier": "LGT",
+   "pid": "PD123965",
+   "aid": "0002996E",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "344e1285110a77089625b6d353c9766ecfd900763d7283ba0fd5eeeded07dcab",
+     "size": 1759779
+    }
+   ]
+  },
+  {
+   "title": "하이브리드 2",
+   "carrier": "LGT",
+   "pid": "PX142921",
+   "aid": "00F2E18D",
+   "status": "menu",
+   "tested": "2026-09-30",
+   "verified": "auto",
+   "files": [
+    {
+     "sha256": "c6ba7335de74bc54fb4bf27372bd512001716f0ff6e51bc215ef165bfe4da9a3",
+     "size": 2405773
+    }
+   ],
+   "note": "진행 중(약 30초) 오류로 멈춥니다."
+  }
+ ]
+}

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 피처폰(WIPI) 호환성 표시 -->
+    <string name="wipi_compat_title">호환성</string>
+    <string name="wipi_compat_checking">확인 중…</string>
+
+    <string name="wipi_status_perfect">완벽 호환</string>
+    <string name="wipi_status_playable">플레이 가능</string>
+    <string name="wipi_status_menu">메뉴까지</string>
+    <string name="wipi_status_intro">인트로까지</string>
+    <string name="wipi_status_broken">실행 불가</string>
+    <string name="wipi_status_unknown">미확인</string>
+
+    <string name="wipi_status_perfect_desc">끝까지 플레이하고 게임 안 저장과 다시 실행까지 확인했습니다.</string>
+    <string name="wipi_status_playable_desc">게임 진행을 확인했습니다. 일부 기능이나 장면에 문제가 있을 수 있습니다.</string>
+    <string name="wipi_status_menu_desc">타이틀과 메뉴까지 확인했습니다. 본 게임은 아직 확인하지 못했습니다.</string>
+    <string name="wipi_status_intro_desc">로고나 인트로 뒤에서 멈춥니다.</string>
+    <string name="wipi_status_broken_desc">시작하지 못합니다.</string>
+    <string name="wipi_status_unknown_desc">이 파일은 아직 확인한 기록이 없습니다.</string>
+
+    <string name="wipi_match_exact">검증한 파일과 똑같은 파일입니다.</string>
+    <string name="wipi_match_other">같은 게임의 다른 판본입니다 (%1$s). 파일이 달라 결과가 다를 수 있습니다.</string>
+
+    <string name="wipi_info_game">호환 목록의 게임</string>
+    <string name="wipi_info_tested">확인일</string>
+    <string name="wipi_info_method">확인 방법</string>
+    <string name="wipi_info_note">메모</string>
+    <string name="wipi_info_hash">파일 SHA-256</string>
+    <string name="wipi_method_auto">자동 테스트 (화면이 멈추지 않고 그려지는지)</string>
+    <string name="wipi_method_manual">실기기에서 직접 확인</string>
+</resources>

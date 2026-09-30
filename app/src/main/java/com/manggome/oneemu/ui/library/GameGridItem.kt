@@ -64,6 +64,9 @@ fun GameGridItem(
             if (system == SystemId.ARCADE) {
                 ArcadeStatusDot(rememberArcadeResolution(game), Modifier.align(Alignment.BottomEnd).padding(6.dp), size = 12.dp)
             }
+            if (system == SystemId.WIPI) {
+                WipiCompatDot(rememberWipiCompat(game), Modifier.align(Alignment.BottomEnd).padding(6.dp), size = 12.dp)
+            }
         }
         Column(Modifier.padding(horizontal = if (square) 6.dp else 8.dp, vertical = if (square) 4.dp else 6.dp).height(if (square) 18.dp else if (columns >= 4) 34.dp else 38.dp)) {
             Text(
