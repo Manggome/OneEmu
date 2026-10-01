@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="finder_title">치트 찾기</string>
+    <string name="finder_help">1. 화면에 보이는 숫자(돈, 체력, 음표 등)를 넣고 \'새 검색\'\n2. 게임으로 돌아가 그 숫자를 바꾼 뒤, 바뀐 숫자로 \'이 값으로 좁히기\'\n3. 후보가 몇 개 남으면 눌러서 값을 바꾸거나 고정하세요.\n숫자가 안 보이면 \'줄었음\', \'늘었음\'으로 좁혀도 됩니다.</string>
+    <string name="finder_value">지금 값</string>
+    <string name="finder_size1">1바이트 (~255)</string>
+    <string name="finder_size2">2바이트 (~65535)</string>
+    <string name="finder_size4">4바이트</string>
+    <string name="finder_new">새 검색</string>
+    <string name="finder_equal">이 값으로 좁히기</string>
+    <string name="finder_decreased">줄었음</string>
+    <string name="finder_increased">늘었음</string>
+    <string name="finder_unchanged">그대로</string>
+    <string name="finder_changed">바뀜</string>
+    <string name="finder_searching">찾는 중…</string>
+    <string name="finder_none">후보가 없습니다. 다른 크기(바이트)로 새로 검색해 보세요.</string>
+    <string name="finder_many">후보 %1$d개. 게임에서 값을 바꾼 뒤 더 좁혀 주세요.</string>
+    <string name="finder_left">후보 %1$d개. 눌러서 값을 바꾸거나 고정하세요.</string>
+    <string name="finder_new_value">새 값 (0~%1$d)</string>
+    <string name="finder_write">한 번 바꾸기</string>
+    <string name="finder_lock">고정 (치트로 저장)</string>
+    <string name="finder_lock_help">고정하면 아래 치트 목록에 저장되고, 켜 두는 동안 매 프레임 이 값으로 유지됩니다.</string>
+    <string name="finder_default_name">찾은 값 %1$s</string>
+    <string name="finder_unsupported">이 게임은 메모리 검색을 지원하지 않습니다.</string>
+    <string name="cheat_hint_wipi">주소:값 (16진수). 값 자릿수로 크기가 정해집니다: 2자리 1바이트, 4자리 2바이트, 8자리 4바이트.\n예: 40123450:0001869F\n치트 찾기로 찾은 값은 자동으로 이 형식으로 저장됩니다.</string>
+</resources>

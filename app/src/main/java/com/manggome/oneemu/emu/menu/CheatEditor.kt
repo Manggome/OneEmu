@@ -51,6 +51,7 @@ fun cheatFormatHint(context: Context, core: CoreInfo?): String = when (core?.id)
     "fceumm" -> context.getString(R.string.cheat_hint_fceumm)
     "melondsds" -> context.getString(R.string.cheat_hint_melondsds)
     "play", "mame2003plus" -> context.getString(R.string.cheat_hint_unsupported)
+    "wipi" -> context.getString(R.string.cheat_hint_wipi)
     else -> context.getString(R.string.cheat_hint_generic)
 }
 

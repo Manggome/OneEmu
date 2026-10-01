@@ -104,6 +104,14 @@ object NativeBridge {
     external fun setCheat(index: Int, enabled: Boolean, code: String)
     external fun resetCheats()
 
+    /** Cheat finder support: the running core exports OneEmu's memory-search extension (WIPI). */
+    external fun hasMemSearch(): Boolean
+    /** One search step (op: 0 new, 1 equals, 2 changed, 3 unchanged, 4 increased, 5 decreased); candidates left, -1 = unsupported. */
+    external fun memSearch(op: Int, size: Int, value: Long): Long
+    /** `[size, address0, value0, ...]` for up to [max] candidates. */
+    external fun memSearchResults(max: Int): LongArray
+    external fun memWrite(address: Long, size: Int, value: Long): Boolean
+
     // ---- info ----
     external fun getOptions(): String
     external fun setOption(key: String, value: String)

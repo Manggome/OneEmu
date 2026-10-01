@@ -2,6 +2,7 @@
 //!
 //!   wipi_headless <game.zip|jar|jad> [--frames N] [--keys "120:OK,200:5,260:LSK"] [--dump DIR] [--every N]
 //!                 [--option key=value ...] [--system DIR]
+//!                 [--cheat "600:start:4:1500,900:dec,960:write:99999,1200:lock:99999"]
 //!
 //! Runs N frames (default 1800 = 30 s of game time) with scripted key taps (each held 4 frames), dumps
 //! every N-th frame as PPM, and prints timing plus how much of the last frame is non-black.
@@ -9,7 +10,7 @@
 use std::{fs, path::PathBuf, time::Instant};
 
 use wie_backend::KeyCode;
-use wipi_libretro::{FrameOutput, KeySet, LoadRequest, RawOptions, Session};
+use wipi_libretro::{FrameOutput, KeySet, LoadRequest, RawOptions, SearchOp, Session};
 
 fn parse_key(name: &str) -> Option<KeyCode> {
     Some(match name {
@@ -47,6 +48,43 @@ fn write_ppm(path: &PathBuf, pixels: &[u32], w: u32, h: u32) -> std::io::Result<
     fs::write(path, data)
 }
 
+/// `start:SIZE:VALUE`, `equal:VALUE`, `changed`, `unchanged`, `inc`, `dec`, `write:VALUE` (all candidates),
+/// `lock:VALUE` (first candidate, as a cheat code).
+fn run_cheat_step(session: &mut Session, step: &str) {
+    let parts: Vec<&str> = step.split(':').collect();
+    let num = |i: usize| parts.get(i).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+    let (op, size) = match parts[0] {
+        "start" => (Some(SearchOp::Start(num(2))), num(1) as u8),
+        "equal" => (Some(SearchOp::Equal(num(1))), 0),
+        "changed" => (Some(SearchOp::Changed), 0),
+        "unchanged" => (Some(SearchOp::Unchanged), 0),
+        "inc" => (Some(SearchOp::Increased), 0),
+        "dec" => (Some(SearchOp::Decreased), 0),
+        _ => (None, 0),
+    };
+    if let Some(op) = op {
+        let left = session.cheat_search(op, size);
+        let (results, width) = session.cheat_results(5);
+        println!("cheat {step}: {left:?} left, first {results:x?} ({width} bytes)");
+        return;
+    }
+    let (results, width) = session.cheat_results(10_000);
+    match parts[0] {
+        "write" => {
+            let n = results.iter().filter(|(a, _)| session.cheat_write(*a, width, num(1))).count();
+            println!("cheat {step}: wrote {n} addresses");
+        }
+        "lock" => {
+            if let Some((a, _)) = results.first() {
+                let code = format!("{a:08X}:{:0w$X}", num(1), w = width as usize * 2);
+                session.set_cheat(0, true, &code);
+                println!("cheat {step}: locked with code {code}");
+            }
+        }
+        _ => println!("cheat {step}: unknown step"),
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     // Same 16 MiB stack the libretro core's worker gets; wie's runtime recurses deeply.
     std::thread::Builder::new()
@@ -73,6 +111,8 @@ fn run() -> anyhow::Result<()> {
     let mut dump: Option<PathBuf> = None;
     let mut every = 60u64;
     let mut options = Vec::new();
+    // (frame, step): memory-search steps, to try the cheat finder headless.
+    let mut cheats: Vec<(u64, String)> = Vec::new();
     let mut system = std::env::temp_dir().join("wipi_headless");
 
     while let Some(a) = args.next() {
@@ -84,6 +124,12 @@ fn run() -> anyhow::Result<()> {
             "--option" => {
                 if let Some((k, v)) = args.next().as_deref().and_then(|kv| kv.split_once('=')) {
                     options.push((k.to_string(), v.to_string()));
+                }
+            }
+            "--cheat" => {
+                for item in args.next().unwrap_or_default().split(',').filter(|s| !s.is_empty()) {
+                    let (f, step) = item.split_once(':').ok_or_else(|| anyhow::anyhow!("bad cheat item {item}"))?;
+                    cheats.push((f.trim().parse()?, step.trim().to_string()));
                 }
             }
             "--keys" => {
@@ -131,6 +177,9 @@ fn run() -> anyhow::Result<()> {
             if frame >= *at && frame < at + 4 {
                 set.press(*key);
             }
+        }
+        for (_, step) in cheats.iter().filter(|(at, _)| *at == frame) {
+            run_cheat_step(&mut session, step);
         }
         let t = Instant::now();
         out = session.run_frame(set, out);

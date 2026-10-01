@@ -1388,3 +1388,33 @@ void Frontend::setCheat(unsigned index, bool enabled, const std::string& code) {
 void Frontend::resetCheats() {
     run([&] { if (core_.loaded()) core_.retro_cheat_reset(); });
 }
+
+bool Frontend::hasMemSearch() {
+    bool ok = false;
+    run([&] { ok = core_.loaded() && core_.oneemu_memsearch && core_.oneemu_memsearch_results && core_.oneemu_memwrite; });
+    return ok;
+}
+
+int64_t Frontend::memSearch(int op, int size, uint32_t value) {
+    int64_t left = -1;
+    run([&] { if (core_.loaded() && core_.oneemu_memsearch) left = core_.oneemu_memsearch(op, size, value); });
+    return left;
+}
+
+std::vector<std::pair<uint32_t, uint32_t>> Frontend::memSearchResults(int max, int& size) {
+    std::vector<std::pair<uint32_t, uint32_t>> out;
+    size = 0;
+    run([&] {
+        if (!core_.loaded() || !core_.oneemu_memsearch_results || max <= 0) return;
+        std::vector<uint32_t> addresses(max), values(max);
+        int n = core_.oneemu_memsearch_results(addresses.data(), values.data(), max, &size);
+        for (int i = 0; i < n; i++) out.emplace_back(addresses[i], values[i]);
+    });
+    return out;
+}
+
+bool Frontend::memWrite(uint32_t address, int size, uint32_t value) {
+    bool ok = false;
+    run([&] { if (core_.loaded() && core_.oneemu_memwrite) ok = core_.oneemu_memwrite(address, size, value); });
+    return ok;
+}

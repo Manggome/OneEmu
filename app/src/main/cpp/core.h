@@ -42,6 +42,11 @@ public:
     void* (*retro_get_memory_data)(unsigned) = nullptr;
     size_t (*retro_get_memory_size)(unsigned) = nullptr;
 
+    // Optional OneEmu extension for the cheat finder (WIPI core; see cores/wipi/wie_libretro/src/lib.rs).
+    int64_t (*oneemu_memsearch)(int op, int size, uint32_t value) = nullptr;
+    int (*oneemu_memsearch_results)(uint32_t* addresses, uint32_t* values, int max, int* size) = nullptr;
+    bool (*oneemu_memwrite)(uint32_t address, int size, uint32_t value) = nullptr;
+
 private:
     void* handle_ = nullptr;
     static void* javaVm_;

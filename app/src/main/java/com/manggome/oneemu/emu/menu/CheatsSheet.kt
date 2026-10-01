@@ -38,6 +38,7 @@ fun CheatsSheet(gameId: Long, core: CoreInfo?, onChanged: suspend () -> Unit, on
             Text(stringResource(R.string.cheat_title), style = MaterialTheme.typography.titleMedium)
         }
         Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+            CheatFinder(gameId = gameId, onChanged = onChanged, onMessage = onMessage)
             CheatEditor(gameId = gameId, core = core, onChanged = onChanged, onMessage = onMessage)
         }
         Spacer(Modifier.height(24.dp))

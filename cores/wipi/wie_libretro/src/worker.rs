@@ -20,6 +20,8 @@ const STACK_SIZE: usize = 16 << 20;
 enum Request {
     Frame { keys: KeySet, recycle: FrameOutput },
     Options(RawOptions),
+    /// Runs on the session between frames (cheat search / codes).
+    Call(Box<dyn FnOnce(&mut Session) + Send>),
     Quit,
 }
 
@@ -72,6 +74,11 @@ impl Worker {
                             }
                         }
                         Request::Options(raw) => session.update_options(&raw),
+                        Request::Call(f) => {
+                            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut session))).is_err() {
+                                tracing::error!("session call panicked");
+                            }
+                        }
                         Request::Quit => break,
                     }
                 }
@@ -104,6 +111,17 @@ impl Worker {
 
     pub fn set_options(&self, raw: RawOptions) {
         let _ = self.tx.send(Request::Options(raw));
+    }
+
+    /// Runs `f` on the session (between frames) and returns its result; None if the worker is gone.
+    pub fn call<R: Send + 'static>(&self, f: impl FnOnce(&mut Session) -> R + Send + 'static) -> Option<R> {
+        let (tx, rx) = channel();
+        self.tx
+            .send(Request::Call(Box::new(move |s| {
+                let _ = tx.send(f(s));
+            })))
+            .ok()?;
+        rx.recv().ok()
     }
 }
 

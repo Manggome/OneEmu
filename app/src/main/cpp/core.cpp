@@ -42,6 +42,9 @@ bool LibretroCore::load(const std::string& path, std::string* error) {
     LOAD_SYM(retro_get_region);
     LOAD_SYM(retro_get_memory_data);
     LOAD_SYM(retro_get_memory_size);
+    *(void**)(&oneemu_memsearch) = dlsym(handle_, "oneemu_memsearch");
+    *(void**)(&oneemu_memsearch_results) = dlsym(handle_, "oneemu_memsearch_results");
+    *(void**)(&oneemu_memwrite) = dlsym(handle_, "oneemu_memwrite");
     if (retro_api_version() != RETRO_API_VERSION) {
         if (error) *error = "unsupported libretro API version";
         unload();
@@ -69,6 +72,9 @@ void LibretroCore::handOverJavaVM() {
 }
 
 void LibretroCore::unload(bool keepLibrary) {
+    oneemu_memsearch = nullptr;
+    oneemu_memsearch_results = nullptr;
+    oneemu_memwrite = nullptr;
     if (handle_) {
         if (!keepLibrary) dlclose(handle_);
         handle_ = nullptr;

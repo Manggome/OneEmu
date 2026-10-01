@@ -42,7 +42,7 @@ fun InGameMenuDialog(
     showGyroCenter: Boolean = false,
     /** False for cores that can't save states (feature phones save in-game instead). */
     showStates: Boolean = true,
-    /** Feature phones: no turbo / cheats, and the layout row opens the handset keypad settings. */
+    /** Feature phones: no turbo, and the layout row opens the handset keypad settings. */
     phone: Boolean = false,
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -68,7 +68,7 @@ fun InGameMenuDialog(
                 MenuRow(stringResource(R.string.menu_fast_forward), trailing = fastForwardLabel) { onAction(MenuAction.FAST_FORWARD) }
                 if (!phone) MenuRow(stringResource(R.string.menu_turbo), trailing = turboLabel) { onAction(MenuAction.TURBO) }
                 if (showGyroCenter) MenuRow(stringResource(R.string.menu_gyro_center)) { onAction(MenuAction.GYRO_CENTER) }
-                if (!phone) MenuRow(stringResource(R.string.menu_cheats)) { onAction(MenuAction.CHEATS) }
+                MenuRow(stringResource(R.string.menu_cheats)) { onAction(MenuAction.CHEATS) }
                 MenuRow(stringResource(if (phone) R.string.wipi_menu_keypad else R.string.menu_layout)) { onAction(MenuAction.LAYOUT) }
                 MenuRow(stringResource(R.string.menu_settings)) { onAction(MenuAction.SETTINGS) }
                 MenuRow(stringResource(R.string.menu_screenshot)) { onAction(MenuAction.SCREENSHOT) }
