@@ -10,6 +10,7 @@ pub const VARIABLES: &[(&str, &str)] = &[
     ("wipi_stick_deadzone", "스틱 데드존 (%); 35|20|25|30|40|50"),
     ("wipi_key_repeat", "키 반복 간격 (ms); auto|100|50|150|200|off"),
     ("wipi_speed", "게임 속도 (%, 타이머 기준); auto|100|50|75|90|110|125|150|200"),
+    ("wipi_cpu", "CPU 실행 방식 (다시 시작 필요, auto: JIT, 게임별 예외 적용); auto|jit|interpreter"),
     ("wipi_cpu_budget", "프레임당 CPU 시간 (ms, 높을수록 느린 게임이 빨라지지만 배터리 소모); auto|12|8|16|24|33"),
     ("wipi_date", "게임 속 날짜 (auto: 게임별 설정 또는 오늘); auto|system|2005-01-01|2008-01-01|2010-01-01|2012-01-01"),
     ("wipi_midi", "배경음악 (MIDI 신디사이저); on|off"),
@@ -44,6 +45,8 @@ pub struct Config {
     pub key_repeat_ms: u32,
     pub speed_percent: u32,
     pub cpu_budget_ms: u32,
+    /// Run guest code on the JIT (falls back to the interpreter when the core was built without it).
+    pub jit: bool,
     /// None = today's date (wall clock at load).
     pub fixed_date: Option<String>,
     pub audio: AudioSettings,
@@ -75,6 +78,8 @@ impl Config {
         let speed_percent = raw.explicit("wipi_speed").and_then(|v| v.parse().ok()).or(q.speed).unwrap_or(100).clamp(10, 400);
         let cpu_budget_ms = raw.explicit("wipi_cpu_budget").and_then(|v| v.parse().ok()).or(q.cpu_budget_ms).unwrap_or(12).clamp(2, 50);
 
+        let jit = raw.explicit("wipi_cpu").or(q.cpu.as_deref()) != Some("interpreter");
+
         let fixed_date = match raw.explicit("wipi_date") {
             Some("system") => None,
             Some(v) => Some(v.to_string()),
@@ -96,6 +101,7 @@ impl Config {
             key_repeat_ms,
             speed_percent,
             cpu_budget_ms,
+            jit,
             fixed_date,
             audio,
         }
@@ -126,6 +132,7 @@ mod tests {
         assert_eq!(c.repeat_frames(), 6);
         assert!(c.fixed_date.is_none());
         assert!(c.carrier.is_none());
+        assert!(c.jit);
     }
 
     #[test]

@@ -32,6 +32,7 @@
     "wipi_stick_deadzone": "35",
     "wipi_key_repeat": "auto",
     "wipi_speed": "auto",
+    "wipi_cpu": "auto",
     "wipi_cpu_budget": "auto",
     "wipi_date": "auto",
     "wipi_midi": "on",
