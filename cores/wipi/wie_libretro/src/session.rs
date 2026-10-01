@@ -11,6 +11,7 @@ use wie_backend::{Emulator, Event, Font, Options};
 use crate::{
     archive::{self, Carrier},
     audio::Mixer,
+    cheat::{self, Cheats, SearchOp},
     clock::parse_date_ms,
     host::{DEFAULT_HEIGHT, DEFAULT_WIDTH, LibretroPlatform, Shared},
     input::{KeyEvent, KeySet, KeyTracker, PadProfile},
@@ -71,6 +72,7 @@ pub struct Session {
     target_us: u64,
     key_events: Vec<KeyEvent>,
     failed: Option<String>,
+    cheats: Cheats,
 }
 
 impl Session {
@@ -97,7 +99,12 @@ impl Session {
         // (WipiSaves.kt) derives the same key.
         let save_key = save_key(&game, &req.path);
         tracing::info!("saves: {}", save_key);
-        let platform = Box::new(LibretroPlatform::new(shared.clone(), req.save_dir.join(&save_key), font));
+        let platform = Box::new(LibretroPlatform::new(
+            shared.clone(),
+            req.save_dir.join(&save_key),
+            font,
+            quirk.as_ref().map(|q| q.system_properties.clone()).unwrap_or_default(),
+        ));
 
         let title = game.title.clone().unwrap_or_else(|| "WIPI".into());
         let carrier = game.carrier;
@@ -145,6 +152,7 @@ impl Session {
             target_us: 0,
             key_events: Vec::new(),
             failed: None,
+            cheats: Cheats::default(),
         };
         Ok((session, info))
     }
@@ -173,6 +181,10 @@ impl Session {
                 self.failed = Some(e);
                 self.mixer.stop_all();
                 out.error = self.failed.clone();
+            } else if self.cheats.has_locks()
+                && let Some(memory) = self.emulator.guest_memory()
+            {
+                self.cheats.apply(memory);
             }
         }
 
@@ -249,6 +261,34 @@ impl Session {
             self.emulator.handle_event(Event::Redraw);
         }
         Ok(())
+    }
+
+    /// One step of the memory search; the number of candidates left, or None when the game has no
+    /// searchable memory (SKT / J2ME run on the host JVM).
+    pub fn cheat_search(&mut self, op: SearchOp, size: u8) -> Option<usize> {
+        let memory = self.emulator.guest_memory()?;
+        Some(self.cheats.search(memory, op, size))
+    }
+
+    /// Up to `max` search candidates as (address, current value), plus the value width in bytes.
+    pub fn cheat_results(&mut self, max: usize) -> (Vec<(u32, u32)>, u8) {
+        let size = self.cheats.search_size();
+        match self.emulator.guest_memory() {
+            Some(memory) => (self.cheats.results(memory, max), size),
+            None => (Vec::new(), size),
+        }
+    }
+
+    pub fn cheat_write(&mut self, address: u32, size: u8, value: u32) -> bool {
+        self.emulator.guest_memory().is_some_and(|m| cheat::write_value(m, address, size, value))
+    }
+
+    pub fn set_cheat(&mut self, index: u32, enabled: bool, code: &str) {
+        self.cheats.set_code(index, enabled, code);
+    }
+
+    pub fn reset_cheats(&mut self) {
+        self.cheats.reset_codes();
     }
 
     /// Everything the game wrote to stdout (tests / headless runs).
