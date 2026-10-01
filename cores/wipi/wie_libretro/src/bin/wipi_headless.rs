@@ -123,6 +123,8 @@ fn run() -> anyhow::Result<()> {
     let started = Instant::now();
     let mut worst_ms = 0f64;
     let mut ran = 0;
+    let mut audible_frames = 0u64;
+    let mut audio_peak = 0i32;
     for frame in 0..frames {
         let mut set = KeySet::default();
         for (at, key) in &keys {
@@ -134,6 +136,11 @@ fn run() -> anyhow::Result<()> {
         out = session.run_frame(set, out);
         worst_ms = worst_ms.max(t.elapsed().as_secs_f64() * 1000.0);
         ran += 1;
+        let peak = out.audio.iter().map(|s| i32::from(*s).abs()).max().unwrap_or(0);
+        if peak > 64 {
+            audible_frames += 1;
+        }
+        audio_peak = audio_peak.max(peak);
         if let Some(e) = &out.error {
             println!("error at frame {frame}: {e}");
             break;
@@ -153,6 +160,7 @@ fn run() -> anyhow::Result<()> {
     }
     let total = started.elapsed().as_secs_f64();
     println!("frames: {ran}, avg {:.2} ms/frame, worst {:.2} ms", total * 1000.0 / ran.max(1) as f64, worst_ms);
+    println!("audio: sound in {audible_frames} of {ran} frames, peak {audio_peak}");
 
     if let Some((px, w, h)) = &last {
         let lit = px.iter().filter(|p| **p & 0xffffff != 0).count();
