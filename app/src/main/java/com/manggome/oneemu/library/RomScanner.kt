@@ -139,6 +139,8 @@ class RomScanner(
         val name = f.nameWithoutExtension.lowercase()
         if (ext == "bin") return !isLoneDiscBin(f) // normally reached through its .cue
         if (ext == "zip" && (name in mameBiosNames || isArcadeBiosSet(name))) return true
+        // A J2ME jar with its .jad next to it is listed once, through the .jad (the core loads the pair).
+        if (ext == "jar" && f.parentFile?.listFiles { c -> c.name.equals("${f.nameWithoutExtension}.jad", true) }?.isNotEmpty() == true) return true
         return false
     }
 
@@ -203,6 +205,12 @@ class RomScanner(
             val gameDir = if (dir?.name.equals("Source", ignoreCase = true)) dir?.parentFile else dir
             title = gameDir?.name?.takeIf { it.isNotBlank() } ?: SystemId.JAZZ2.displayName
         }
+        if (system == SystemId.WIPI) {
+            // "게임_LGT_wipiX호환.zip" -> "게임 LGT": the distribution tag goes, the carrier moves to the end.
+            val m = Regex("^(.*?)[ _](KTF|LGT|SKT)[ _]?wipiX호환$", RegexOption.IGNORE_CASE).find(f.nameWithoutExtension)
+            if (m != null) title = "${m.groupValues[1].replace('_', ' ').trim()} ${m.groupValues[2].uppercase()}"
+            if (ext == "zip") WipiArchive.icon(f)?.let { autoIcon = saveIcon(it, f) }
+        }
         if (system == SystemId.NDS) {
             RomInfo.ndsBanner(f)?.let { b ->
                 autoIcon = saveIcon(b.icon, f)
@@ -224,6 +232,8 @@ class RomScanner(
     private fun zipSystem(f: File, candidates: List<SystemId>): SystemId? = runCatching {
         ZipFile(f).use { zip ->
             val names = zip.entries().asSequence().map { it.name.lowercase() }.take(200).toList()
+            // Feature-phone packages carry a descriptor (__adf__ / app_info / .msd) or a jar, never a ROM.
+            if (SystemId.WIPI in candidates && WipiArchive.detect(names) != null) return@runCatching SystemId.WIPI
             for (sys in SystemId.entries) {
                 if (sys == SystemId.ARCADE) continue
                 if (names.any { n -> sys.extensions.any { n.endsWith(".$it") } }) return@runCatching sys

@@ -173,6 +173,10 @@ fun GameDetailScreen(nav: NavHostController, gameId: Long, vm: LibraryViewModel 
                 Spacer(Modifier.height(16.dp))
                 ArcadeRomCard(g, onMessage = { cheatMessage = it })
             }
+            if (system == SystemId.WIPI) {
+                Spacer(Modifier.height(16.dp))
+                WipiCompatCard(g)
+            }
             // Dolphin runs both machines off one system entry, so a Wii disc picks its remote here.
             if (system == SystemId.GC) {
                 Spacer(Modifier.height(16.dp))

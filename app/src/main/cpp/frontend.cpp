@@ -818,6 +818,14 @@ uint32_t Frontend::turbo(unsigned port, uint32_t buttons) const {
     return out;
 }
 
+// Feature-phone keypad bits (NativeBridge.setPhoneKeys) as the keyboard keys the WIPI core reads:
+// 0-9, *, #, left/right soft key (F1/F2), CLR (Backspace), OK (Enter), call/end (F3/F4), then the four arrows.
+static const unsigned kPhoneKeys[] = {
+    RETROK_0, RETROK_1, RETROK_2, RETROK_3, RETROK_4, RETROK_5, RETROK_6, RETROK_7, RETROK_8, RETROK_9,
+    RETROK_ASTERISK, RETROK_HASH, RETROK_F1, RETROK_F2, RETROK_BACKSPACE, RETROK_RETURN, RETROK_F3, RETROK_F4,
+    RETROK_UP, RETROK_DOWN, RETROK_LEFT, RETROK_RIGHT,
+};
+
 int16_t Frontend::inputState(unsigned port, unsigned device, unsigned index, unsigned id) {
     if (port >= 4) return 0;
     const InputState& in = input_[port];
@@ -836,6 +844,14 @@ int16_t Frontend::inputState(unsigned port, unsigned device, unsigned index, uns
             }
             if (index < 2 && id < 2) return in.analog[index][id].load(std::memory_order_relaxed);
             return 0;
+        case RETRO_DEVICE_KEYBOARD: {
+            if (port != 0) return 0;
+            const uint32_t bits = phoneFrame_.load(std::memory_order_relaxed) | phoneKeys_.load(std::memory_order_relaxed);
+            if (bits == 0) return 0;
+            for (unsigned i = 0; i < sizeof(kPhoneKeys) / sizeof(kPhoneKeys[0]); i++)
+                if (kPhoneKeys[i] == id) return (bits >> i) & 1 ? 1 : 0;
+            return 0;
+        }
         case RETRO_DEVICE_POINTER:
             if (port != 0 || index != 0) return 0;
             switch (id) {
@@ -862,6 +878,11 @@ void Frontend::setInput(unsigned port, uint32_t buttons, int16_t lx, int16_t ly,
 void Frontend::setTurbo(uint32_t mask, unsigned framesPerCycle) {
     turboMask_.store(mask, std::memory_order_relaxed);
     turboPeriod_.store(framesPerCycle < 2 ? 2 : framesPerCycle, std::memory_order_relaxed);
+}
+
+void Frontend::setPhoneKeys(uint32_t bits) {
+    phoneKeys_.store(bits, std::memory_order_relaxed);
+    phonePending_.fetch_or(bits, std::memory_order_relaxed);
 }
 
 void Frontend::setPointer(int16_t x, int16_t y, bool pressed) {
@@ -1084,7 +1105,7 @@ bool Frontend::environment(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK: return false;
         case RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE: ((retro_rumble_interface*)data)->set_rumble_state = cb_set_rumble; return true;
         case RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES:
-            *(uint64_t*)data = (1 << RETRO_DEVICE_JOYPAD) | (1 << RETRO_DEVICE_ANALOG) | (1 << RETRO_DEVICE_POINTER);
+            *(uint64_t*)data = (1 << RETRO_DEVICE_JOYPAD) | (1 << RETRO_DEVICE_ANALOG) | (1 << RETRO_DEVICE_POINTER) | (1 << RETRO_DEVICE_KEYBOARD);
             return true;
         case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE: {
             // The phone's own accelerometer and gyroscope, on port 0: Dolphin turns them into the Wii

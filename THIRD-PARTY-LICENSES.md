@@ -30,14 +30,15 @@ GPL 조건을 따릅니다. 전문은 [`LICENSE`](LICENSE) 에 있습니다.
 | FCEUmm | nes | GPL-2.0 | APK 포함 | [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `236ccdfc911e` |
 | Genesis Plus GX (메가드라이브 / 마스터 시스템) | md, sms, gg | Non-commercial ⚠ | APK 포함 | [libretro/Genesis-Plus-GX](https://github.com/libretro/Genesis-Plus-GX) `c2838c7dc423` |
 | 재즈 잭래빗 2 (Jazz² Resurrection) | jazz2 | GPL-3.0-or-later | APK 포함 | [deathkiller/jazz2-native](https://github.com/deathkiller/jazz2-native) `9cc77a769ca0` |
-| MAME (최신) | arcade | GPL-2.0-or-later (MAME) | 내려받기 | [libretro/mame](https://github.com/libretro/mame) `4fc9a9312baa` |
 | MAME 2003-Plus | arcade | MAME (non-commercial) ⚠ | APK 포함 | [libretro/mame2003-plus-libretro](https://github.com/libretro/mame2003-plus-libretro) `d3ac6c95f293` |
 | MAME 2010 | arcade | MAME (non-commercial) ⚠ | 내려받기 | [libretro/mame2010-libretro](https://github.com/libretro/mame2010-libretro) `dff8aadd1c3f` |
+| MAME (최신) | arcade | GPL-2.0-or-later (MAME) | 내려받기 | [libretro/mame](https://github.com/libretro/mame) `4fc9a9312baa` |
 | melonDS DS | nds | GPL-3.0-or-later | APK 포함 | [JesseTG/melonds-ds](https://github.com/JesseTG/melonds-ds) `bc4e4b67d2d4` |
 | mGBA | gba, gbc, gb | MPL-2.0 | APK 포함 | [libretro/mgba](https://github.com/libretro/mgba) `e31759b24e7a` |
 | PCSX-ReARMed | psx | GPL-2.0 | APK 포함 | [libretro/pcsx_rearmed](https://github.com/libretro/pcsx_rearmed) `8625c395a244` |
 | Play! | ps2 | BSD-2-Clause | APK 포함 | [jpd002/Play-](https://github.com/jpd002/Play-) `83700b2c31e5` |
 | PPSSPP | psp | GPL-2.0-or-later | APK 포함 | [hrydgard/ppsspp](https://github.com/hrydgard/ppsspp) `fa50bb197606` |
+| 피처폰 WIPI (wie) | wipi | MIT | APK 포함 | [dlunch/wie](https://github.com/dlunch/wie) `25e2fd65b149` |
 
 ## 그 밖의 포함물
 
@@ -46,6 +47,14 @@ GPL 조건을 따릅니다. 전문은 [`LICENSE`](LICENSE) 에 있습니다.
 - **Dolphin 런타임 파일** (`cores/dolphin/assets/`) — Dolphin 이 자기 저장소에서 공개 배포하는
   파일만 복사했습니다. 폰트는 Droid Sans 기반으로 Dolphin 팀이 직접 만든 것이며
   (Apache-2.0, `GC/font-licenses.txt` 에 전문 포함), 닌텐도의 파일은 들어 있지 않습니다.
+
+- **피처폰 WIPI 코어** (`cores/wipi`) — wie 와 함께 들어가는 라이브러리: RustJava·arm32_cpu·smaf
+  (dlunch, MIT), [rustysynth](https://github.com/sinshu/rustysynth) (MIT), 그 밖의 Rust 크레이트
+  (MIT/Apache-2.0). 화면 글꼴은 wie 저장소의 Neo둥근모(SIL OFL 1.1)입니다.
+  ARM JIT 는 [dynarmic](https://github.com/azahar-emu/dynarmic) (0BSD) 과 그 의존성 mcl·fmt·oaknut·robin-map
+  (MIT), 빌드용 Boost 헤더 (BSL-1.0) 입니다. 게임별 고속 패치표는 ParkJeongseop/wie (MIT) 에서 왔습니다.
+- **GeneralUser GS 사운드폰트** v2.0.3 (S. Christian Collins) — 피처폰 배경음악 합성용 코어 에셋.
+  자유 사용·재배포 허용, 전문은 `cores/wipi/assets/LICENSE-GeneralUser-GS.txt`.
 
 ## 포함되지 않은 것
 

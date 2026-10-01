@@ -43,7 +43,7 @@ cores/<id>/
 }
 ```
 
-- `systems` 값은 아래 시스템 ID만 사용: `gb`, `gbc`, `gba`, `nds`, `nes`, `psp`, `ps2`, `3ds`, `arcade`.
+- `systems` 값은 `SystemId.kt` 의 ID만 사용: `nes`, `gb`, `gbc`, `gba`, `nds`, `3ds`, `md`, `sms`, `gg`, `psx`, `psp`, `ps2`, `gc`, `arcade`, `jazz2`, `wipi`.
 - `hwRender`: `none`(소프트웨어 프레임버퍼), `gles3`, `vulkan`. 두 가지 지원 시 배열 대신 우선순위 높은 하나만.
 - `needFullPath`: 코어가 `retro_system_info.need_fullpath`를 요구하면 true.
 - `glesMinVersion`(선택, HW 렌더 코어만): 셰이더가 실제로 요구하는 최소 GLES 버전(예: `"3.2"`, Azahar는 `#version 320 es`). 지정하면 기기 컨텍스트가 더 낮을 때 `context_reset`을 호출하지 않고 "지원하지 않는 GLES 버전" 오류를 띄운다. 요청 버전이 명목상인 코어(Play!는 3.2를 요청하지만 `300 es` 셰이더)는 비워 둔다.

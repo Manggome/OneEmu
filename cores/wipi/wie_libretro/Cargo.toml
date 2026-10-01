@@ -1,0 +1,42 @@
+# Built as a member of the pinned wie checkout: cores/wipi/build.sh copies this crate to
+# cores/wipi/src/wie/wie-libretro and adds it to wie's workspace, so wie's Cargo.lock (the versions wie
+# is tested with) and its [workspace.dependencies] apply.
+[package]
+name = "wie-libretro"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "libretro core for WIPI / J2ME feature-phone games, built on wie"
+publish = false
+
+[lib]
+name = "wipi_libretro"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "wipi_headless"
+path = "src/bin/wipi_headless.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
+tracing-subscriber = { version = "^0.3", default-features = false, features = ["fmt", "std"] }
+rustysynth = { version = "^1.3" }
+
+wie-backend = { workspace = true }
+wie-core-arm = { workspace = true }
+wie-j2me = { workspace = true }
+wie-ktf = { workspace = true }
+wie-lgt = { workspace = true }
+wie-skt = { workspace = true }
+wie-util = { workspace = true }
+
+[features]
+# ARM32 JIT (dynarmic). build.sh enables it and provides the prebuilt library.
+jit = ["wie-core-arm/dynarmic"]
+
+[dev-dependencies]
+futures = { workspace = true, features = ["executor"] }

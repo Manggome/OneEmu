@@ -40,6 +40,10 @@ fun InGameMenuDialog(
     turboLabel: String = "",
     /** Shown only while the phone's motion aims a Wii Remote. */
     showGyroCenter: Boolean = false,
+    /** False for cores that can't save states (feature phones save in-game instead). */
+    showStates: Boolean = true,
+    /** Feature phones: no turbo / cheats, and the layout row opens the handset keypad settings. */
+    phone: Boolean = false,
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
@@ -57,13 +61,15 @@ fun InGameMenuDialog(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
                 )
-                MenuRow(stringResource(R.string.menu_load)) { onAction(MenuAction.LOAD) }
-                MenuRow(stringResource(R.string.menu_save)) { onAction(MenuAction.SAVE) }
+                if (showStates) {
+                    MenuRow(stringResource(R.string.menu_load)) { onAction(MenuAction.LOAD) }
+                    MenuRow(stringResource(R.string.menu_save)) { onAction(MenuAction.SAVE) }
+                }
                 MenuRow(stringResource(R.string.menu_fast_forward), trailing = fastForwardLabel) { onAction(MenuAction.FAST_FORWARD) }
-                MenuRow(stringResource(R.string.menu_turbo), trailing = turboLabel) { onAction(MenuAction.TURBO) }
+                if (!phone) MenuRow(stringResource(R.string.menu_turbo), trailing = turboLabel) { onAction(MenuAction.TURBO) }
                 if (showGyroCenter) MenuRow(stringResource(R.string.menu_gyro_center)) { onAction(MenuAction.GYRO_CENTER) }
-                MenuRow(stringResource(R.string.menu_cheats)) { onAction(MenuAction.CHEATS) }
-                MenuRow(stringResource(R.string.menu_layout)) { onAction(MenuAction.LAYOUT) }
+                if (!phone) MenuRow(stringResource(R.string.menu_cheats)) { onAction(MenuAction.CHEATS) }
+                MenuRow(stringResource(if (phone) R.string.wipi_menu_keypad else R.string.menu_layout)) { onAction(MenuAction.LAYOUT) }
                 MenuRow(stringResource(R.string.menu_settings)) { onAction(MenuAction.SETTINGS) }
                 MenuRow(stringResource(R.string.menu_screenshot)) { onAction(MenuAction.SCREENSHOT) }
                 MenuRow(stringResource(R.string.menu_copy_log)) { onAction(MenuAction.COPY_LOG) }

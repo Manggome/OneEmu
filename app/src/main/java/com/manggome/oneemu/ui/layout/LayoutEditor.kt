@@ -577,7 +577,9 @@ private fun VectorLayoutEditor(
                         PadElementId.COIN, PadElementId.ARCADE_1, PadElementId.ARCADE_2, PadElementId.ARCADE_3,
                         PadElementId.ARCADE_4, PadElementId.ARCADE_5, PadElementId.ARCADE_6,
                     )
-                    val usable = PadElementId.entries.filter { it !in arcadeOnly || system == SystemId.ARCADE }
+                    val usable = PadElementId.entries.filter {
+                        (it !in arcadeOnly || system == SystemId.ARCADE) && (!it.isPhoneKey || system == SystemId.WIPI)
+                    }
                     (l?.elements.orEmpty().map { it.id } + defaults.elements.map { it.id } + usable).distinct()
                 }
                 LazyColumn(Modifier.height(360.dp)) {

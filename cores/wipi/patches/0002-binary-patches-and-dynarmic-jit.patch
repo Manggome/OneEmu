@@ -1,0 +1,3428 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 335e41a7..7c600812 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -52,6 +52,7 @@ jvm-bytecode = { version = "^0.3.0" }
+ jvm-class-proto = { version = "^0.3.0" }
+ jvm-types = { version = "^0.3.0" }
+ lazy_static = { version = "^1.5", default-features = false }
++md5 = { version = "^0.8", default-features = false }
+ rustjava-runtime = { version = "^0.3.0" }
+ serde = { version = "^1", default-features = false, features = ["derive", "alloc"] }
+ # Use Rustls with ureq to support Android without OpenSSL or JVM certificate-verifier setup.
+diff --git a/wie-core-arm/Cargo.toml b/wie-core-arm/Cargo.toml
+index 97d9433a..2707960c 100644
+--- a/wie-core-arm/Cargo.toml
++++ b/wie-core-arm/Cargo.toml
+@@ -9,7 +9,10 @@ repository.workspace = true
+ [dependencies]
+ async-trait = { workspace = true }
+ bytemuck = { workspace = true }
++md5 = { workspace = true }
++serde = { workspace = true }
+ spin = { workspace = true }
++toml = { workspace = true }
+ tracing = { workspace = true }
+ 
+ arm32_cpu = { version = "^0.1.2" }
+@@ -22,6 +25,14 @@ wie-backend = { workspace = true }
+ wie-arm-jit-types = { workspace = true }
+ wie-util = { workspace = true }
+ 
++[features]
++# ARM32 JIT on dynarmic. Needs a prebuilt dynarmic: WIE_DYNARMIC_INCLUDE (its `src` dir) and WIE_DYNARMIC_LIBS
++# (`;`-separated static libraries in link order).
++dynarmic = ["dep:cc"]
++
++[build-dependencies]
++cc = { version = "^1", optional = true }
++
+ [dev-dependencies]
+ futures = { workspace = true, features = ["executor"] }
+ futures-test = { workspace = true }
+diff --git a/wie-core-arm/build.rs b/wie-core-arm/build.rs
+new file mode 100644
+index 00000000..b6b2a70f
+--- /dev/null
++++ b/wie-core-arm/build.rs
+@@ -0,0 +1,39 @@
++fn main() {
++    #[cfg(feature = "dynarmic")]
++    dynarmic::build();
++}
++
++#[cfg(feature = "dynarmic")]
++mod dynarmic {
++    use std::{env, path::Path};
++
++    pub fn build() {
++        println!("cargo:rerun-if-changed=cpp/dynarmic_shim.cpp");
++        println!("cargo:rerun-if-env-changed=WIE_DYNARMIC_INCLUDE");
++        println!("cargo:rerun-if-env-changed=WIE_DYNARMIC_LIBS");
++
++        let include = env::var("WIE_DYNARMIC_INCLUDE").expect("WIE_DYNARMIC_INCLUDE: dynarmic's src directory");
++        let libs = env::var("WIE_DYNARMIC_LIBS").expect("WIE_DYNARMIC_LIBS: ';'-separated dynarmic static libraries");
++        let target = env::var("TARGET").unwrap();
++
++        let mut build = cc::Build::new();
++        build.cpp(true).std("c++20").include(&include).file("cpp/dynarmic_shim.cpp");
++        if target.contains("android") {
++            // Static libc++ keeps the core a single self-contained .so.
++            build.cpp_link_stdlib("c++_static");
++        }
++        build.compile("wie_dynarmic_shim");
++
++        for lib in libs.split(';').filter(|lib| !lib.is_empty()) {
++            let path = Path::new(lib);
++            println!("cargo:rustc-link-search=native={}", path.parent().unwrap().display());
++            let stem = path.file_stem().unwrap().to_str().unwrap();
++            let name = stem.strip_prefix("lib").filter(|_| !target.contains("msvc")).unwrap_or(stem);
++            println!("cargo:rustc-link-lib=static={name}");
++        }
++        if target.contains("android") {
++            // Resolved by the NDK linker from its sysroot at the final link, like cc's c++_static.
++            println!("cargo:rustc-link-lib=c++abi");
++        }
++    }
++}
+diff --git a/wie-core-arm/cpp/dynarmic_shim.cpp b/wie-core-arm/cpp/dynarmic_shim.cpp
+new file mode 100644
+index 00000000..f47c1798
+--- /dev/null
++++ b/wie-core-arm/cpp/dynarmic_shim.cpp
+@@ -0,0 +1,285 @@
++// C ABI over dynarmic's A32 JIT for `engine::dynarmic`.
++//
++// Guest memory lives on the Rust side in 64 KiB pages; dynarmic sees it through its 4 KiB page table, so
++// aligned accesses never leave generated code. The callbacks below only run for unmapped addresses and for
++// accesses that straddle a 4 KiB page, and resolve those through the same table byte by byte.
++
++#include <array>
++#include <cstdint>
++#include <cstring>
++#include <memory>
++#include <optional>
++
++#include <dynarmic/interface/A32/a32.h>
++#include <dynarmic/interface/A32/config.h>
++#include <dynarmic/interface/A32/coprocessor.h>
++
++using namespace Dynarmic;
++
++namespace {
++
++using PageTable = std::array<std::uint8_t*, A32::UserConfig::NUM_PAGE_TABLE_ENTRIES>;
++constexpr std::uint32_t PAGE_BITS = A32::UserConfig::PAGE_BITS;
++constexpr std::uint32_t PAGE_MASK = (1u << PAGE_BITS) - 1;
++
++// Stop kinds reported to Rust.
++enum StopKind : std::uint32_t {
++    STOP_TICKS = 0,      // budget used up
++    STOP_SVC = 1,        // info = SVC immediate, R15 = next instruction
++    STOP_EXCEPTION = 2,  // info = exception, address = faulting pc
++    STOP_FAULT = 3,      // address = unmapped data address, R15 = faulting instruction
++};
++
++struct Shim;
++
++struct Callbacks final : A32::UserCallbacks {
++    Shim* shim = nullptr;
++
++    std::optional<std::uint32_t> MemoryReadCode(A32::VAddr vaddr) override;
++    std::uint8_t MemoryRead8(A32::VAddr vaddr) override { return Read<std::uint8_t>(vaddr); }
++    std::uint16_t MemoryRead16(A32::VAddr vaddr) override { return Read<std::uint16_t>(vaddr); }
++    std::uint32_t MemoryRead32(A32::VAddr vaddr) override { return Read<std::uint32_t>(vaddr); }
++    std::uint64_t MemoryRead64(A32::VAddr vaddr) override { return Read<std::uint64_t>(vaddr); }
++    void MemoryWrite8(A32::VAddr vaddr, std::uint8_t value) override { Write(vaddr, value); }
++    void MemoryWrite16(A32::VAddr vaddr, std::uint16_t value) override { Write(vaddr, value); }
++    void MemoryWrite32(A32::VAddr vaddr, std::uint32_t value) override { Write(vaddr, value); }
++    void MemoryWrite64(A32::VAddr vaddr, std::uint64_t value) override { Write(vaddr, value); }
++
++    void InterpreterFallback(A32::VAddr pc, size_t) override;
++    void CallSVC(std::uint32_t swi) override;
++    void ExceptionRaised(A32::VAddr pc, A32::Exception exception) override;
++    void AddTicks(std::uint64_t ticks) override;
++    std::uint64_t GetTicksRemaining() override;
++
++    template<typename T>
++    T Read(A32::VAddr vaddr);
++    template<typename T>
++    void Write(A32::VAddr vaddr, T value);
++};
++
++// Accepts every CP15 operation. Cache maintenance on c7 (I-cache / unified invalidate) drops translated code;
++// everything else (barriers, MMU, TLB) is a no-op for a user-mode guest, and reads return 0.
++struct Cp15 final : A32::Coprocessor {
++    Shim* shim = nullptr;
++    std::uint32_t sink = 0;
++    std::uint32_t zero = 0;
++    std::uint32_t sink2 = 0;
++    std::uint32_t zero2 = 0;
++
++    static std::uint64_t Nop(void*, std::uint32_t, std::uint32_t) { return 0; }
++    static std::uint64_t InvalidateAll(void* user, std::uint32_t, std::uint32_t);
++    static std::uint64_t InvalidateLine(void* user, std::uint32_t address, std::uint32_t);
++
++    std::optional<Callback> CompileInternalOperation(bool, unsigned, A32::CoprocReg, A32::CoprocReg, A32::CoprocReg, unsigned) override {
++        return Callback{&Nop, nullptr};
++    }
++    CallbackOrAccessOneWord CompileSendOneWord(bool two, unsigned, A32::CoprocReg crn, A32::CoprocReg crm, unsigned opc2) override {
++        if (!two && crn == A32::CoprocReg::C7) {
++            // ARM926EJ-S c7: c5 = I-cache, c7 = I+D; opc2 0 = all, 1 = by MVA, 2 = by set/way.
++            if (crm == A32::CoprocReg::C5 || crm == A32::CoprocReg::C7) {
++                if (opc2 == 1) return Callback{&InvalidateLine, shim};
++                if (opc2 == 0 || opc2 == 2) return Callback{&InvalidateAll, shim};
++            }
++            return Callback{&Nop, nullptr};
++        }
++        return &sink;
++    }
++    CallbackOrAccessTwoWords CompileSendTwoWords(bool, unsigned, A32::CoprocReg) override {
++        return std::array<std::uint32_t*, 2>{&sink, &sink2};
++    }
++    CallbackOrAccessOneWord CompileGetOneWord(bool, unsigned, A32::CoprocReg, A32::CoprocReg, unsigned) override { return &zero; }
++    CallbackOrAccessTwoWords CompileGetTwoWords(bool, unsigned, A32::CoprocReg) override {
++        return std::array<std::uint32_t*, 2>{&zero, &zero2};
++    }
++    std::optional<Callback> CompileLoadWords(bool, bool, A32::CoprocReg, std::optional<std::uint8_t>) override {
++        return Callback{&Nop, nullptr};
++    }
++    std::optional<Callback> CompileStoreWords(bool, bool, A32::CoprocReg, std::optional<std::uint8_t>) override {
++        return Callback{&Nop, nullptr};
++    }
++};
++
++struct Shim {
++    Callbacks callbacks;
++    PageTable* page_table;
++    // One bit per 4 KiB page that has been translated, so host writes know when to drop code.
++    std::uint8_t* code_pages;
++    std::unique_ptr<A32::Jit> jit;
++
++    std::uint64_t ticks_left = 0;
++    std::uint32_t stop_kind = STOP_TICKS;
++    std::uint32_t stop_info = 0;
++    std::uint32_t stop_address = 0;
++    bool stopped = false;
++
++    void Stop(StopKind kind, std::uint32_t info, std::uint32_t address, HaltReason reason) {
++        if (stopped) return;
++        stopped = true;
++        stop_kind = kind;
++        stop_info = info;
++        stop_address = address;
++        jit->HaltExecution(reason);
++    }
++};
++
++std::optional<std::uint32_t> Callbacks::MemoryReadCode(A32::VAddr vaddr) {
++    std::uint8_t* page = (*shim->page_table)[vaddr >> PAGE_BITS];
++    if (page == nullptr || vaddr < 0x1000) return std::nullopt;
++    shim->code_pages[vaddr >> (PAGE_BITS + 3)] |= std::uint8_t(1u << ((vaddr >> PAGE_BITS) & 7));
++    std::uint32_t value;
++    std::memcpy(&value, page + (vaddr & PAGE_MASK), sizeof(value));  // aligned: never straddles a page
++    return value;
++}
++
++template<typename T>
++T Callbacks::Read(A32::VAddr vaddr) {
++    T value = 0;
++    for (std::uint32_t i = 0; i < sizeof(T); ++i) {
++        const std::uint32_t address = vaddr + i;
++        std::uint8_t* page = (*shim->page_table)[address >> PAGE_BITS];
++        if (page == nullptr) {
++            shim->Stop(STOP_FAULT, 0, address, HaltReason::MemoryAbort);
++            return 0;
++        }
++        value |= T(page[address & PAGE_MASK]) << (8 * i);
++    }
++    return value;
++}
++
++template<typename T>
++void Callbacks::Write(A32::VAddr vaddr, T value) {
++    for (std::uint32_t i = 0; i < sizeof(T); ++i) {
++        const std::uint32_t address = vaddr + i;
++        std::uint8_t* page = (*shim->page_table)[address >> PAGE_BITS];
++        if (page == nullptr) {
++            shim->Stop(STOP_FAULT, 0, address, HaltReason::MemoryAbort);
++            return;
++        }
++        page[address & PAGE_MASK] = std::uint8_t(value >> (8 * i));
++    }
++}
++
++void Callbacks::InterpreterFallback(A32::VAddr pc, size_t) {
++    // Only privileged forms (CPS, RFE, SRS, user-bank LDM/STM) land here; a user-mode guest never uses them.
++    shim->Stop(STOP_EXCEPTION, 0xff, pc, HaltReason::UserDefined2);
++}
++
++void Callbacks::CallSVC(std::uint32_t swi) {
++    shim->Stop(STOP_SVC, swi, 0, HaltReason::UserDefined1);
++}
++
++void Callbacks::ExceptionRaised(A32::VAddr pc, A32::Exception exception) {
++    switch (exception) {
++    case A32::Exception::UndefinedInstruction:
++    case A32::Exception::UnpredictableInstruction:
++    case A32::Exception::DecodeError:
++    case A32::Exception::Breakpoint:
++    case A32::Exception::NoExecuteFault:
++        shim->jit->Regs()[15] = pc;
++        shim->Stop(STOP_EXCEPTION, static_cast<std::uint32_t>(exception), pc, HaltReason::UserDefined2);
++        break;
++    default:
++        // Hints (yield, wfi, pld, ...) have no effect in user mode.
++        break;
++    }
++}
++
++void Callbacks::AddTicks(std::uint64_t ticks) {
++    shim->ticks_left = ticks > shim->ticks_left ? 0 : shim->ticks_left - ticks;
++}
++
++std::uint64_t Callbacks::GetTicksRemaining() {
++    return shim->ticks_left;
++}
++
++std::uint64_t Cp15::InvalidateAll(void* user, std::uint32_t, std::uint32_t) {
++    static_cast<Shim*>(user)->jit->ClearCache();
++    return 0;
++}
++
++std::uint64_t Cp15::InvalidateLine(void* user, std::uint32_t address, std::uint32_t) {
++    // ARM926EJ-S cache lines are 32 bytes.
++    static_cast<Shim*>(user)->jit->InvalidateCacheRange(address & ~31u, 32);
++    return 0;
++}
++
++}  // namespace
++
++extern "C" {
++
++struct WieDynStop {
++    std::uint32_t kind;
++    std::uint32_t info;
++    std::uint32_t address;
++    std::uint64_t ticks_used;
++};
++
++void* wie_dyn_new(std::uint8_t** page_table, std::uint8_t* code_pages, std::size_t code_cache_size) {
++    auto* shim = new Shim{};
++    shim->callbacks.shim = shim;
++    shim->page_table = reinterpret_cast<PageTable*>(page_table);
++    shim->code_pages = code_pages;
++
++    A32::UserConfig config{};
++    config.callbacks = &shim->callbacks;
++    config.arch_version = A32::ArchVersion::v5TE;
++    config.page_table = shim->page_table;
++    config.absolute_offset_page_table = false;
++    // Accesses that straddle a 4 KiB page go to the callbacks: neighbouring guest pages need not be adjacent.
++    config.detect_misaligned_access_via_page_table = 16 | 32 | 64;
++    config.only_detect_misalignment_via_page_table_on_page_boundary = true;
++    config.check_halt_on_memory_access = true;
++    config.define_unpredictable_behaviour = true;
++    config.code_cache_size = code_cache_size;
++    for (std::size_t i = 0; i < config.coprocessors.size(); ++i) {
++        if (i == 10 || i == 11) continue;  // VFP is decoded by dynarmic itself
++        auto cp = std::make_shared<Cp15>();
++        cp->shim = shim;
++        config.coprocessors[i] = cp;
++    }
++    shim->jit = std::make_unique<A32::Jit>(config);
++    return shim;
++}
++
++void wie_dyn_free(void* handle) {
++    delete static_cast<Shim*>(handle);
++}
++
++void wie_dyn_run(void* handle, std::uint64_t ticks, WieDynStop* out) {
++    auto* shim = static_cast<Shim*>(handle);
++    shim->ticks_left = ticks;
++    shim->stopped = false;
++    for (;;) {
++        const HaltReason reason = shim->jit->Run();
++        if (shim->stopped || shim->ticks_left == 0) break;
++        // Halted only to flush invalidated code (CP15 / host write): keep going.
++        if (Has(reason, HaltReason::CacheInvalidation)) continue;
++        if (!Has(reason, HaltReason::UserDefined1) && !Has(reason, HaltReason::UserDefined2)) break;
++    }
++    out->kind = shim->stopped ? shim->stop_kind : STOP_TICKS;
++    out->info = shim->stop_info;
++    out->address = shim->stop_address;
++    out->ticks_used = ticks - shim->ticks_left;
++}
++
++std::uint32_t wie_dyn_reg(void* handle, std::uint32_t index) {
++    return static_cast<Shim*>(handle)->jit->Regs()[index];
++}
++
++void wie_dyn_set_reg(void* handle, std::uint32_t index, std::uint32_t value) {
++    static_cast<Shim*>(handle)->jit->Regs()[index] = value;
++}
++
++std::uint32_t wie_dyn_cpsr(void* handle) {
++    return static_cast<Shim*>(handle)->jit->Cpsr();
++}
++
++void wie_dyn_set_cpsr(void* handle, std::uint32_t value) {
++    static_cast<Shim*>(handle)->jit->SetCpsr(value);
++}
++
++void wie_dyn_invalidate(void* handle, std::uint32_t address, std::uint32_t length) {
++    static_cast<Shim*>(handle)->jit->InvalidateCacheRange(address, length);
++}
++
++}  // extern "C"
+diff --git a/wie-core-arm/data/binary_patches.toml b/wie-core-arm/data/binary_patches.toml
+new file mode 100644
+index 00000000..ddd2fae2
+--- /dev/null
++++ b/wie-core-arm/data/binary_patches.toml
+@@ -0,0 +1,100 @@
++# Game-specific binary patches consumed by `wie_core_arm::install_binary_patches`.
++#
++# Each `[[entry]]` is either:
++#   - hash-keyed: `hash` is the MD5 of the main guest binary (KTF
++#     `client.bin`, LGT `binary.mod`, etc.). Matched and installed on boot.
++#   - pattern-only (hash omitted): generic patterns that apply to any binary
++#     matching the bytes. Hash-keyed entries take priority.
++#
++# Hook `pc`/`exit_pc` MUST have the Thumb bit (LSB=1); ARM-mode hooks are
++# not supported. Stack offsets are signed and measured from R7 (Thumb
++# frame pointer).
++#
++# A hook is either pc-based (`pc = ...`) or pattern-based (`pattern = ...`),
++# never both. Pattern tokens are whitespace-separated and each token is one of:
++#   - `??`        — any byte (unnamed wildcard)
++#   - `xx`        — literal hex byte
++#   - `{dst}`     — 1 byte, Thumb1 `SUBS Rn, #imm8` imm8 → `-(b as i8) as i32`
++#   - `{src}`     — same, src offset
++#   - `{len}`     — same, len offset (omit capture + provide `len_offset` to pin)
++#   - `{exit_b}`  — TWO consecutive tokens, encoding a Thumb `B imm11` instruction
++#
++# `inline_copy` fixed fields:
++#   - `len_offset`   — R7-relative offset of the length variable. Required if
++#                      the pattern has no `{len}` capture; forbidden if it does.
++#   - `spill_back`   — after the copy, also write back `dst += len`, `src += len`,
++#                      `len = 0` into their stack slots. Set true when the code
++#                      after the loop re-reads those variables.
++#
++# `inline_copy` requires the loop to use a DOWN-counter (length stored on the
++# stack and decremented to 0 to exit). UP-counter loops are NOT compatible —
++# zeroing the slot just resets the index and the loop restarts.
++#
++# In addition to hooks, an entry may contain `[[entry.patch]]` items that
++# rewrite raw bytes at install time (no SVC, no runtime dispatch). A patch is
++# either pc-based (`pc = 0x...`, requires the entry's `hash`) or pattern-based
++# (`pattern = "..."`, applied at every match).
++#   - `bytes`  : whitespace-separated hex literals. Length >= 1. May not
++#                contain the SVC #0x80 instruction (`80 df` LE).
++#   - `expect` : optional original bytes; same length as `bytes`. Strongly
++#                recommended — install fails fast on a build mismatch.
++#   - `offset` : pattern-only. Bytes are written at `match_addr + offset`.
++#                Default 0. Range `0 ..= pattern_len - bytes_len`.
++# Patch patterns may use `??`, hex literals, and `0b<bits>` BitMatch with no
++# register placeholders. They may NOT use `{dst}`/`{src}`/`{len}`/`{exit_b}`
++# captures or `s`/`d`/`c` BitMatch placeholders — patches have no captures to
++# consume.
++#
++# Install order: patches first, hooks second. Patch ↔ patch and patch ↔ hook
++# SVC overlap fails the install. A hash-keyed entry that produces zero
++# patches/hooks is fatal (likely a stale entry against an updated binary);
++# generic (hash-less) entries warn and continue.
++
++[[entry]]
++name = "Generic compiler library / inline copy patterns"
++
++# Per-frame byte-by-byte memcpy with `src/dst/count` in registers.
++# Loop:
++#   LDRB R3, [Rsrc];   STRB R3, [Rdst]
++#   MOV  R3, Rcount;   ADDS Rsrc, #1; ADDS Rdst, #1; SUBS Rcount, #1
++#   CMP  R3, #0;       BGT loop
++# `Rcount` holds `remaining - 1`, so actual byte count is `Rcount + 1`.
++# Seen as the dominant per-frame hot path in mgh2's `copy_offscreen_to_screen`.
++# Bit-pattern tokens use `s`/`d`/`c` to capture src/dst/count register fields;
++# `exit_pc` is auto-derived as `match_end | 1` (right past the BGT).
++[[entry.hook]]
++kind = "reg_inline_copy"
++pattern = "0b00sss011 78 0b00ddd011 70 0b00ccc011 1c 01 0b00110sss 01 0b00110ddd 01 0b00111ccc 00 2b f7 dc"
++count_offset = 1
++
++# Thumb -O0 byte copy: `*dst++ = *src++` with `dst`/`src`/`len` all on the
++# stack. Src is reached via single-instruction `SUBS R4, R7, #4` (`3c 1f`),
++# so `src_offset` is pinned.
++[[entry.hook]]
++kind = "inline_copy"
++pattern = "3d 1c {dst} 3d 29 68 3c 1f 22 68 08 1c 13 1c 1b 78 03 70 01 32 22 60 01 31 29 60 {exit_b} {exit_b}"
++src_offset = -4
++len_offset = -12
++spill_back = true
++
++# RVCT __rt_memcpy / __rt_memset reached through a Thumb `BX PC` thunk.
++# Prefix `BX PC; NOP; STMFD SP!, {R0, LR}; CMP R2, #N` is specific to the
++# standard library helpers; the trailing `CMP R2` immediate is what
++# distinguishes them (`#3` for memcpy, `#4` for memset).
++[[entry.hook]]
++kind = "memcpy"
++pattern = "78 47 00 00 01 40 2d e9 03 00 52 e3"
++
++[[entry.hook]]
++kind = "memset"
++pattern = "78 47 00 00 01 40 2d e9 04 00 52 e3"
++
++# RVCT Thumb strcpy / strlen with Mycroft's NUL-byte detection
++# (`0xFEFEFEFF`/`0x80808080` magic words).
++[[entry.hook]]
++kind = "strcpy"
++pattern = "70 b5 0b 1c 03 43 03 22 13 40 04 1c"
++
++[[entry.hook]]
++kind = "strlen"
++pattern = "30 b5 03 23 03 40 04 1c 00 2b"
+diff --git a/wie-core-arm/src/binary_patches.rs b/wie-core-arm/src/binary_patches.rs
+new file mode 100644
+index 00000000..6945f423
+--- /dev/null
++++ b/wie-core-arm/src/binary_patches.rs
+@@ -0,0 +1,492 @@
++use alloc::{format, vec, vec::Vec};
++
++use wie_util::{ByteRead, Result, WieError};
++
++use crate::ArmCore;
++
++mod hook;
++mod parser;
++mod patch;
++
++use self::{
++    hook::{Hook, PatternHook},
++    patch::{PatchSpec, PatternPatchSpec},
++};
++
++/// Match the binary against the embedded patch table and install any matching
++/// patches/hooks. The on-disk MD5 selects a hash-keyed entry first, falling
++/// back to a hash-less generic entry. `scan_ranges` are the `(base, size)` byte
++/// ranges searched for pattern matching (typically the guest `.text` region).
++/// Returns the number of patches + hooks installed.
++pub fn install_binary_patches(core: &mut ArmCore, data: &[u8], scan_ranges: &[(u32, u32)]) -> Result<usize> {
++    let hash = md5::compute(data).0;
++    let entries = parser::binary_patches();
++    if let Some(entry) = entries.iter().find(|e| matches!(e.hash, Some(h) if h == hash)) {
++        return install_entry(core, entry, scan_ranges, true);
++    }
++    if let Some(entry) = entries.iter().find(|e| e.hash.is_none()) {
++        return install_entry(core, entry, scan_ranges, false);
++    }
++    Ok(0)
++}
++
++struct Entry {
++    hash: Option<[u8; 16]>,
++    name: alloc::string::String,
++    hooks: Vec<Hook>,
++    hook_patterns: Vec<PatternHook>,
++    patches: Vec<PatchSpec>,
++    patch_patterns: Vec<PatternPatchSpec>,
++}
++
++enum PatternToken {
++    Literal(u8),
++    AnyByte,
++    Capture(CaptureName),
++    /// Bit-level match for a byte that mixes a fixed opcode with a 3-bit
++    /// register field (Thumb1 low-register encoding). `(byte & mask) == fixed`
++    /// is the literal check; if `capture` is set, `(byte >> shift) & 0b111`
++    /// is read into the named register slot, with cross-byte consistency
++    /// enforced at match time.
++    BitMatch {
++        mask: u8,
++        fixed: u8,
++        capture: Option<(CaptureName, u8)>,
++    },
++}
++
++#[derive(Clone, Copy, PartialEq, Eq)]
++enum CaptureName {
++    Dst,
++    Src,
++    Len,
++    ExitB,
++    SrcReg,
++    DstReg,
++    CountReg,
++}
++
++#[derive(Debug, Clone)]
++struct PatternMatch {
++    addr: u32,
++    dst: Option<u8>,
++    src: Option<u8>,
++    len: Option<u8>,
++    src_reg: Option<u8>,
++    dst_reg: Option<u8>,
++    count_reg: Option<u8>,
++    /// Address of the first `{exit_b}` byte — combined with `exit_b_bytes` to
++    /// compute the branch target.
++    exit_b_site: Option<u32>,
++    exit_b_bytes: Option<[u8; 2]>,
++}
++
++fn install_entry(core: &mut ArmCore, entry: &Entry, scan_ranges: &[(u32, u32)], is_specific: bool) -> Result<usize> {
++    let hooks = hook::resolve_hooks(core, entry, scan_ranges)?;
++    let n_patches = patch::install_patches(core, entry, scan_ranges, &hooks)?;
++
++    // A hash-keyed entry that produces zero installations is a strong signal
++    // that the binary drifted from what the patch table targets. Generic
++    // (hash-less) entries have no such guarantee. We trust the caller's
++    // `is_specific` rather than `entry.hash.is_some()` so that a placeholder
++    // all-zero hash in a fixture doesn't accidentally trigger this.
++    if n_patches == 0 && hooks.is_empty() {
++        if is_specific {
++            return Err(WieError::FatalError(format!(
++                "entry {}: hash matched but produced 0 patches/hooks (table likely out of date)",
++                entry.name
++            )));
++        }
++        tracing::warn!("entry {}: generic entry produced 0 patches/hooks", entry.name);
++    }
++
++    hook::apply_hooks(core, &entry.name, &hooks)?;
++    Ok(n_patches + hooks.len())
++}
++
++/// Scans on 2-byte boundaries since all Thumb instructions are halfword-aligned.
++fn scan_pattern(core: &mut ArmCore, tokens: &[PatternToken], scan_ranges: &[(u32, u32)]) -> Result<Vec<(u32, PatternMatch)>> {
++    let mut results = Vec::new();
++    let pat_len = tokens.len();
++    if pat_len == 0 {
++        return Ok(results);
++    }
++
++    for (base, size) in scan_ranges {
++        let mut buf = vec![0u8; *size as usize];
++        core.read_bytes(*base, &mut buf)?;
++
++        let mut off = 0usize;
++        while off + pat_len <= buf.len() {
++            if let Some(mut pm) = try_match(tokens, &buf[off..off + pat_len]) {
++                pm.addr = base + off as u32;
++                if pm.exit_b_bytes.is_some() {
++                    for (ti, t) in tokens.iter().enumerate() {
++                        if matches!(t, PatternToken::Capture(CaptureName::ExitB)) {
++                            pm.exit_b_site = Some(base + (off + ti) as u32);
++                            break;
++                        }
++                    }
++                }
++                results.push((pm.addr, pm));
++            }
++            off += 2;
++        }
++    }
++
++    Ok(results)
++}
++
++/// Returns a `PatternMatch` with captures populated; `addr` and `exit_b_site`
++/// are filled in by the caller from the actual scan position.
++fn try_match(tokens: &[PatternToken], bytes: &[u8]) -> Option<PatternMatch> {
++    if bytes.len() < tokens.len() {
++        return None;
++    }
++    let mut m = PatternMatch {
++        addr: 0,
++        dst: None,
++        src: None,
++        len: None,
++        src_reg: None,
++        dst_reg: None,
++        count_reg: None,
++        exit_b_site: None,
++        exit_b_bytes: None,
++    };
++    let mut i = 0;
++    while i < tokens.len() {
++        let b = bytes[i];
++        match &tokens[i] {
++            PatternToken::Literal(v) => {
++                if b != *v {
++                    return None;
++                }
++                i += 1;
++            }
++            PatternToken::AnyByte => {
++                i += 1;
++            }
++            PatternToken::BitMatch { mask, fixed, capture } => {
++                if b & mask != *fixed {
++                    return None;
++                }
++                if let Some((name, shift)) = capture {
++                    let value = (b >> shift) & 0b111;
++                    let slot = match name {
++                        CaptureName::SrcReg => &mut m.src_reg,
++                        CaptureName::DstReg => &mut m.dst_reg,
++                        CaptureName::CountReg => &mut m.count_reg,
++                        _ => return None,
++                    };
++                    if let Some(prev) = *slot
++                        && prev != value
++                    {
++                        return None;
++                    }
++                    *slot = Some(value);
++                }
++                i += 1;
++            }
++            PatternToken::Capture(name) => match name {
++                CaptureName::Dst => {
++                    m.dst = Some(b);
++                    i += 1;
++                }
++                CaptureName::Src => {
++                    m.src = Some(b);
++                    i += 1;
++                }
++                CaptureName::Len => {
++                    m.len = Some(b);
++                    i += 1;
++                }
++                CaptureName::ExitB => {
++                    if i + 1 >= bytes.len() || i + 1 >= tokens.len() {
++                        return None;
++                    }
++                    let hi = bytes[i + 1];
++                    if !matches!(tokens[i + 1], PatternToken::Capture(CaptureName::ExitB)) {
++                        return None;
++                    }
++                    // Reject matches where the captured bytes aren't a Thumb
++                    // unconditional `B imm11` (`11100 iiiiiiiiiii`, encoded as
++                    // 0xE0xx-0xE7xx little-endian). Without this, a permissive
++                    // pattern can land on arbitrary instructions and decode
++                    // them as if they were branches, sending the dispatcher
++                    // to a garbage `exit_pc`.
++                    if hi & 0xf8 != 0xe0 {
++                        return None;
++                    }
++                    m.exit_b_bytes = Some([b, hi]);
++                    i += 2;
++                }
++                CaptureName::SrcReg | CaptureName::DstReg | CaptureName::CountReg => {
++                    // Register captures only land in `BitMatch`, not whole-byte `Capture`.
++                    return None;
++                }
++            },
++        }
++    }
++    Some(m)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn embedded_toml_parses() {
++        let entries = parser::binary_patches();
++        assert!(!entries.is_empty(), "embedded TOML produced no entries");
++        for entry in &entries {
++            assert!(!entry.name.is_empty(), "entry missing name");
++        }
++    }
++
++    #[test]
++    fn pattern_scan_capture_extracts_dst_src() {
++        let tokens = [
++            PatternToken::Literal(0x00),
++            PatternToken::Capture(CaptureName::Dst),
++            PatternToken::Literal(0x3d),
++            PatternToken::Capture(CaptureName::Src),
++        ];
++        let bytes = [0x00, 0x08, 0x3d, 0x0c];
++
++        let m = try_match(&tokens, &bytes).expect("match");
++        assert_eq!(m.dst, Some(0x08));
++        assert_eq!(m.src, Some(0x0c));
++    }
++
++    #[test]
++    fn pattern_bit_match_captures_register_at_correct_shift() {
++        // `0b00sss011` matches `(src << 3) | 0b011`. Cross-byte consistency
++        // forces the same `s` capture to agree across positions.
++        let tokens = [
++            PatternToken::BitMatch {
++                mask: 0b1100_0111,
++                fixed: 0b0000_0011,
++                capture: Some((CaptureName::SrcReg, 3)),
++            },
++            PatternToken::BitMatch {
++                mask: 0b1111_1000,
++                fixed: 0b0011_0000,
++                capture: Some((CaptureName::SrcReg, 0)),
++            },
++        ];
++        // 0x0B = 0b00001011 → src bits 5..3 = 001 → R1
++        // 0x31 = 0b00110001 → src bits 2..0 = 001 → R1 (consistent)
++        let m = try_match(&tokens, &[0x0b, 0x31]).expect("match");
++        assert_eq!(m.src_reg, Some(1));
++
++        // Inconsistent capture must fail: first byte says R1, second says R2.
++        assert!(try_match(&tokens, &[0x0b, 0x32]).is_none());
++        // First byte's literal bits don't match (low nibble != 0b011).
++        assert!(try_match(&tokens, &[0x0a, 0x31]).is_none());
++    }
++
++    #[test]
++    fn pattern_scan_rejects_exit_b_capture_when_bytes_are_not_thumb_b() {
++        let tokens = [PatternToken::Capture(CaptureName::ExitB), PatternToken::Capture(CaptureName::ExitB)];
++        // `0c 3a` is `SUBS R2, #0xC` — high byte 0x3a is not in 0xE0-0xE7.
++        assert!(try_match(&tokens, &[0x0c, 0x3a]).is_none());
++        // `e8 e7` is a valid back-branch (high byte 0xE7).
++        assert!(try_match(&tokens, &[0xe8, 0xe7]).is_some());
++    }
++
++    mod install_entry_tests {
++        use alloc::{vec, vec::Vec};
++
++        use wie_util::ByteWrite;
++
++        use super::*;
++        use crate::binary_patches::{
++            hook::{Hook, HookKind},
++            patch::{PatchSpec, PatternPatchSpec},
++        };
++
++        fn empty_entry(name: &str, hash: Option<[u8; 16]>) -> Entry {
++            Entry {
++                hash,
++                name: name.into(),
++                hooks: Vec::new(),
++                hook_patterns: Vec::new(),
++                patches: Vec::new(),
++                patch_patterns: Vec::new(),
++            }
++        }
++
++        #[test]
++        fn install_entry_returns_patch_plus_hook_count() -> Result<()> {
++            let mut core = ArmCore::new(wie_backend::Options {
++                enable_gdbserver: false,
++                aot: None,
++                profile: None,
++            })?;
++            core.map(0x2000, 0x100)?;
++            core.write_bytes(0x2000, &[0xaa, 0xbb])?;
++
++            let mut entry = empty_entry("count", Some([0u8; 16]));
++            entry.patches.push(PatchSpec {
++                pc: 0x2000,
++                bytes: vec![0x11, 0x22],
++                expect: Some(vec![0xaa, 0xbb]),
++            });
++            entry.hooks.push(Hook {
++                pc: 0x2010 | 1,
++                kind: HookKind::Memcpy,
++            });
++
++            let n = install_entry(&mut core, &entry, &[], true)?;
++            assert_eq!(n, 2);
++            Ok(())
++        }
++
++        #[test]
++        fn install_entry_specific_entry_with_zero_results_is_fatal() -> Result<()> {
++            let mut core = ArmCore::new(wie_backend::Options {
++                enable_gdbserver: false,
++                aot: None,
++                profile: None,
++            })?;
++            // Map a region with bytes that won't match the patch pattern.
++            core.map(0x2000, 0x40)?;
++
++            let mut entry = empty_entry("specific-empty", Some([1u8; 16]));
++            entry.patch_patterns.push(PatternPatchSpec {
++                tokens: vec![PatternToken::Literal(0xaa), PatternToken::Literal(0xbb)],
++                bytes: vec![0x11, 0x22],
++                expect: None,
++                offset: 0,
++            });
++
++            let err = install_entry(&mut core, &entry, &[(0x2000, 0x40)], true).unwrap_err();
++            assert!(format!("{err}").contains("hash matched but produced 0"));
++            Ok(())
++        }
++
++        #[test]
++        fn install_entry_generic_entry_with_zero_results_is_ok() -> Result<()> {
++            let mut core = ArmCore::new(wie_backend::Options {
++                enable_gdbserver: false,
++                aot: None,
++                profile: None,
++            })?;
++            core.map(0x2000, 0x40)?;
++
++            let mut entry = empty_entry("generic-empty", None);
++            entry.patch_patterns.push(PatternPatchSpec {
++                tokens: vec![PatternToken::Literal(0xaa), PatternToken::Literal(0xbb)],
++                bytes: vec![0x11, 0x22],
++                expect: None,
++                offset: 0,
++            });
++
++            let n = install_entry(&mut core, &entry, &[(0x2000, 0x40)], false)?;
++            assert_eq!(n, 0);
++            Ok(())
++        }
++
++        #[test]
++        fn install_entry_patch_pattern_overlapping_hook_pattern_is_fatal() -> Result<()> {
++            // Hook pattern matches at 0x3000 (Thumb hook PC = 0x3001), patch
++            // pattern matches at 0x3000 too — the SVC region [0x3000, 0x3002)
++            // overlaps the patch [0x3000, 0x3002). Must fatal before any write.
++            let mut core = ArmCore::new(wie_backend::Options {
++                enable_gdbserver: false,
++                aot: None,
++                profile: None,
++            })?;
++            core.map(0x3000, 0x40)?;
++            core.write_bytes(0x3000, &[0x70, 0xb5, 0x00, 0x00])?;
++
++            let mut entry = empty_entry("pat-overlap", None);
++            entry.hook_patterns.push(crate::binary_patches::hook::PatternHook {
++                tokens: vec![PatternToken::Literal(0x70), PatternToken::Literal(0xb5)],
++                kind_template: crate::binary_patches::hook::PatternHookKind::Memcpy,
++            });
++            entry.patch_patterns.push(PatternPatchSpec {
++                tokens: vec![PatternToken::Literal(0x70), PatternToken::Literal(0xb5)],
++                bytes: vec![0x00, 0x00],
++                expect: None,
++                offset: 0,
++            });
++
++            let err = install_entry(&mut core, &entry, &[(0x3000, 0x40)], false).unwrap_err();
++            assert!(format!("{err}").contains("overlap"), "{err}");
++            // Memory unchanged.
++            let mut buf = [0u8; 2];
++            core.read_bytes(0x3000, &mut buf)?;
++            assert_eq!(buf, [0x70, 0xb5]);
++            Ok(())
++        }
++
++        #[test]
++        fn install_entry_applies_patch_before_hook() -> Result<()> {
++            // Patch at [0x4000, 0x4002), hook at 0x4003 (Thumb, SVC at
++            // [0x4002, 0x4004)). Adjacent regions, no overlap. Both writes
++            // must end up in memory.
++            let mut core = ArmCore::new(wie_backend::Options {
++                enable_gdbserver: false,
++                aot: None,
++                profile: None,
++            })?;
++            core.map(0x4000, 0x40)?;
++            core.write_bytes(0x4000, &[0xaa, 0xbb, 0xcc, 0xdd])?;
++
++            let mut entry = empty_entry("ordered", Some([0u8; 16]));
++            entry.patches.push(PatchSpec {
++                pc: 0x4000,
++                bytes: vec![0x11, 0x22],
++                expect: Some(vec![0xaa, 0xbb]),
++            });
++            entry.hooks.push(Hook {
++                pc: 0x4003,
++                kind: HookKind::Memcpy,
++            });
++
++            let n = install_entry(&mut core, &entry, &[], true)?;
++            assert_eq!(n, 2);
++
++            let mut buf = [0u8; 4];
++            core.read_bytes(0x4000, &mut buf)?;
++            assert_eq!(&buf[0..2], &[0x11, 0x22], "patch applied");
++            assert_eq!(buf[3], 0xdf, "hook SVC high byte");
++            assert_eq!(buf[2] as u32, 0x80, "hook SVC low byte = SVC #0x80");
++            Ok(())
++        }
++
++        #[test]
++        fn install_entry_pattern_patch_expect_mismatch_is_fatal() -> Result<()> {
++            let mut core = ArmCore::new(wie_backend::Options {
++                enable_gdbserver: false,
++                aot: None,
++                profile: None,
++            })?;
++            core.map(0x5000, 0x40)?;
++            core.write_bytes(0x5000, &[0x10, 0x20, 0x30, 0x40])?;
++
++            let mut entry = empty_entry("pp-mm", None);
++            entry.patch_patterns.push(PatternPatchSpec {
++                tokens: vec![
++                    PatternToken::Literal(0x10),
++                    PatternToken::Literal(0x20),
++                    PatternToken::Literal(0x30),
++                    PatternToken::Literal(0x40),
++                ],
++                bytes: vec![0xaa, 0xbb],
++                expect: Some(vec![0x99, 0x99]), // doesn't match what's there
++                offset: 1,
++            });
++
++            let err = install_entry(&mut core, &entry, &[(0x5000, 0x40)], false).unwrap_err();
++            assert!(format!("{err}").contains("expected"), "{err}");
++            // Memory unchanged.
++            let mut buf = [0u8; 4];
++            core.read_bytes(0x5000, &mut buf)?;
++            assert_eq!(buf, [0x10, 0x20, 0x30, 0x40]);
++            Ok(())
++        }
++    }
++}
+diff --git a/wie-core-arm/src/binary_patches/hook.rs b/wie-core-arm/src/binary_patches/hook.rs
+new file mode 100644
+index 00000000..0e8e69e7
+--- /dev/null
++++ b/wie-core-arm/src/binary_patches/hook.rs
+@@ -0,0 +1,772 @@
++use alloc::{collections::BTreeMap, format, string::ToString, sync::Arc, vec::Vec};
++
++use wie_util::{ByteWrite, Result, WieError, read_generic};
++
++use super::{Entry, PatternToken, scan_pattern};
++use crate::{ArmCore, engine::ArmRegister, function::JumpTo, stdlib};
++
++const BINARY_PATCH_SVC: u32 = 0x80;
++
++#[derive(Debug, Clone, Copy)]
++pub struct Hook {
++    /// LSB=1 (Thumb) is required; the engine doesn't service ARM-mode SVCs.
++    pub pc: u32,
++    pub kind: HookKind,
++}
++
++#[derive(Debug, Clone, Copy)]
++pub enum HookKind {
++    /// ABI: dst=r0, src=r1, len=r2; returns via LR.
++    Memcpy,
++    /// ABI: dst=r0, val=r1 (low byte), len=r2; returns via LR.
++    Memset,
++    /// ABI: dst=r0, src=r1; copies NUL-inclusive; returns via LR (R0 unchanged).
++    Strcpy,
++    /// ABI: str=r0; returns length in R0 via LR.
++    Strlen,
++    /// Replaces an inline byte-copy loop. Requires a down-counter `len` on the
++    /// stack — zeroing it has to terminate the loop, so up-counter (`for i = 0;
++    /// i < N`) shapes are not compatible.
++    InlineCopy(InlineCopy),
++    /// Replaces an inline byte-copy loop whose src/dst/count live in registers
++    /// instead of on the stack. Bytes copied = `read(count) + count_offset`.
++    /// After the copy, `src`/`dst` are advanced by that count and `count` is
++    /// rewritten so it equals what the loop would have left there (i.e.,
++    /// `original - bytes`), then the dispatcher jumps to `exit_pc`.
++    RegInlineCopy(RegInlineCopy),
++}
++
++#[derive(Debug, Clone, Copy)]
++pub struct InlineCopy {
++    pub dst_offset: i32,
++    pub src_offset: i32,
++    pub len_offset: i32,
++    pub exit_pc: u32,
++    /// Set when the loop's outer code re-reads the stack slots after the body;
++    /// the dispatcher then writes back `dst+len`, `src+len`, `len=0`.
++    pub spill_back: bool,
++}
++
++#[derive(Debug, Clone, Copy)]
++pub struct RegInlineCopy {
++    src: ArmRegister,
++    dst: ArmRegister,
++    count: ArmRegister,
++    count_offset: i32,
++    exit_pc: u32,
++}
++
++/// Scanned across the install-time memory range; each match becomes a `Hook`.
++pub struct PatternHook {
++    pub tokens: Vec<PatternToken>,
++    pub kind_template: PatternHookKind,
++}
++
++pub enum PatternHookKind {
++    Memcpy,
++    Memset,
++    Strcpy,
++    Strlen,
++    InlineCopy {
++        /// `None` => filled from the matching `{dst}` / `{src}` / `{len}`
++        /// capture (Thumb1 `SUBS Rn, #imm8` byte, negated to a stack offset).
++        /// `Some(v)` => pinned by TOML when the pattern omits the capture.
++        dst_offset: Option<i32>,
++        src_offset: Option<i32>,
++        len_offset: Option<i32>,
++        /// `None` => filled from the `{exit_b}` capture's decoded branch target.
++        exit_pc: Option<u32>,
++        spill_back: bool,
++    },
++    /// Pattern-matched register-resident copy loop. The `src`/`dst`/`count`
++    /// registers are read from the pattern's bit-level captures and `exit_pc`
++    /// is derived at install time from `match_addr + pattern.len()` (Thumb bit
++    /// set).
++    RegInlineCopy {
++        count_offset: i32,
++    },
++}
++
++/// Expand static + pattern hooks into a single `Vec<Hook>` whose PCs are final
++/// and Thumb-valid. All pattern matching happens here; downstream consumers
++/// (overlap check, `apply_hooks`) only see PC + kind, never raw tokens.
++///
++/// Static hook PCs come from TOML, so we validate the Thumb bit up front —
++/// `install_entry` runs `apply_patches` between resolve and apply, and a
++/// fatal-after-write would leave guest memory partially modified.
++pub fn resolve_hooks(core: &mut ArmCore, entry: &Entry, scan_ranges: &[(u32, u32)]) -> Result<Vec<Hook>> {
++    for hook in &entry.hooks {
++        if hook.pc & 1 == 0 {
++            return Err(WieError::FatalError(format!(
++                "entry {}: hook PC {:#x} targets ARM mode; only Thumb (LSB=1) is supported",
++                entry.name, hook.pc
++            )));
++        }
++    }
++    let mut installed: Vec<Hook> = entry.hooks.clone();
++
++    for pattern in &entry.hook_patterns {
++        let matches = scan_pattern(core, &pattern.tokens, scan_ranges)?;
++        for (match_addr, pm) in matches {
++            let kind = match &pattern.kind_template {
++                PatternHookKind::Memcpy => HookKind::Memcpy,
++                PatternHookKind::Memset => HookKind::Memset,
++                PatternHookKind::Strcpy => HookKind::Strcpy,
++                PatternHookKind::Strlen => HookKind::Strlen,
++                PatternHookKind::InlineCopy {
++                    dst_offset,
++                    src_offset,
++                    len_offset,
++                    exit_pc,
++                    spill_back,
++                } => {
++                    let dst = dst_offset
++                        .or_else(|| pm.dst.map(capture_to_offset))
++                        .ok_or_else(|| WieError::FatalError(format!("pattern match at {match_addr:#x} missing dst")))?;
++                    let src = src_offset
++                        .or_else(|| pm.src.map(capture_to_offset))
++                        .ok_or_else(|| WieError::FatalError(format!("pattern match at {match_addr:#x} missing src")))?;
++                    let len = len_offset
++                        .or_else(|| pm.len.map(capture_to_offset))
++                        .ok_or_else(|| WieError::FatalError(format!("pattern match at {match_addr:#x} missing len")))?;
++                    let exit = if let Some(v) = exit_pc {
++                        *v
++                    } else {
++                        let site = pm
++                            .exit_b_site
++                            .ok_or_else(|| WieError::FatalError("pattern missing exit_b site".to_string()))?;
++                        let bytes = pm
++                            .exit_b_bytes
++                            .ok_or_else(|| WieError::FatalError("pattern missing exit_b bytes".to_string()))?;
++                        decode_exit_b(site, bytes)
++                    };
++                    HookKind::InlineCopy(InlineCopy {
++                        dst_offset: dst,
++                        src_offset: src,
++                        len_offset: len,
++                        exit_pc: exit,
++                        spill_back: *spill_back,
++                    })
++                }
++                PatternHookKind::RegInlineCopy { count_offset } => {
++                    let src = arm_register_from_index(
++                        pm.src_reg
++                            .ok_or_else(|| WieError::FatalError(format!("pattern match at {match_addr:#x} missing src register capture")))?,
++                    );
++                    let dst = arm_register_from_index(
++                        pm.dst_reg
++                            .ok_or_else(|| WieError::FatalError(format!("pattern match at {match_addr:#x} missing dst register capture")))?,
++                    );
++                    let count = arm_register_from_index(
++                        pm.count_reg
++                            .ok_or_else(|| WieError::FatalError(format!("pattern match at {match_addr:#x} missing count register capture")))?,
++                    );
++                    let exit_pc = match_addr.wrapping_add(pattern.tokens.len() as u32) | 1;
++                    HookKind::RegInlineCopy(RegInlineCopy {
++                        src,
++                        dst,
++                        count,
++                        count_offset: *count_offset,
++                        exit_pc,
++                    })
++                }
++            };
++            let pc = match_addr | 1;
++            if installed.iter().any(|h| h.pc == pc) {
++                tracing::warn!("Hook at {pc:#x} already registered; skipping duplicate match");
++                continue;
++            }
++            installed.push(Hook { pc, kind });
++        }
++    }
++
++    Ok(installed)
++}
++
++/// Patch the SVC instruction at every hook PC and register the dispatcher.
++/// `hooks` must already be the fully expanded list from `resolve_hooks`. The
++/// dispatcher is registered even when `hooks` is empty so that any later SVC
++/// #0x80 (e.g., from guest code that happens to encode the same bytes) routes
++/// to a single, named diagnostic instead of falling out of the engine.
++pub fn apply_hooks(core: &mut ArmCore, entry_name: &str, hooks: &[Hook]) -> Result<()> {
++    let mut registry = BTreeMap::new();
++    for hook in hooks {
++        debug_assert!(hook.pc & 1 == 1, "resolve_hooks must reject ARM-mode PCs");
++        registry.insert(hook.pc, hook.kind);
++        let patch_addr = hook.pc & !1;
++        let instruction: u16 = 0xdf00 | (BINARY_PATCH_SVC as u16 & 0xff);
++        core.write_bytes(patch_addr, &instruction.to_le_bytes())?;
++        tracing::info!("Hook installed at {:#x}: {:?}", hook.pc, hook.kind);
++    }
++    if !hooks.is_empty() {
++        tracing::info!("Installed {} hooks for {}", hooks.len(), entry_name);
++    }
++    core.register_svc_handler(BINARY_PATCH_SVC, handle_binary_patch_svc, &Arc::new(registry))?;
++    Ok(())
++}
++
++/// Negate the unsigned `SUBS Rn, #imm8` immediate: the captured byte is the
++/// distance below R7, so the resulting offset is `-imm8`.
++fn capture_to_offset(byte: u8) -> i32 {
++    -(byte as i32)
++}
++
++fn arm_register_from_index(index: u8) -> ArmRegister {
++    match index {
++        0 => ArmRegister::R0,
++        1 => ArmRegister::R1,
++        2 => ArmRegister::R2,
++        3 => ArmRegister::R3,
++        4 => ArmRegister::R4,
++        5 => ArmRegister::R5,
++        6 => ArmRegister::R6,
++        7 => ArmRegister::R7,
++        _ => unreachable!("BitMatch only captures 3 bits, value must be 0..=7"),
++    }
++}
++
++/// Decode a Thumb `B imm11` (`11100 iiiiiiiiiii`) at `b_site`. Returns the
++/// target PC with the Thumb bit set.
++fn decode_exit_b(b_site: u32, bytes: [u8; 2]) -> u32 {
++    let raw = u16::from_le_bytes(bytes);
++    let imm11 = (raw & 0x07ff) as i32;
++    let offset = if imm11 & 0x400 != 0 { imm11 - 0x800 } else { imm11 };
++    let target = (b_site.wrapping_add(4) as i64).wrapping_add((offset * 2) as i64) as u32;
++    target | 1
++}
++
++type Registry = Arc<BTreeMap<u32, HookKind>>;
++
++async fn handle_binary_patch_svc(core: &mut ArmCore, registry: &mut Registry) -> Result<JumpTo> {
++    let (pc, lr) = core.read_pc_lr()?;
++    // PC on entry is the address right after the patched 2-byte SVC. Drop any
++    // Thumb bit, step back over the SVC, then re-set the Thumb bit because
++    // hook PCs are stored that way.
++    let hook_pc = (pc.wrapping_sub(2)) | 1;
++    let kind = registry
++        .get(&hook_pc)
++        .copied()
++        .ok_or_else(|| WieError::FatalError(format!("binary-patch hook fired at unregistered PC {hook_pc:#x}")))?;
++
++    match kind {
++        HookKind::Memcpy => {
++            let (dst, src, len) = {
++                let inner = core.inner.lock();
++                (
++                    inner.engine.reg_read(ArmRegister::R0),
++                    inner.engine.reg_read(ArmRegister::R1),
++                    inner.engine.reg_read(ArmRegister::R2),
++                )
++            };
++            tracing::trace!("hook memcpy(ptr_dst={dst:#x}, ptr_src={src:#x}, len={len:#x})");
++            stdlib::memcpy(core, &mut (), dst, src, len).await?;
++            Ok(JumpTo(lr))
++        }
++        HookKind::Memset => {
++            let (dst, val, len) = {
++                let inner = core.inner.lock();
++                (
++                    inner.engine.reg_read(ArmRegister::R0),
++                    inner.engine.reg_read(ArmRegister::R1),
++                    inner.engine.reg_read(ArmRegister::R2),
++                )
++            };
++            tracing::trace!("hook memset(ptr_dst={dst:#x}, val={:#x}, len={len:#x})", val as u8);
++            stdlib::memset(core, &mut (), dst, val, len).await?;
++            Ok(JumpTo(lr))
++        }
++        HookKind::Strcpy => {
++            let (dst, src) = {
++                let inner = core.inner.lock();
++                (inner.engine.reg_read(ArmRegister::R0), inner.engine.reg_read(ArmRegister::R1))
++            };
++            tracing::trace!("hook strcpy(ptr_dst={dst:#x}, ptr_src={src:#x})");
++            stdlib::strcpy(core, &mut (), dst, src).await?;
++            Ok(JumpTo(lr))
++        }
++        HookKind::Strlen => {
++            let s = core.inner.lock().engine.reg_read(ArmRegister::R0);
++            let len = stdlib::strlen(core, &mut (), s).await?;
++            tracing::trace!("hook strlen(ptr_str={s:#x}) -> {len:#x}");
++            core.inner.lock().engine.reg_write(ArmRegister::R0, len);
++            Ok(JumpTo(lr))
++        }
++        HookKind::InlineCopy(spec) => {
++            let r7 = core.inner.lock().engine.reg_read(ArmRegister::R7);
++            let dst_slot = r7.wrapping_add(spec.dst_offset as u32);
++            let src_slot = r7.wrapping_add(spec.src_offset as u32);
++            let len_slot = r7.wrapping_add(spec.len_offset as u32);
++            let dst: u32 = read_generic(core, dst_slot)?;
++            let src: u32 = read_generic(core, src_slot)?;
++            let len: u32 = read_generic(core, len_slot)?;
++            tracing::trace!(
++                "hook inline_copy(ptr_dst={dst:#x}, ptr_src={src:#x}, len={len:#x}, exit={:#x})",
++                spec.exit_pc
++            );
++            stdlib::memcpy(core, &mut (), dst, src, len).await?;
++            if spec.spill_back {
++                core.write_bytes(dst_slot, &dst.wrapping_add(len).to_le_bytes())?;
++                core.write_bytes(src_slot, &src.wrapping_add(len).to_le_bytes())?;
++                core.write_bytes(len_slot, &0u32.to_le_bytes())?;
++            }
++            Ok(JumpTo(spec.exit_pc))
++        }
++        HookKind::RegInlineCopy(spec) => {
++            let (src, dst, count_initial) = {
++                let inner = core.inner.lock();
++                (
++                    inner.engine.reg_read(spec.src),
++                    inner.engine.reg_read(spec.dst),
++                    inner.engine.reg_read(spec.count),
++                )
++            };
++            let count = count_initial.wrapping_add(spec.count_offset as u32);
++            tracing::trace!(
++                "hook reg_inline_copy(src={src:#x}, dst={dst:#x}, count={count:#x}, exit={:#x})",
++                spec.exit_pc
++            );
++            stdlib::memcpy(core, &mut (), dst, src, count).await?;
++            let mut inner = core.inner.lock();
++            inner.engine.reg_write(spec.src, src.wrapping_add(count));
++            inner.engine.reg_write(spec.dst, dst.wrapping_add(count));
++            inner.engine.reg_write(spec.count, count_initial.wrapping_sub(count));
++            Ok(JumpTo(spec.exit_pc))
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use alloc::{vec, vec::Vec};
++
++    use wie_util::ByteRead;
++
++    use super::*;
++    use crate::function::{RegisteredFunction, RegisteredFunctionHolder};
++
++    fn registry_with(pc: u32, kind: HookKind) -> Registry {
++        let mut map = BTreeMap::new();
++        map.insert(pc, kind);
++        Arc::new(map)
++    }
++
++    /// Set PC to where it would be on entry to the SVC handler for a hook at
++    /// `hook_pc` (svc_addr + 2, i.e. just past the patched 2-byte SVC).
++    fn set_post_svc_pc(core: &mut ArmCore, hook_pc: u32) {
++        let mut inner = core.inner.lock();
++        inner.engine.reg_write(ArmRegister::PC, (hook_pc & !1).wrapping_add(2));
++    }
++
++    fn entry_with_static(name: &str, hooks: Vec<Hook>) -> Entry {
++        Entry {
++            hash: Some([0u8; 16]),
++            name: name.into(),
++            hooks,
++            hook_patterns: vec![],
++            patches: vec![],
++            patch_patterns: vec![],
++        }
++    }
++
++    #[test]
++    fn resolve_hooks_rejects_arm_mode_pc() -> Result<()> {
++        let entry = entry_with_static(
++            "arm-mode",
++            vec![Hook {
++                pc: 0x2000, // LSB=0 => ARM mode
++                kind: HookKind::Memcpy,
++            }],
++        );
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x2000, 0x1000)?;
++
++        let err = resolve_hooks(&mut core, &entry, &[]).unwrap_err();
++        let msg = alloc::format!("{err}");
++        assert!(msg.contains("ARM mode"), "unexpected error: {msg}");
++        Ok(())
++    }
++
++    #[test]
++    fn apply_hooks_writes_thumb_svc_instruction() -> Result<()> {
++        let entry = entry_with_static(
++            "patch",
++            vec![Hook {
++                pc: 0x2001, // Thumb
++                kind: HookKind::Memcpy,
++            }],
++        );
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x2000, 0x1000)?;
++        core.write_bytes(0x2000, &[0xaa, 0xbb])?;
++
++        let hooks = resolve_hooks(&mut core, &entry, &[])?;
++        apply_hooks(&mut core, &entry.name, &hooks)?;
++
++        let mut buf = [0u8; 2];
++        core.read_bytes(0x2000, &mut buf)?;
++        assert_eq!(buf, [BINARY_PATCH_SVC as u8, 0xdf]);
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn memcpy_dispatch_copies_bytes_and_returns_via_lr() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x10000, 0x1000)?;
++
++        let src = 0x10000u32;
++        let dst = 0x10400u32;
++        let data = [1u8, 2, 3, 4, 5, 6, 7, 8];
++        core.write_bytes(src, &data)?;
++
++        let hook_pc = 0x10001u32;
++        {
++            let mut inner = core.inner.lock();
++            inner.engine.reg_write(ArmRegister::R0, dst);
++            inner.engine.reg_write(ArmRegister::R1, src);
++            inner.engine.reg_write(ArmRegister::R2, data.len() as u32);
++            inner.engine.reg_write(ArmRegister::LR, 0xdead_beef);
++        }
++        set_post_svc_pc(&mut core, hook_pc);
++
++        let registry = registry_with(hook_pc, HookKind::Memcpy);
++        RegisteredFunctionHolder::new(handle_binary_patch_svc, &registry).call(&mut core).await?;
++
++        let mut out = [0u8; 8];
++        core.read_bytes(dst, &mut out)?;
++        assert_eq!(out, data);
++        assert_eq!(core.inner.lock().engine.reg_read(ArmRegister::PC), 0xdead_beef & !1);
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn memset_dispatch_fills_bytes() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x10000, 0x1000)?;
++
++        let dst = 0x10000u32;
++        let len = 16u32;
++        let hook_pc = 0x10401u32;
++        {
++            let mut inner = core.inner.lock();
++            inner.engine.reg_write(ArmRegister::R0, dst);
++            inner.engine.reg_write(ArmRegister::R1, 0xab);
++            inner.engine.reg_write(ArmRegister::R2, len);
++            inner.engine.reg_write(ArmRegister::LR, 0x3000);
++        }
++        set_post_svc_pc(&mut core, hook_pc);
++
++        let registry = registry_with(hook_pc, HookKind::Memset);
++        RegisteredFunctionHolder::new(handle_binary_patch_svc, &registry).call(&mut core).await?;
++
++        let mut out = [0u8; 16];
++        core.read_bytes(dst, &mut out)?;
++        assert_eq!(out, [0xab; 16]);
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn strcpy_dispatch_copies_null_terminated_string_and_returns_via_lr() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x10000, 0x1000)?;
++
++        let src = 0x10000u32;
++        let dst = 0x10400u32;
++        let s = b"hello, world!\0";
++        core.write_bytes(src, s)?;
++        core.write_bytes(dst, &[0xff; 32])?;
++
++        let hook_pc = 0x10801u32;
++        {
++            let mut inner = core.inner.lock();
++            inner.engine.reg_write(ArmRegister::R0, dst);
++            inner.engine.reg_write(ArmRegister::R1, src);
++            inner.engine.reg_write(ArmRegister::LR, 0xcafe_babe);
++        }
++        set_post_svc_pc(&mut core, hook_pc);
++
++        let registry = registry_with(hook_pc, HookKind::Strcpy);
++        RegisteredFunctionHolder::new(handle_binary_patch_svc, &registry).call(&mut core).await?;
++
++        let mut out = [0u8; 14];
++        core.read_bytes(dst, &mut out)?;
++        assert_eq!(&out, s);
++        let mut sentinel = [0u8; 1];
++        core.read_bytes(dst + s.len() as u32, &mut sentinel)?;
++        assert_eq!(sentinel, [0xff]);
++
++        let inner = core.inner.lock();
++        assert_eq!(inner.engine.reg_read(ArmRegister::R0), dst);
++        assert_eq!(inner.engine.reg_read(ArmRegister::PC), 0xcafe_babe & !1);
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn strlen_dispatch_returns_length_in_r0() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x10000, 0x1000)?;
++
++        let str_ptr = 0x10100u32;
++        let s = b"abcdef\0";
++        core.write_bytes(str_ptr, s)?;
++
++        let hook_pc = 0x10c01u32;
++        {
++            let mut inner = core.inner.lock();
++            inner.engine.reg_write(ArmRegister::R0, str_ptr);
++            inner.engine.reg_write(ArmRegister::LR, 0x1234_5678);
++        }
++        set_post_svc_pc(&mut core, hook_pc);
++
++        let registry = registry_with(hook_pc, HookKind::Strlen);
++        RegisteredFunctionHolder::new(handle_binary_patch_svc, &registry).call(&mut core).await?;
++
++        let inner = core.inner.lock();
++        assert_eq!(inner.engine.reg_read(ArmRegister::R0), 6);
++        assert_eq!(inner.engine.reg_read(ArmRegister::PC), 0x1234_5678 & !1);
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn inline_copy_dispatch_reads_frame_copies_and_jumps_to_exit() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x10000, 0x2000)?;
++
++        let src = 0x10000u32;
++        let dst = 0x10800u32;
++        let payload = [0xaa, 0xbb, 0xcc, 0xdd];
++        core.write_bytes(src, &payload)?;
++
++        let frame = 0x11000u32;
++        core.write_bytes(frame, &dst.to_le_bytes())?;
++        core.write_bytes(frame + 4, &src.to_le_bytes())?;
++        core.write_bytes(frame + 8, &(payload.len() as u32).to_le_bytes())?;
++
++        let hook_pc = 0x10201u32;
++        {
++            let mut inner = core.inner.lock();
++            inner.engine.reg_write(ArmRegister::R7, frame);
++        }
++        set_post_svc_pc(&mut core, hook_pc);
++
++        let spec = InlineCopy {
++            dst_offset: 0,
++            src_offset: 4,
++            len_offset: 8,
++            exit_pc: 0x10401,
++            spill_back: true,
++        };
++        let registry = registry_with(hook_pc, HookKind::InlineCopy(spec));
++        RegisteredFunctionHolder::new(handle_binary_patch_svc, &registry).call(&mut core).await?;
++
++        let mut out = [0u8; 4];
++        core.read_bytes(dst, &mut out)?;
++        assert_eq!(out, payload);
++
++        let mut slot = [0u8; 4];
++        core.read_bytes(frame, &mut slot)?;
++        assert_eq!(u32::from_le_bytes(slot), dst + payload.len() as u32);
++        core.read_bytes(frame + 4, &mut slot)?;
++        assert_eq!(u32::from_le_bytes(slot), src + payload.len() as u32);
++        core.read_bytes(frame + 8, &mut slot)?;
++        assert_eq!(u32::from_le_bytes(slot), 0);
++
++        assert_eq!(core.inner.lock().engine.reg_read(ArmRegister::PC), 0x10400);
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn install_then_execute_hits_dispatcher_end_to_end() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x20000, 0x2000)?;
++        core.map(0x30000, 0x1000)?;
++
++        let src = 0x30000u32;
++        let dst = 0x30200u32;
++        let payload = [9u8, 8, 7, 6];
++        core.write_bytes(src, &payload)?;
++
++        let hook_pc = 0x20001u32;
++        let entry = entry_with_static(
++            "e2e",
++            vec![Hook {
++                pc: hook_pc,
++                kind: HookKind::Memcpy,
++            }],
++        );
++        let hooks = resolve_hooks(&mut core, &entry, &[])?;
++        apply_hooks(&mut core, &entry.name, &hooks)?;
++
++        let mut opcode = [0u8; 2];
++        core.read_bytes(0x20000, &mut opcode)?;
++        assert_eq!(opcode[1], 0xdf);
++        assert_eq!(opcode[0] as u32, BINARY_PATCH_SVC);
++
++        let return_addr = 0x40000u32 | 1;
++        {
++            let mut inner = core.inner.lock();
++            inner.engine.reg_write(ArmRegister::R0, dst);
++            inner.engine.reg_write(ArmRegister::R1, src);
++            inner.engine.reg_write(ArmRegister::R2, payload.len() as u32);
++            inner.engine.reg_write(ArmRegister::LR, return_addr);
++            inner.engine.reg_write(ArmRegister::PC, hook_pc);
++
++            let cpsr = inner.engine.reg_read(ArmRegister::Cpsr);
++            inner.engine.reg_write(ArmRegister::Cpsr, (cpsr & !0x3f) | 0x1f | 0x20);
++            inner.engine.reg_write(ArmRegister::SP, 0x20f00);
++        }
++
++        let result = {
++            let mut inner = core.inner.lock();
++            inner.engine.run(0, 10)?
++        };
++        let category = match result.stop_reason {
++            crate::engine::EngineStopReason::Svc { category, lr, spsr } => {
++                let mut inner = core.inner.lock();
++                inner.engine.reg_write(ArmRegister::Cpsr, spsr);
++                inner.engine.reg_write(ArmRegister::PC, lr);
++                category
++            }
++            _ => panic!("expected Svc"),
++        };
++        assert_eq!(category, BINARY_PATCH_SVC);
++
++        let registry = registry_with(hook_pc, HookKind::Memcpy);
++        let mut core_clone = core.clone();
++        RegisteredFunctionHolder::new(handle_binary_patch_svc, &registry)
++            .call(&mut core_clone)
++            .await?;
++
++        let mut out = [0u8; 4];
++        core.read_bytes(dst, &mut out)?;
++        assert_eq!(out, payload);
++
++        let inner = core.inner.lock();
++        assert_eq!(inner.engine.reg_read(ArmRegister::PC), return_addr & !1);
++        Ok(())
++    }
++
++    #[test]
++    fn pattern_scan_matches_single_hit() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x50000, 0x200)?;
++
++        let pat_bytes = [0xaa, 0xbb, 0xcc, 0xdd];
++        let match_addr = 0x50020u32;
++        core.write_bytes(match_addr, &pat_bytes)?;
++
++        let entry = Entry {
++            hash: None,
++            name: "scan-single".into(),
++            hooks: vec![],
++            hook_patterns: vec![PatternHook {
++                tokens: vec![
++                    PatternToken::Literal(0xaa),
++                    PatternToken::Literal(0xbb),
++                    PatternToken::Literal(0xcc),
++                    PatternToken::Literal(0xdd),
++                ],
++                kind_template: PatternHookKind::Memcpy,
++            }],
++            patches: vec![],
++            patch_patterns: vec![],
++        };
++
++        let hooks = resolve_hooks(&mut core, &entry, &[(0x50000, 0x200)])?;
++        apply_hooks(&mut core, &entry.name, &hooks)?;
++
++        let mut out = [0u8; 2];
++        core.read_bytes(match_addr, &mut out)?;
++        assert_eq!(out[1], 0xdf);
++        assert_eq!(out[0] as u32, BINARY_PATCH_SVC);
++        Ok(())
++    }
++
++    #[test]
++    fn pattern_scan_capture_to_offset_negates_imm8() {
++        assert_eq!(capture_to_offset(0x08), -8);
++        assert_eq!(capture_to_offset(0x0c), -12);
++        // imm8 in `SUBS Rn, #imm8` is unsigned 0..=255, so high values must
++        // negate to large negative offsets, not wrap through `i8`.
++        assert_eq!(capture_to_offset(0x80), -128);
++        assert_eq!(capture_to_offset(0xfc), -252);
++    }
++
++    #[test]
++    fn pattern_scan_exit_b_computes_forward_branch_target() {
++        let bytes = [0x02, 0xe0];
++        let site = 0x100u32;
++        let exit = decode_exit_b(site, bytes);
++        assert_eq!(exit, (site + 4 + 4) | 1);
++
++        let neg = decode_exit_b(site, [0xfe, 0xe7]);
++        assert_eq!(neg, site | 1);
++    }
++
++    #[test]
++    fn pattern_duplicate_pc_warns_once_and_skips() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x60000, 0x100)?;
++        core.write_bytes(0x60010, &[0x11, 0x22, 0x33, 0x44])?;
++
++        let entry = Entry {
++            hash: None,
++            name: "dup".into(),
++            hooks: vec![],
++            hook_patterns: vec![
++                PatternHook {
++                    tokens: vec![PatternToken::Literal(0x11), PatternToken::Literal(0x22)],
++                    kind_template: PatternHookKind::Memcpy,
++                },
++                PatternHook {
++                    tokens: vec![PatternToken::Literal(0x11), PatternToken::Literal(0x22)],
++                    kind_template: PatternHookKind::Memcpy,
++                },
++            ],
++            patches: vec![],
++            patch_patterns: vec![],
++        };
++        let hooks = resolve_hooks(&mut core, &entry, &[(0x60000, 0x100)])?;
++        assert_eq!(hooks.len(), 1, "duplicate PC should be skipped");
++        Ok(())
++    }
++}
+diff --git a/wie-core-arm/src/binary_patches/parser.rs b/wie-core-arm/src/binary_patches/parser.rs
+new file mode 100644
+index 00000000..382d3354
+--- /dev/null
++++ b/wie-core-arm/src/binary_patches/parser.rs
+@@ -0,0 +1,692 @@
++use alloc::{string::String, vec::Vec};
++
++use serde::Deserialize;
++
++use super::{
++    CaptureName, Entry, PatternToken,
++    hook::{Hook, HookKind, InlineCopy, PatternHook, PatternHookKind},
++    patch::{PatchSpec, PatternPatchSpec},
++};
++
++const BINARY_PATCHES_TOML: &str = include_str!("../../data/binary_patches.toml");
++
++pub fn binary_patches() -> Vec<Entry> {
++    let doc: RawDoc = toml::from_str(BINARY_PATCHES_TOML).expect("parse data/binary_patches.toml");
++    doc.entry.into_iter().map(RawEntry::into_entry).collect()
++}
++
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct RawDoc {
++    entry: Vec<RawEntry>,
++}
++
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct RawEntry {
++    hash: Option<String>,
++    name: String,
++    #[serde(default)]
++    hook: Vec<RawHook>,
++    #[serde(default)]
++    patch: Vec<RawPatch>,
++}
++
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct RawHook {
++    kind: KindTag,
++    pc: Option<u32>,
++    pattern: Option<String>,
++    dst_offset: Option<i32>,
++    src_offset: Option<i32>,
++    len_offset: Option<i32>,
++    exit_pc: Option<u32>,
++    spill_back: Option<bool>,
++    count_offset: Option<i32>,
++}
++
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct RawPatch {
++    pc: Option<u32>,
++    pattern: Option<String>,
++    bytes: String,
++    expect: Option<String>,
++    offset: Option<u32>,
++}
++
++#[derive(Deserialize, Clone, Copy)]
++#[serde(rename_all = "snake_case")]
++enum KindTag {
++    Memcpy,
++    Memset,
++    Strcpy,
++    Strlen,
++    InlineCopy,
++    RegInlineCopy,
++}
++
++impl RawEntry {
++    fn into_entry(self) -> Entry {
++        let name = self.name;
++        let hash = self.hash.as_deref().map(|s| parse_hash(s, &name));
++        let mut hooks = Vec::new();
++        let mut hook_patterns = Vec::new();
++        for raw in self.hook {
++            match (raw.pc, raw.pattern.as_deref()) {
++                (Some(pc), None) => hooks.push(Hook {
++                    pc,
++                    kind: pc_kind(&raw, &name),
++                }),
++                (None, Some(pat)) => {
++                    let tokens = parse_pattern(pat, &name);
++                    let kind_template = pattern_template(&raw, &tokens, &name);
++                    hook_patterns.push(PatternHook { tokens, kind_template });
++                }
++                (Some(_), Some(_)) => panic!("entry {name}: hook cannot specify both `pc` and `pattern`"),
++                (None, None) => panic!("entry {name}: hook must specify either `pc` or `pattern`"),
++            }
++        }
++        if hash.is_none() && !hooks.is_empty() {
++            panic!("entry {name}: hash is required when pc-based hooks are present (a pc only makes sense for a specific binary)");
++        }
++        let mut patches = Vec::new();
++        let mut patch_patterns = Vec::new();
++        for raw in self.patch {
++            match into_patch_kind(raw, hash.is_some(), &name) {
++                ParsedPatch::Pc(spec) => patches.push(spec),
++                ParsedPatch::Pattern(spec) => patch_patterns.push(spec),
++            }
++        }
++        Entry {
++            hash,
++            name,
++            hooks,
++            hook_patterns,
++            patches,
++            patch_patterns,
++        }
++    }
++}
++
++enum ParsedPatch {
++    Pc(PatchSpec),
++    Pattern(PatternPatchSpec),
++}
++
++fn into_patch_kind(raw: RawPatch, has_hash: bool, entry_name: &str) -> ParsedPatch {
++    let bytes = parse_hex_bytes(&raw.bytes, entry_name, "bytes");
++    if bytes.is_empty() {
++        panic!("entry {entry_name}: patch `bytes` must be at least 1 byte");
++    }
++    reject_svc_pattern(&bytes, entry_name);
++    let expect = raw.expect.as_deref().map(|s| {
++        let v = parse_hex_bytes(s, entry_name, "expect");
++        if v.len() != bytes.len() {
++            panic!(
++                "entry {entry_name}: patch `expect` length ({}) must equal `bytes` length ({})",
++                v.len(),
++                bytes.len()
++            );
++        }
++        v
++    });
++
++    match (raw.pc, raw.pattern.as_deref()) {
++        (Some(_), Some(_)) => panic!("entry {entry_name}: patch cannot specify both `pc` and `pattern`"),
++        (None, None) => panic!("entry {entry_name}: patch must specify either `pc` or `pattern`"),
++        (Some(pc), None) => {
++            if !has_hash {
++                panic!("entry {entry_name}: patch `pc` requires entry `hash` (a pc only makes sense for a specific binary)");
++            }
++            if raw.offset.is_some() {
++                panic!("entry {entry_name}: patch `offset` is meaningless with `pc` (only valid for `pattern`)");
++            }
++            ParsedPatch::Pc(PatchSpec { pc, bytes, expect })
++        }
++        (None, Some(pat)) => {
++            let tokens = parse_pattern(pat, entry_name);
++            reject_patch_capture_tokens(&tokens, entry_name);
++            let offset = raw.offset.unwrap_or(0);
++            let pat_len = tokens.len() as u32;
++            let bytes_len = bytes.len() as u32;
++            let end = offset
++                .checked_add(bytes_len)
++                .unwrap_or_else(|| panic!("entry {entry_name}: patch `offset` ({offset}) + `bytes` length ({bytes_len}) overflows u32"));
++            if end > pat_len {
++                panic!("entry {entry_name}: patch `offset` ({offset}) + `bytes` length ({bytes_len}) exceeds pattern length ({pat_len})");
++            }
++            ParsedPatch::Pattern(PatternPatchSpec {
++                tokens,
++                bytes,
++                expect,
++                offset,
++            })
++        }
++    }
++}
++
++fn parse_hex_bytes(s: &str, entry_name: &str, field: &str) -> Vec<u8> {
++    let mut out = Vec::new();
++    for tok in s.split_whitespace() {
++        if tok.len() != 2 || !tok.chars().all(|c| c.is_ascii_hexdigit()) {
++            panic!("entry {entry_name}: patch `{field}` token `{tok}` is not a 2-char hex byte");
++        }
++        out.push(u8::from_str_radix(tok, 16).unwrap());
++    }
++    out
++}
++
++/// Reject `bytes` that, written as a 16-bit little-endian halfword, would
++/// produce `SVC #0x80` — the same opcode the hook dispatcher patches in.
++/// Allowing it would let a patch silently install an unregistered hook PC and
++/// crash with a misleading "fired at unregistered PC" fatal at runtime.
++fn reject_svc_pattern(bytes: &[u8], entry_name: &str) {
++    for w in bytes.windows(2) {
++        if w == [0x80, 0xdf] {
++            panic!(
++                "entry {entry_name}: patch `bytes` may not contain the SVC #0x80 instruction (`80 df` LE) — that would shadow the hook dispatcher"
++            );
++        }
++    }
++}
++
++/// Patches do not get to consume capture results, so capture tokens in a patch
++/// pattern have no place to land. Reject them at parse time to avoid a dead
++/// match pattern that silently behaves like `??`.
++fn reject_patch_capture_tokens(tokens: &[PatternToken], entry_name: &str) {
++    for t in tokens {
++        match t {
++            PatternToken::Capture(_) => {
++                panic!("entry {entry_name}: patch pattern may not contain `{{...}}` capture tokens (use `??` for wildcards)");
++            }
++            PatternToken::BitMatch { capture: Some(_), .. } => {
++                panic!("entry {entry_name}: patch pattern may not contain register-capture bits in BitMatch (use `?` for wildcards)");
++            }
++            _ => {}
++        }
++    }
++}
++
++fn pc_kind(raw: &RawHook, entry_name: &str) -> HookKind {
++    match raw.kind {
++        KindTag::Memcpy => HookKind::Memcpy,
++        KindTag::Memset => HookKind::Memset,
++        KindTag::Strcpy => HookKind::Strcpy,
++        KindTag::Strlen => HookKind::Strlen,
++        KindTag::InlineCopy => HookKind::InlineCopy(InlineCopy {
++            dst_offset: raw
++                .dst_offset
++                .unwrap_or_else(|| panic!("entry {entry_name}: pc-based inline_copy requires dst_offset")),
++            src_offset: raw
++                .src_offset
++                .unwrap_or_else(|| panic!("entry {entry_name}: pc-based inline_copy requires src_offset")),
++            len_offset: raw
++                .len_offset
++                .unwrap_or_else(|| panic!("entry {entry_name}: pc-based inline_copy requires len_offset")),
++            exit_pc: raw
++                .exit_pc
++                .unwrap_or_else(|| panic!("entry {entry_name}: pc-based inline_copy requires exit_pc")),
++            spill_back: raw
++                .spill_back
++                .unwrap_or_else(|| panic!("entry {entry_name}: inline_copy requires spill_back")),
++        }),
++        KindTag::RegInlineCopy => panic!("entry {entry_name}: reg_inline_copy must be pattern-based, not pc-based"),
++    }
++}
++
++fn pattern_template(raw: &RawHook, tokens: &[PatternToken], entry_name: &str) -> PatternHookKind {
++    match raw.kind {
++        KindTag::Memcpy => PatternHookKind::Memcpy,
++        KindTag::Memset => PatternHookKind::Memset,
++        KindTag::Strcpy => PatternHookKind::Strcpy,
++        KindTag::Strlen => PatternHookKind::Strlen,
++        KindTag::RegInlineCopy => {
++            let need = |cap: CaptureName, label: &str| {
++                if !tokens.iter().any(|t| match t {
++                    PatternToken::BitMatch { capture: Some((c, _)), .. } => *c == cap,
++                    _ => false,
++                }) {
++                    panic!("entry {entry_name}: reg_inline_copy pattern must capture {label} register");
++                }
++            };
++            need(CaptureName::SrcReg, "src");
++            need(CaptureName::DstReg, "dst");
++            need(CaptureName::CountReg, "count");
++            PatternHookKind::RegInlineCopy {
++                count_offset: raw
++                    .count_offset
++                    .unwrap_or_else(|| panic!("entry {entry_name}: reg_inline_copy requires count_offset")),
++            }
++        }
++        KindTag::InlineCopy => {
++            let exit_cap = tokens.iter().any(|t| matches!(t, PatternToken::Capture(CaptureName::ExitB)));
++            if !exit_cap && raw.exit_pc.is_none() {
++                panic!("entry {entry_name}: inline_copy pattern needs either {{exit_b}} capture or exit_pc");
++            }
++            if exit_cap && raw.exit_pc.is_some() {
++                panic!("entry {entry_name}: inline_copy pattern cannot specify both {{exit_b}} and exit_pc");
++            }
++            PatternHookKind::InlineCopy {
++                dst_offset: resolve_offset("dst_offset", tokens, CaptureName::Dst, raw.dst_offset, entry_name),
++                src_offset: resolve_offset("src_offset", tokens, CaptureName::Src, raw.src_offset, entry_name),
++                len_offset: resolve_offset("len_offset", tokens, CaptureName::Len, raw.len_offset, entry_name),
++                exit_pc: raw.exit_pc,
++                spill_back: raw
++                    .spill_back
++                    .unwrap_or_else(|| panic!("entry {entry_name}: inline_copy requires spill_back")),
++            }
++        }
++    }
++}
++
++fn resolve_offset(field: &str, tokens: &[PatternToken], cap: CaptureName, fixed: Option<i32>, entry_name: &str) -> Option<i32> {
++    let has_cap = tokens.iter().any(|t| matches!(t, PatternToken::Capture(c) if *c == cap));
++    match (has_cap, fixed) {
++        (true, None) => None,
++        (false, Some(_)) => fixed,
++        (true, Some(_)) => panic!("entry {entry_name}: {field} cannot be set when a corresponding capture is in the pattern"),
++        (false, None) => panic!("entry {entry_name}: {field} required when no matching capture is in the pattern"),
++    }
++}
++
++fn parse_hash(s: &str, entry_name: &str) -> [u8; 16] {
++    if s.len() != 32 {
++        panic!("entry {entry_name}: hash must be 32 hex chars (got {} chars: `{s}`)", s.len());
++    }
++    let mut out = [0u8; 16];
++    for i in 0..16 {
++        out[i] = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16)
++            .unwrap_or_else(|_| panic!("entry {entry_name}: hash contains non-hex byte at offset {i}: `{s}`"));
++    }
++    out
++}
++
++fn parse_pattern(pattern: &str, entry_name: &str) -> Vec<PatternToken> {
++    let mut tokens = Vec::new();
++    for raw in pattern.split_whitespace() {
++        let token = if raw == "??" {
++            PatternToken::AnyByte
++        } else if raw.len() == 10
++            && let Some(bits) = raw.strip_prefix("0b")
++        {
++            parse_bit_match(bits, entry_name)
++        } else if let Some(rest) = raw.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
++            let cap = match rest {
++                "dst" => CaptureName::Dst,
++                "src" => CaptureName::Src,
++                "len" => CaptureName::Len,
++                "exit_b" => CaptureName::ExitB,
++                _ => panic!("entry {entry_name}: unknown capture name {{{rest}}} (allowed: dst, src, len, exit_b)"),
++            };
++            PatternToken::Capture(cap)
++        } else if raw.len() == 2 && raw.chars().all(|c| c.is_ascii_hexdigit()) {
++            PatternToken::Literal(u8::from_str_radix(raw, 16).unwrap())
++        } else {
++            panic!("entry {entry_name}: invalid pattern token `{raw}`");
++        };
++        tokens.push(token);
++    }
++    validate_exit_b(&tokens, entry_name);
++    tokens
++}
++
++fn validate_exit_b(tokens: &[PatternToken], entry_name: &str) {
++    let mut pair_seen = false;
++    let mut i = 0;
++    while i < tokens.len() {
++        if matches!(tokens[i], PatternToken::Capture(CaptureName::ExitB)) {
++            let next_is_exit = matches!(tokens.get(i + 1), Some(PatternToken::Capture(CaptureName::ExitB)));
++            if !next_is_exit {
++                panic!("entry {entry_name}: {{exit_b}} must appear as two consecutive tokens");
++            }
++            if matches!(tokens.get(i + 2), Some(PatternToken::Capture(CaptureName::ExitB))) {
++                panic!("entry {entry_name}: {{exit_b}} appears more than twice consecutively");
++            }
++            if pair_seen {
++                panic!("entry {entry_name}: pattern may contain at most one {{exit_b}} pair");
++            }
++            pair_seen = true;
++            i += 2;
++        } else {
++            i += 1;
++        }
++    }
++}
++
++/// Parse an 8-character byte specification of `0`/`1` literals, `?` wildcards,
++/// and `s`/`d`/`c` register placeholders (3 consecutive of the same letter).
++/// e.g. `00sss011` → mask=0b11000111, fixed=0b00000011, capture (src @ shift 3).
++fn parse_bit_match(bits: &str, entry_name: &str) -> PatternToken {
++    if bits.len() != 8 {
++        panic!("entry {entry_name}: bit pattern `0b{bits}` must be 8 characters");
++    }
++    let mut mask: u8 = 0;
++    let mut fixed: u8 = 0;
++    let mut capture: Option<(CaptureName, u8, u8)> = None; // (name, lowest bit, count seen)
++    for (i, ch) in bits.chars().enumerate() {
++        let bit = 7 - i as u8;
++        match ch {
++            '0' => {
++                mask |= 1 << bit;
++            }
++            '1' => {
++                mask |= 1 << bit;
++                fixed |= 1 << bit;
++            }
++            '?' => {}
++            's' | 'd' | 'c' => {
++                let name = match ch {
++                    's' => CaptureName::SrcReg,
++                    'd' => CaptureName::DstReg,
++                    _ => CaptureName::CountReg,
++                };
++                match &mut capture {
++                    Some((n, lowest, count)) if *n == name => {
++                        *lowest = bit; // iterating high→low, so the latest write is the lowest bit
++                        *count += 1;
++                    }
++                    Some(_) => panic!("entry {entry_name}: bit pattern `0b{bits}` mixes multiple register placeholders"),
++                    None => capture = Some((name, bit, 1)),
++                }
++            }
++            _ => panic!("entry {entry_name}: invalid char {ch:?} in bit pattern `0b{bits}` (allowed: 0,1,?,s,d,c)"),
++        }
++    }
++    let capture = capture.map(|(name, lowest, count)| {
++        if count != 3 {
++            panic!("entry {entry_name}: bit pattern `0b{bits}` register placeholder must span exactly 3 bits");
++        }
++        (name, lowest)
++    });
++    PatternToken::BitMatch { mask, fixed, capture }
++}
++
++#[cfg(test)]
++mod tests {
++    use alloc::vec;
++
++    use super::*;
++
++    fn parse_doc(toml_text: &str) -> Vec<Entry> {
++        let doc: RawDoc = toml::from_str(toml_text).expect("parse test toml");
++        doc.entry.into_iter().map(RawEntry::into_entry).collect()
++    }
++
++    #[test]
++    fn pc_patch_with_expect_and_bytes() {
++        let entries = parse_doc(
++            r#"
++            [[entry]]
++            hash = "00000000000000000000000000000000"
++            name = "pc-patch"
++
++            [[entry.patch]]
++            pc = 0x12345
++            bytes = "00 20 70 47"
++            expect = "78 47 01 22"
++            "#,
++        );
++        let e = &entries[0];
++        assert_eq!(e.patches.len(), 1);
++        let p = &e.patches[0];
++        assert_eq!(p.pc, 0x12345);
++        assert_eq!(p.bytes, vec![0x00, 0x20, 0x70, 0x47]);
++        assert_eq!(p.expect.as_deref(), Some([0x78, 0x47, 0x01, 0x22].as_slice()));
++        assert!(e.patch_patterns.is_empty());
++    }
++
++    #[test]
++    fn pattern_patch_with_offset_and_expect() {
++        let entries = parse_doc(
++            r#"
++            [[entry]]
++            name = "pattern-patch"
++
++            [[entry.patch]]
++            pattern = "aa bb cc dd"
++            bytes = "11 22"
++            expect = "bb cc"
++            offset = 1
++            "#,
++        );
++        let e = &entries[0];
++        assert!(e.patches.is_empty());
++        assert_eq!(e.patch_patterns.len(), 1);
++        let pp = &e.patch_patterns[0];
++        assert_eq!(pp.tokens.len(), 4);
++        assert_eq!(pp.bytes, vec![0x11, 0x22]);
++        assert_eq!(pp.expect.as_deref(), Some([0xbb, 0xcc].as_slice()));
++        assert_eq!(pp.offset, 1);
++    }
++
++    #[test]
++    fn pattern_patch_default_offset_is_zero() {
++        let entries = parse_doc(
++            r#"
++            [[entry]]
++            name = "no-offset"
++
++            [[entry.patch]]
++            pattern = "aa bb"
++            bytes = "11 22"
++            "#,
++        );
++        assert_eq!(entries[0].patch_patterns[0].offset, 0);
++    }
++
++    #[test]
++    fn legacy_hook_only_entry_parses_with_empty_patches() {
++        let entries = parse_doc(
++            r#"
++            [[entry]]
++            name = "legacy"
++
++            [[entry.hook]]
++            kind = "memcpy"
++            pattern = "78 47 00 00 01 40 2d e9 03 00 52 e3"
++            "#,
++        );
++        let e = &entries[0];
++        assert_eq!(e.hook_patterns.len(), 1);
++        assert!(e.hooks.is_empty());
++        assert!(e.patches.is_empty());
++        assert!(e.patch_patterns.is_empty());
++    }
++
++    #[test]
++    #[should_panic(expected = "cannot specify both")]
++    fn pc_and_pattern_both_panics() {
++        parse_doc(
++            r#"
++            [[entry]]
++            hash = "00000000000000000000000000000000"
++            name = "x"
++            [[entry.patch]]
++            pc = 0x100
++            pattern = "aa bb"
++            bytes = "11 22"
++            "#,
++        );
++    }
++
++    #[test]
++    #[should_panic(expected = "must specify either")]
++    fn pc_and_pattern_neither_panics() {
++        parse_doc(
++            r#"
++            [[entry]]
++            name = "x"
++            [[entry.patch]]
++            bytes = "11 22"
++            "#,
++        );
++    }
++
++    #[test]
++    #[should_panic(expected = "at least 1 byte")]
++    fn empty_bytes_panics() {
++        parse_doc(
++            r#"
++            [[entry]]
++            hash = "00000000000000000000000000000000"
++            name = "x"
++            [[entry.patch]]
++            pc = 0x100
++            bytes = ""
++            "#,
++        );
++    }
++
++    #[test]
++    #[should_panic(expected = "must equal `bytes` length")]
++    fn bytes_expect_length_mismatch_panics() {
++        parse_doc(
++            r#"
++            [[entry]]
++            hash = "00000000000000000000000000000000"
++            name = "x"
++            [[entry.patch]]
++            pc = 0x100
++            bytes = "11 22"
++            expect = "33"
++            "#,
++        );
++    }
++
++    #[test]
++    #[should_panic(expected = "requires entry `hash`")]
++    fn pc_patch_without_hash_panics() {
++        parse_doc(
++            r#"
++            [[entry]]
++            name = "x"
++            [[entry.patch]]
++            pc = 0x100
++            bytes = "11 22"
++            "#,
++        );
++    }
++
++    #[test]
++    #[should_panic(expected = "overflows u32")]
++    fn offset_plus_bytes_u32_overflow_panics() {
++        // offset 0xffff_ffff + bytes_len 2 wraps before the > pat_len check.
++        parse_doc(
++            r#"
++            [[entry]]
++            name = "x"
++            [[entry.patch]]
++            pattern = "aa bb"
++            bytes = "11 22"
++            offset = 4294967295
++            "#,
++        );
++    }
++
++    #[test]
++    #[should_panic(expected = "exceeds pattern length")]
++    fn offset_plus_bytes_overflow_panics() {
++        parse_doc(
++            r#"
++            [[entry]]
++            name = "x"
++            [[entry.patch]]
++            pattern = "aa bb"
++            bytes = "11 22"
++            offset = 1
++            "#,
++        );
++    }
++
++    #[test]
++    fn offset_plus_bytes_exactly_at_pattern_end_is_ok() {
++        let entries = parse_doc(
++            r#"
++            [[entry]]
++            name = "x"
++            [[entry.patch]]
++            pattern = "aa bb cc dd"
++            bytes = "11 22"
++            offset = 2
++            "#,
++        );
++        assert_eq!(entries[0].patch_patterns[0].offset, 2);
++    }
++
++    #[test]
++    #[should_panic(expected = "meaningless with `pc`")]
++    fn pc_with_offset_panics() {
++        parse_doc(
++            r#"
++            [[entry]]
++            hash = "00000000000000000000000000000000"
++            name = "x"
++            [[entry.patch]]
++            pc = 0x100
++            bytes = "11 22"
++            offset = 1
++            "#,
++        );
++    }
++
++    #[test]
++    #[should_panic(expected = "may not contain the SVC #0x80")]
++    fn bytes_containing_svc_80_panics() {
++        parse_doc(
++            r#"
++            [[entry]]
++            hash = "00000000000000000000000000000000"
++            name = "x"
++            [[entry.patch]]
++            pc = 0x100
++            bytes = "80 df"
++            "#,
++        );
++    }
++
++    #[test]
++    #[should_panic(expected = "may not contain `{...}` capture")]
++    fn patch_pattern_with_capture_token_panics() {
++        parse_doc(
++            r#"
++            [[entry]]
++            name = "x"
++            [[entry.patch]]
++            pattern = "aa {dst} cc dd"
++            bytes = "11 22"
++            "#,
++        );
++    }
++
++    #[test]
++    #[should_panic(expected = "may not contain register-capture bits")]
++    fn patch_pattern_with_bitmatch_capture_panics() {
++        parse_doc(
++            r#"
++            [[entry]]
++            name = "x"
++            [[entry.patch]]
++            pattern = "0b00sss011 22 33 44"
++            bytes = "11 22"
++            "#,
++        );
++    }
++
++    #[test]
++    #[should_panic(expected = "unknown field")]
++    fn patch_with_unknown_field_panics() {
++        parse_doc(
++            r#"
++            [[entry]]
++            hash = "00000000000000000000000000000000"
++            name = "x"
++            [[entry.patch]]
++            pc = 0x100
++            bytes = "11 22"
++            kind = "memcpy"
++            "#,
++        );
++    }
++}
+diff --git a/wie-core-arm/src/binary_patches/patch.rs b/wie-core-arm/src/binary_patches/patch.rs
+new file mode 100644
+index 00000000..18dfa4a7
+--- /dev/null
++++ b/wie-core-arm/src/binary_patches/patch.rs
+@@ -0,0 +1,517 @@
++use alloc::{format, string::String, vec::Vec};
++
++use wie_util::{ByteRead, ByteWrite, Result, WieError};
++
++use super::{Entry, PatternToken, hook::Hook, scan_pattern};
++use crate::ArmCore;
++
++pub struct PatchSpec {
++    pub pc: u32,
++    pub bytes: Vec<u8>,
++    pub expect: Option<Vec<u8>>,
++}
++
++pub struct PatternPatchSpec {
++    pub tokens: Vec<PatternToken>,
++    pub bytes: Vec<u8>,
++    pub expect: Option<Vec<u8>>,
++    pub offset: u32,
++}
++
++struct Patch {
++    addr: u32,
++    bytes: Vec<u8>,
++    expect: Option<Vec<u8>>,
++}
++
++/// Resolve every patch site, reject any overlap with `hooks` (their SVC
++/// regions), and apply. Returns the count actually applied. Two-phase apply
++/// (verify-all-then-write-all) keeps multi-patch atomicity: if any expect
++/// fails, no patch is written.
++pub fn install_patches(core: &mut ArmCore, entry: &Entry, scan_ranges: &[(u32, u32)], hooks: &[Hook]) -> Result<usize> {
++    let patches = resolve_patches(core, entry, scan_ranges)?;
++    validate_overlap(&patches, hooks, &entry.name)?;
++    apply_patches(core, &entry.name, &patches)?;
++    Ok(patches.len())
++}
++
++fn resolve_patches(core: &mut ArmCore, entry: &Entry, scan_ranges: &[(u32, u32)]) -> Result<Vec<Patch>> {
++    let mut out: Vec<Patch> = entry
++        .patches
++        .iter()
++        .map(|p| Patch {
++            addr: p.pc,
++            bytes: p.bytes.clone(),
++            expect: p.expect.clone(),
++        })
++        .collect();
++
++    for (idx, pp) in entry.patch_patterns.iter().enumerate() {
++        let matches = scan_pattern(core, &pp.tokens, scan_ranges)?;
++        if matches.is_empty() {
++            tracing::warn!("Patch pattern #{idx} in entry {}: no matches", entry.name);
++            continue;
++        }
++        for (match_addr, _) in matches {
++            let addr = match_addr.checked_add(pp.offset).ok_or_else(|| {
++                WieError::FatalError(format!(
++                    "entry {}: patch pattern #{idx} address overflow: match {match_addr:#x} + offset {:#x}",
++                    entry.name, pp.offset
++                ))
++            })?;
++            out.push(Patch {
++                addr,
++                bytes: pp.bytes.clone(),
++                expect: pp.expect.clone(),
++            });
++        }
++    }
++
++    Ok(out)
++}
++
++/// Two-phase apply: verify every patch's `expect` and simulate the post-patch
++/// neighborhood for SVC #0x80 emergence first, then write all bytes. Both
++/// pre-write phases observe guest memory but never mutate it, so any failure
++/// leaves memory untouched even when other patches would have succeeded.
++fn apply_patches(core: &mut ArmCore, entry_name: &str, patches: &[Patch]) -> Result<()> {
++    for patch in patches {
++        let mut current = alloc::vec![0u8; patch.bytes.len()];
++        core.read_bytes(patch.addr, &mut current)?;
++        match &patch.expect {
++            Some(expect) => {
++                if current.as_slice() != expect.as_slice() {
++                    return Err(WieError::FatalError(format!(
++                        "entry {entry_name}: patch at {:#x} expected {} but found {}",
++                        patch.addr,
++                        hex_dump(expect),
++                        hex_dump(&current),
++                    )));
++                }
++            }
++            None => {
++                tracing::warn!(
++                    "entry {entry_name}: patch at {:#x} applied without `expect` verification (length {})",
++                    patch.addr,
++                    patch.bytes.len()
++                );
++            }
++        }
++        reject_emergent_svc(core, entry_name, patch)?;
++    }
++    for patch in patches {
++        core.write_bytes(patch.addr, &patch.bytes)?;
++        tracing::info!("Patch applied at {:#x} ({} bytes)", patch.addr, patch.bytes.len());
++    }
++    if !patches.is_empty() {
++        tracing::info!("Applied {} patches for {entry_name}", patches.len());
++    }
++    Ok(())
++}
++
++/// Read the `[addr - 1, addr + bytes.len() + 1)` window, splice in the patch
++/// bytes, and reject if the resulting halfwords would form `SVC #0x80`. This
++/// catches cases where the patch boundary plus an unmodified neighbor synthesizes
++/// the dispatcher opcode, which `reject_svc_pattern` (parser-side, payload-only)
++/// can't see.
++fn reject_emergent_svc(core: &mut ArmCore, entry_name: &str, patch: &Patch) -> Result<()> {
++    let pad_start = patch.addr.saturating_sub(1);
++    let body_offset = (patch.addr - pad_start) as usize;
++    let window_len = body_offset + patch.bytes.len() + 1;
++    let mut window = alloc::vec![0u8; window_len];
++    core.read_bytes(pad_start, &mut window)?;
++    window[body_offset..body_offset + patch.bytes.len()].copy_from_slice(&patch.bytes);
++    for w in window.windows(2) {
++        if w == [0x80, 0xdf] {
++            return Err(WieError::FatalError(format!(
++                "entry {entry_name}: patch at {:#x} would synthesize SVC #0x80 with a neighboring byte",
++                patch.addr
++            )));
++        }
++    }
++    Ok(())
++}
++
++enum Region {
++    Patch(u32),
++    Hook(u32),
++}
++
++impl Region {
++    fn label(&self) -> String {
++        match self {
++            Region::Patch(addr) => format!("patch@{addr:#x}"),
++            Region::Hook(pc) => format!("hook@{pc:#x}"),
++        }
++    }
++}
++
++/// Reject any byte-region collision between patches and hook SVC sites before
++/// we write anything. Patches are `[addr, addr + bytes.len())`; hook SVC sites
++/// are the 2 bytes at `pc & !1`.
++fn validate_overlap(patches: &[Patch], hooks: &[Hook], entry_name: &str) -> Result<()> {
++    let mut regions: Vec<(u32, u32, Region)> = Vec::new();
++    for p in patches {
++        debug_assert!(!p.bytes.is_empty(), "parser must reject empty `bytes`");
++        regions.push((p.addr, p.addr.saturating_add(p.bytes.len() as u32), Region::Patch(p.addr)));
++    }
++    for h in hooks {
++        let base = h.pc & !1;
++        regions.push((base, base.saturating_add(2), Region::Hook(h.pc)));
++    }
++    regions.sort_by_key(|r| r.0);
++    for w in regions.windows(2) {
++        let (start_a, end_a, ref kind_a) = w[0];
++        let (start_b, _, ref kind_b) = w[1];
++        if start_b < end_a {
++            return Err(WieError::FatalError(format!(
++                "entry {entry_name}: binary_patches overlap at {start_b:#x} between {} ([{start_a:#x}, {end_a:#x})) and {} (start {start_b:#x})",
++                kind_a.label(),
++                kind_b.label()
++            )));
++        }
++    }
++    Ok(())
++}
++
++fn hex_dump(bytes: &[u8]) -> String {
++    let mut s = String::new();
++    for (i, b) in bytes.iter().enumerate() {
++        if i > 0 {
++            s.push(' ');
++        }
++        s.push_str(&format!("{b:02x}"));
++    }
++    s
++}
++
++#[cfg(test)]
++mod tests {
++    use alloc::{vec, vec::Vec};
++
++    use super::*;
++    use crate::binary_patches::{
++        PatternToken,
++        hook::{Hook, HookKind},
++    };
++
++    fn empty_entry(name: &str) -> Entry {
++        Entry {
++            hash: Some([0u8; 16]),
++            name: name.into(),
++            hooks: Vec::new(),
++            hook_patterns: Vec::new(),
++            patches: Vec::new(),
++            patch_patterns: Vec::new(),
++        }
++    }
++
++    #[test]
++    fn resolve_patches_pc_passes_through() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        let mut entry = empty_entry("pc-pass");
++        entry.patches.push(PatchSpec {
++            pc: 0x1000,
++            bytes: vec![0xaa, 0xbb],
++            expect: Some(vec![0xcc, 0xdd]),
++        });
++        let resolved = resolve_patches(&mut core, &entry, &[])?;
++        assert_eq!(resolved.len(), 1);
++        assert_eq!(resolved[0].addr, 0x1000);
++        assert_eq!(resolved[0].bytes, vec![0xaa, 0xbb]);
++        assert_eq!(resolved[0].expect.as_deref(), Some([0xcc, 0xdd].as_slice()));
++        Ok(())
++    }
++
++    #[test]
++    fn resolve_patches_pattern_multi_match_applies_offset() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x40000, 0x100)?;
++        // Lay the same 4-byte pattern at two locations
++        core.write_bytes(0x40000, &[0xaa, 0xbb, 0xcc, 0xdd])?;
++        core.write_bytes(0x40020, &[0xaa, 0xbb, 0xcc, 0xdd])?;
++
++        let mut entry = empty_entry("multi");
++        entry.patch_patterns.push(PatternPatchSpec {
++            tokens: vec![
++                PatternToken::Literal(0xaa),
++                PatternToken::Literal(0xbb),
++                PatternToken::Literal(0xcc),
++                PatternToken::Literal(0xdd),
++            ],
++            bytes: vec![0x11, 0x22],
++            expect: None,
++            offset: 1,
++        });
++        let resolved = resolve_patches(&mut core, &entry, &[(0x40000, 0x100)])?;
++        let addrs: Vec<u32> = resolved.iter().map(|p| p.addr).collect();
++        assert_eq!(addrs, vec![0x40001, 0x40021]);
++        Ok(())
++    }
++
++    #[test]
++    fn resolve_patches_pattern_offset_overflow_is_fatal() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        // match_addr (0x1000_0000) + offset (0xffff_ffff) overflows u32.
++        core.map(0x1000_0000, 0x10)?;
++        core.write_bytes(0x1000_0000, &[0xaa, 0xbb])?;
++
++        let mut entry = empty_entry("overflow");
++        entry.patch_patterns.push(PatternPatchSpec {
++            tokens: vec![PatternToken::Literal(0xaa), PatternToken::Literal(0xbb)],
++            bytes: vec![0x11, 0x22],
++            expect: None,
++            offset: 0xffff_ffff,
++        });
++        match resolve_patches(&mut core, &entry, &[(0x1000_0000, 0x10)]) {
++            Ok(_) => panic!("expected overflow fatal"),
++            Err(e) => assert!(format!("{e}").contains("overflow"), "{e}"),
++        }
++        Ok(())
++    }
++
++    #[test]
++    fn resolve_patches_pattern_zero_match_warns_and_skips() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x40000, 0x40)?;
++        // Memory is zeros; nothing matches.
++        let mut entry = empty_entry("zero-match");
++        entry.patch_patterns.push(PatternPatchSpec {
++            tokens: vec![PatternToken::Literal(0xaa), PatternToken::Literal(0xbb)],
++            bytes: vec![0x11, 0x22],
++            expect: None,
++            offset: 0,
++        });
++        let resolved = resolve_patches(&mut core, &entry, &[(0x40000, 0x40)])?;
++        assert!(resolved.is_empty());
++        Ok(())
++    }
++
++    #[test]
++    fn apply_patches_happy_path_pc() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x2000, 0x100)?;
++        core.write_bytes(0x2000, &[0xaa, 0xbb, 0xcc, 0xdd])?;
++
++        let patches = vec![Patch {
++            addr: 0x2000,
++            bytes: vec![0x00, 0x20, 0x70, 0x47],
++            expect: Some(vec![0xaa, 0xbb, 0xcc, 0xdd]),
++        }];
++        apply_patches(&mut core, "happy", &patches)?;
++
++        let mut out = [0u8; 4];
++        core.read_bytes(0x2000, &mut out)?;
++        assert_eq!(out, [0x00, 0x20, 0x70, 0x47]);
++        Ok(())
++    }
++
++    #[test]
++    fn apply_patches_expect_mismatch_does_not_write() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x2000, 0x100)?;
++        core.write_bytes(0x2000, &[0xaa, 0xbb, 0xcc, 0x00])?;
++
++        let patches = vec![Patch {
++            addr: 0x2000,
++            bytes: vec![0x00, 0x20, 0x70, 0x47],
++            expect: Some(vec![0xaa, 0xbb, 0xcc, 0xdd]),
++        }];
++        let err = apply_patches(&mut core, "mm", &patches).unwrap_err();
++        let msg = format!("{err}");
++        assert!(msg.contains("expected"), "unexpected: {msg}");
++        let mut out = [0u8; 4];
++        core.read_bytes(0x2000, &mut out)?;
++        assert_eq!(out, [0xaa, 0xbb, 0xcc, 0x00], "memory must not be modified on mismatch");
++        Ok(())
++    }
++
++    #[test]
++    fn apply_patches_verifies_all_before_writing_any() -> Result<()> {
++        // Two patches: the first would succeed, the second's expect mismatches.
++        // Two-phase apply must leave both regions untouched.
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x2000, 0x100)?;
++        core.write_bytes(0x2000, &[0xaa, 0xbb])?;
++        core.write_bytes(0x2010, &[0x99, 0x88])?; // mismatches second patch's expect
++
++        let patches = vec![
++            Patch {
++                addr: 0x2000,
++                bytes: vec![0x11, 0x22],
++                expect: Some(vec![0xaa, 0xbb]),
++            },
++            Patch {
++                addr: 0x2010,
++                bytes: vec![0x33, 0x44],
++                expect: Some(vec![0xcc, 0xdd]), // doesn't match guest memory
++            },
++        ];
++        let err = apply_patches(&mut core, "verify-all", &patches).unwrap_err();
++        assert!(format!("{err}").contains("expected"));
++
++        // Both patch regions must be unchanged — first patch must NOT have
++        // been applied even though its own expect matched.
++        let mut buf = [0u8; 2];
++        core.read_bytes(0x2000, &mut buf)?;
++        assert_eq!(buf, [0xaa, 0xbb], "first patch must not be applied if any later patch fails");
++        core.read_bytes(0x2010, &mut buf)?;
++        assert_eq!(buf, [0x99, 0x88]);
++        Ok(())
++    }
++
++    #[test]
++    fn apply_patches_rejects_emergent_svc_after_patch() -> Result<()> {
++        // Guest byte at addr+1 is 0xdf; a 1-byte patch writing 0x80 at addr
++        // would synthesize SVC #0x80 (`80 df` LE) with the unmodified neighbor.
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x2000, 0x100)?;
++        core.write_bytes(0x2000, &[0x00, 0xdf])?;
++
++        let patches = vec![Patch {
++            addr: 0x2000,
++            bytes: vec![0x80],
++            expect: None,
++        }];
++        let err = apply_patches(&mut core, "emergent", &patches).unwrap_err();
++        assert!(format!("{err}").contains("synthesize SVC"), "{err}");
++
++        // Memory must not have been written.
++        let mut buf = [0u8; 2];
++        core.read_bytes(0x2000, &mut buf)?;
++        assert_eq!(buf, [0x00, 0xdf]);
++        Ok(())
++    }
++
++    #[test]
++    fn apply_patches_rejects_emergent_svc_before_patch() -> Result<()> {
++        // Guest byte at addr-1 is 0x80; a patch writing 0xdf as its first byte
++        // synthesizes SVC #0x80 with the unmodified preceding byte.
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x2000, 0x100)?;
++        core.write_bytes(0x2000, &[0x80, 0x00, 0x00])?;
++
++        let patches = vec![Patch {
++            addr: 0x2001,
++            bytes: vec![0xdf, 0xff],
++            expect: None,
++        }];
++        let err = apply_patches(&mut core, "emergent-pre", &patches).unwrap_err();
++        assert!(format!("{err}").contains("synthesize SVC"), "{err}");
++        Ok(())
++    }
++
++    #[test]
++    fn apply_patches_without_expect_writes_with_warn() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        core.map(0x2000, 0x100)?;
++        core.write_bytes(0x2000, &[0x11, 0x22])?;
++
++        let patches = vec![Patch {
++            addr: 0x2000,
++            bytes: vec![0x33, 0x44],
++            expect: None,
++        }];
++        apply_patches(&mut core, "no-expect", &patches)?;
++        let mut out = [0u8; 2];
++        core.read_bytes(0x2000, &mut out)?;
++        assert_eq!(out, [0x33, 0x44]);
++        Ok(())
++    }
++
++    fn hook_at(pc: u32) -> Hook {
++        Hook { pc, kind: HookKind::Memcpy }
++    }
++
++    #[test]
++    fn validate_overlap_patch_patch_overlap_is_fatal() {
++        let patches = vec![
++            Patch {
++                addr: 0x2000,
++                bytes: vec![1, 2, 3, 4],
++                expect: None,
++            },
++            Patch {
++                addr: 0x2002,
++                bytes: vec![5, 6],
++                expect: None,
++            },
++        ];
++        let err = validate_overlap(&patches, &[], "pp").unwrap_err();
++        assert!(format!("{err}").contains("overlap"));
++    }
++
++    #[test]
++    fn validate_overlap_patch_hook_overlap_is_fatal() {
++        let patches = vec![Patch {
++            addr: 0x2000,
++            bytes: vec![1, 2],
++            expect: None,
++        }];
++        let err = validate_overlap(&patches, &[hook_at(0x2001)], "ph").unwrap_err();
++        assert!(format!("{err}").contains("overlap"));
++    }
++
++    #[test]
++    fn validate_overlap_patch_pattern_hook_overlap_is_fatal() {
++        // Simulates resolve_hooks having expanded a pattern hook to PC 0x3001.
++        let patches = vec![Patch {
++            addr: 0x3000,
++            bytes: vec![1, 2],
++            expect: None,
++        }];
++        let err = validate_overlap(&patches, &[hook_at(0x3001)], "pat-hook").unwrap_err();
++        assert!(format!("{err}").contains("overlap"));
++    }
++
++    #[test]
++    fn validate_overlap_adjacent_regions_ok() {
++        // patch [0x2000, 0x2002), hook [0x2002, 0x2004) — touching but not overlapping.
++        let patches = vec![Patch {
++            addr: 0x2000,
++            bytes: vec![1, 2],
++            expect: None,
++        }];
++        validate_overlap(&patches, &[hook_at(0x2003)], "adjacent").expect("adjacent should be ok");
++    }
++}
+diff --git a/wie-core-arm/src/core.rs b/wie-core-arm/src/core.rs
+index fdad5c70..b903ba1e 100644
+--- a/wie-core-arm/src/core.rs
++++ b/wie-core-arm/src/core.rs
+@@ -1,5 +1,8 @@
+ use alloc::{borrow::ToOwned, boxed::Box, collections::BTreeMap, format, string::String, sync::Arc, vec, vec::Vec};
+-use core::mem::size_of;
++use core::{
++    mem::size_of,
++    sync::atomic::{AtomicBool, Ordering},
++};
+ 
+ use spin::Mutex;
+ 
+@@ -22,6 +25,28 @@ const SVC_STUB_SIZE: u32 = 16;
+ const INSTRUCTIONS_PER_YIELD: u32 = 10_000;
+ pub const RUN_FUNCTION_LR: u32 = 0x7f000000;
+ pub const HEAP_BASE: u32 = 0x40000000;
++
++static JIT_ENABLED: AtomicBool = AtomicBool::new(true);
++
++/// Chooses the JIT (when built with the `dynarmic` feature) or the interpreter for cores created afterwards.
++pub fn set_jit_enabled(enabled: bool) {
++    JIT_ENABLED.store(enabled, Ordering::Relaxed);
++}
++
++/// Whether cores created now run on the JIT.
++pub fn jit_enabled() -> bool {
++    cfg!(feature = "dynarmic") && JIT_ENABLED.load(Ordering::Relaxed)
++}
++
++#[cfg(feature = "dynarmic")]
++fn new_jit_engine() -> Box<dyn ArmEngine> {
++    Box::new(crate::engine::DynarmicEngine::new())
++}
++
++#[cfg(not(feature = "dynarmic"))]
++fn new_jit_engine() -> Box<dyn ArmEngine> {
++    unreachable!()
++}
+ pub const HEAP_SIZE: u32 = 0x10000000;
+ 
+ /// Limit on stack frames recorded per sample. Bounds memory and protects
+@@ -78,6 +103,8 @@ impl ArmCore {
+         } = options;
+         let mut engine = if enable_gdbserver {
+             Box::new(DebuggedArm32CpuEngine::new()) as Box<dyn ArmEngine>
++        } else if jit_enabled() {
++            new_jit_engine()
+         } else {
+             Box::new(Arm32CpuEngine::with_backend(aot))
+         };
+diff --git a/wie-core-arm/src/engine.rs b/wie-core-arm/src/engine.rs
+index 8a638792..88f6476e 100644
+--- a/wie-core-arm/src/engine.rs
++++ b/wie-core-arm/src/engine.rs
+@@ -1,5 +1,7 @@
+ mod arm32_cpu;
+ mod debugged_arm32_cpu;
++#[cfg(feature = "dynarmic")]
++mod dynarmic;
+ 
+ use wie_arm_jit_types::{CompiledArtifact, PreparationFuture};
+ use wie_util::{AsAny, Result};
+@@ -8,6 +10,8 @@ pub use arm32_cpu::Arm32CpuEngine;
+ pub(crate) use arm32_cpu::EmulatedMemory;
+ pub use debugged_arm32_cpu::DebuggedArm32CpuEngine;
+ pub(crate) use debugged_arm32_cpu::{DebugBreakpointKind, DebugInner, DebugSignal, DebugStopReason};
++#[cfg(feature = "dynarmic")]
++pub use dynarmic::DynarmicEngine;
+ 
+ pub enum EngineStopReason {
+     End,
+diff --git a/wie-core-arm/src/engine/dynarmic.rs b/wie-core-arm/src/engine/dynarmic.rs
+new file mode 100644
+index 00000000..1118c83b
+--- /dev/null
++++ b/wie-core-arm/src/engine/dynarmic.rs
+@@ -0,0 +1,261 @@
++//! ARM32 JIT engine on dynarmic (native targets only, behind the `dynarmic` feature).
++//!
++//! Guest memory is kept in 64 KiB host pages that never move once mapped; dynarmic reaches them through a
++//! 4 KiB-granular page table, so loads and stores run in generated code without calling back. Translated
++//! code is dropped when the host writes into a page that has been translated, and on CP15 cache maintenance.
++
++use alloc::{boxed::Box, format, vec, vec::Vec};
++use core::ffi::c_void;
++
++use wie_arm_jit_types::{CompiledArtifact, PreparationFuture};
++use wie_util::{Result, WieError};
++
++use crate::engine::{ArmEngine, ArmRegister, EngineRunResult, EngineStopReason, MemoryPermission};
++
++const PAGE_SIZE: usize = 0x10000;
++const PAGE_MASK: u32 = (PAGE_SIZE - 1) as _;
++const JIT_PAGE_BITS: u32 = 12;
++const JIT_PAGES_PER_PAGE: usize = PAGE_SIZE >> JIT_PAGE_BITS;
++const CODE_CACHE_SIZE: usize = 32 * 1024 * 1024;
++
++const STOP_SVC: u32 = 1;
++const STOP_EXCEPTION: u32 = 2;
++const STOP_FAULT: u32 = 3;
++/// `Dynarmic::A32::Exception::NoExecuteFault`: a jump to an address without code.
++const EXCEPTION_NO_EXECUTE: u32 = 12;
++
++#[repr(C)]
++#[derive(Default)]
++struct WieDynStop {
++    kind: u32,
++    info: u32,
++    address: u32,
++    ticks_used: u64,
++}
++
++unsafe extern "C" {
++    fn wie_dyn_new(page_table: *mut *mut u8, code_pages: *mut u8, code_cache_size: usize) -> *mut c_void;
++    fn wie_dyn_free(handle: *mut c_void);
++    fn wie_dyn_run(handle: *mut c_void, ticks: u64, out: *mut WieDynStop);
++    fn wie_dyn_reg(handle: *mut c_void, index: u32) -> u32;
++    fn wie_dyn_set_reg(handle: *mut c_void, index: u32, value: u32);
++    fn wie_dyn_cpsr(handle: *mut c_void) -> u32;
++    fn wie_dyn_set_cpsr(handle: *mut c_void, value: u32);
++    fn wie_dyn_invalidate(handle: *mut c_void, address: u32, length: u32);
++}
++
++pub struct DynarmicEngine {
++    handle: *mut c_void,
++    pages: Vec<Option<Box<[u8; PAGE_SIZE]>>>,
++    // Both are read by generated code through raw pointers, so they must not move: boxed slices, never resized.
++    page_table: Box<[*mut u8]>,
++    code_pages: Box<[u8]>,
++}
++
++// The JIT and its tables are only ever touched through `&mut self` behind the core's mutex.
++unsafe impl Send for DynarmicEngine {}
++
++impl DynarmicEngine {
++    pub fn new() -> Self {
++        let mut page_table = vec![core::ptr::null_mut::<u8>(); 1 << (32 - JIT_PAGE_BITS)].into_boxed_slice();
++        let mut code_pages = vec![0u8; (1 << (32 - JIT_PAGE_BITS)) / 8].into_boxed_slice();
++        let handle = unsafe { wie_dyn_new(page_table.as_mut_ptr(), code_pages.as_mut_ptr(), CODE_CACHE_SIZE) };
++
++        Self {
++            handle,
++            pages: (0..0x10000).map(|_| None).collect(),
++            page_table,
++            code_pages,
++        }
++    }
++
++    fn page(&self, address: u32) -> Option<&[u8; PAGE_SIZE]> {
++        self.pages[(address >> 16) as usize].as_deref()
++    }
++
++    /// Drops translated code overlapping a host write, if any of it was ever translated.
++    fn invalidate_written(&mut self, address: u32, size: usize) {
++        if size == 0 {
++            return;
++        }
++        let first = address >> JIT_PAGE_BITS;
++        let last = address.wrapping_add(size as u32 - 1) >> JIT_PAGE_BITS;
++        let mut page = first;
++        loop {
++            if self.code_pages[(page >> 3) as usize] & (1 << (page & 7)) != 0 {
++                unsafe { wie_dyn_invalidate(self.handle, address, size as u32) };
++                return;
++            }
++            if page == last {
++                return;
++            }
++            page = page.wrapping_add(1);
++        }
++    }
++
++    fn register_index(reg: ArmRegister) -> u32 {
++        match reg {
++            ArmRegister::R0 => 0,
++            ArmRegister::R1 => 1,
++            ArmRegister::R2 => 2,
++            ArmRegister::R3 => 3,
++            ArmRegister::R4 => 4,
++            ArmRegister::R5 => 5,
++            ArmRegister::R6 => 6,
++            ArmRegister::R7 => 7,
++            ArmRegister::R8 => 8,
++            ArmRegister::SB => 9,
++            ArmRegister::SL => 10,
++            ArmRegister::FP => 11,
++            ArmRegister::IP => 12,
++            ArmRegister::SP => 13,
++            ArmRegister::LR => 14,
++            ArmRegister::PC => 15,
++            ArmRegister::Cpsr => unreachable!(),
++        }
++    }
++}
++
++impl Drop for DynarmicEngine {
++    fn drop(&mut self) {
++        unsafe { wie_dyn_free(self.handle) };
++    }
++}
++
++impl ArmEngine for DynarmicEngine {
++    fn run(&mut self, end: u32, count: u32) -> Result<EngineRunResult> {
++        let mut stop = WieDynStop::default();
++        unsafe { wie_dyn_run(self.handle, u64::from(count.max(1)), &mut stop) };
++        // Ticks are checked between blocks, so a run can overshoot the budget slightly.
++        let budget_consumed = (stop.ticks_used.min(u64::from(count))) as u32;
++
++        let stop_reason = match stop.kind {
++            STOP_SVC => {
++                // Same shape as the interpreter's SVC exception: LR = next instruction, SPSR = caller's CPSR.
++                let lr = unsafe { wie_dyn_reg(self.handle, 15) };
++                let spsr = unsafe { wie_dyn_cpsr(self.handle) };
++                EngineStopReason::Svc {
++                    category: stop.info,
++                    lr,
++                    spsr,
++                }
++            }
++            STOP_EXCEPTION if stop.info == EXCEPTION_NO_EXECUTE && stop.address == end => EngineStopReason::End,
++            STOP_EXCEPTION if stop.info == EXCEPTION_NO_EXECUTE => {
++                let lr = unsafe { wie_dyn_reg(self.handle, 14) };
++                tracing::error!("jump to unmapped pc {:#x} (lr {lr:#x})", stop.address);
++                return Err(WieError::InvalidMemoryAccess(stop.address));
++            }
++            STOP_EXCEPTION => {
++                let lr = unsafe { wie_dyn_reg(self.handle, 14) };
++                tracing::error!("cpu exception {} at pc {:#x} (lr {lr:#x})", stop.info, stop.address);
++                return Err(WieError::FatalError(format!("Undefined instruction at {:#x}", stop.address)));
++            }
++            STOP_FAULT => {
++                let pc = unsafe { wie_dyn_reg(self.handle, 15) };
++                let lr = unsafe { wie_dyn_reg(self.handle, 14) };
++                tracing::error!("memory fault accessing {:#x} at pc {pc:#x} (lr {lr:#x})", stop.address);
++                return Err(WieError::InvalidMemoryAccess(stop.address));
++            }
++            _ => EngineStopReason::Yield,
++        };
++
++        Ok(EngineRunResult {
++            stop_reason,
++            budget_consumed,
++        })
++    }
++
++    fn reg_write(&mut self, reg: ArmRegister, value: u32) {
++        match reg {
++            ArmRegister::Cpsr => unsafe { wie_dyn_set_cpsr(self.handle, value) },
++            ArmRegister::PC if value % 2 == 1 => unsafe {
++                wie_dyn_set_reg(self.handle, 15, value - 1);
++                wie_dyn_set_cpsr(self.handle, wie_dyn_cpsr(self.handle) | (1 << 5)); // T bit
++            },
++            _ => unsafe { wie_dyn_set_reg(self.handle, Self::register_index(reg), value) },
++        }
++    }
++
++    fn reg_read(&self, reg: ArmRegister) -> u32 {
++        match reg {
++            ArmRegister::Cpsr => unsafe { wie_dyn_cpsr(self.handle) },
++            _ => unsafe { wie_dyn_reg(self.handle, Self::register_index(reg)) },
++        }
++    }
++
++    fn mem_map(&mut self, address: u32, size: usize, _permission: MemoryPermission) {
++        let page_start = address & !PAGE_MASK;
++        let page_end = (u64::from(address) + size as u64 + u64::from(PAGE_MASK)) & !u64::from(PAGE_MASK);
++
++        for page in (u64::from(page_start)..page_end).step_by(PAGE_SIZE) {
++            let index = (page >> 16) as usize;
++            if self.pages[index].is_none() {
++                let mut bytes = Box::new([0u8; PAGE_SIZE]);
++                let base = bytes.as_mut_ptr();
++                for sub in 0..JIT_PAGES_PER_PAGE {
++                    self.page_table[index * JIT_PAGES_PER_PAGE + sub] = unsafe { base.add(sub << JIT_PAGE_BITS) };
++                }
++                self.pages[index] = Some(bytes);
++            }
++        }
++    }
++
++    fn mem_write(&mut self, address: u32, data: &[u8]) -> Result<()> {
++        let mut current = address;
++        let mut index = 0;
++        while index < data.len() {
++            let offset = (current & PAGE_MASK) as usize;
++            let bytes = self.pages[(current >> 16) as usize]
++                .as_deref_mut()
++                .ok_or(WieError::InvalidMemoryAccess(current))?;
++            let available = (PAGE_SIZE - offset).min(data.len() - index);
++            bytes[offset..offset + available].copy_from_slice(&data[index..index + available]);
++            index += available;
++            current = current.wrapping_add(available as u32);
++        }
++        self.invalidate_written(address, data.len());
++
++        Ok(())
++    }
++
++    fn mem_read(&mut self, address: u32, size: usize, result: &mut [u8]) -> Result<usize> {
++        let mut current = address;
++        let mut index = 0;
++        while index < size {
++            let offset = (current & PAGE_MASK) as usize;
++            let bytes = self.page(current).ok_or(WieError::InvalidMemoryAccess(current))?;
++            let available = (PAGE_SIZE - offset).min(size - index);
++            result[index..index + available].copy_from_slice(&bytes[offset..offset + available]);
++            index += available;
++            current = current.wrapping_add(available as u32);
++        }
++
++        Ok(size)
++    }
++
++    fn is_mapped(&self, address: u32, size: usize) -> bool {
++        let page_start = u64::from(address & !PAGE_MASK);
++        let page_end = (u64::from(address) + size as u64 + u64::from(PAGE_MASK)) & !u64::from(PAGE_MASK);
++
++        (page_start..page_end.max(page_start + 1))
++            .step_by(PAGE_SIZE)
++            .all(|page| self.pages[((page >> 16) & 0xffff) as usize].is_some())
++    }
++
++    fn record_image(&mut self, address: u32, size: usize) {
++        if size > 0 {
++            unsafe { wie_dyn_invalidate(self.handle, address, size as u32) };
++        }
++    }
++
++    fn begin_preparation(&mut self) -> Result<Option<PreparationFuture>> {
++        Ok(None)
++    }
++
++    fn is_preparing(&self) -> bool {
++        false
++    }
++
++    fn finish_preparation(&mut self, _result: Result<CompiledArtifact>) {}
++}
+diff --git a/wie-core-arm/src/lib.rs b/wie-core-arm/src/lib.rs
+index 0179a7fc..9493791a 100644
+--- a/wie-core-arm/src/lib.rs
++++ b/wie-core-arm/src/lib.rs
+@@ -3,11 +3,13 @@ extern crate alloc;
+ 
+ mod allocator;
+ mod aot;
++mod binary_patches;
+ mod context;
+ mod core;
+ mod engine;
+ mod function;
+ mod gdb;
++pub mod stdlib;
+ mod thread;
+ mod thread_wrapper;
+ 
+@@ -15,7 +17,8 @@ pub type ThreadId = usize;
+ 
+ pub use self::{
+     allocator::Allocator,
++    binary_patches::install_binary_patches,
+     context::ArmCoreContext,
+-    core::{ArmCore, RUN_FUNCTION_LR, RunFunctionResult},
++    core::{ArmCore, RUN_FUNCTION_LR, RunFunctionResult, jit_enabled, set_jit_enabled},
+     function::{EmulatedFunction, EmulatedFunctionParam, JumpTo, RegisteredFunction, RegisteredFunctionHolder, ResultWriter, SvcId},
+ };
+diff --git a/wie-core-arm/src/stdlib.rs b/wie-core-arm/src/stdlib.rs
+new file mode 100644
+index 00000000..f3b586db
+--- /dev/null
++++ b/wie-core-arm/src/stdlib.rs
+@@ -0,0 +1,58 @@
++use wie_util::{ByteRead, ByteWrite, Result};
++
++use crate::ArmCore;
++
++const COPY_CHUNK: usize = 4096;
++const STR_SCAN_CHUNK: usize = 256;
++
++pub async fn memcpy(core: &mut ArmCore, _: &mut (), ptr_dst: u32, ptr_src: u32, len: u32) -> Result<()> {
++    let mut buf = [0u8; COPY_CHUNK];
++    let mut offset: u32 = 0;
++    while offset < len {
++        let chunk = ((len - offset) as usize).min(COPY_CHUNK);
++        core.read_bytes(ptr_src.wrapping_add(offset), &mut buf[..chunk])?;
++        core.write_bytes(ptr_dst.wrapping_add(offset), &buf[..chunk])?;
++        offset = offset.wrapping_add(chunk as u32);
++    }
++    Ok(())
++}
++
++pub async fn memset(core: &mut ArmCore, _: &mut (), ptr_dst: u32, value: u32, len: u32) -> Result<()> {
++    let buf = [value as u8; COPY_CHUNK];
++    let mut offset: u32 = 0;
++    while offset < len {
++        let chunk = ((len - offset) as usize).min(COPY_CHUNK);
++        core.write_bytes(ptr_dst.wrapping_add(offset), &buf[..chunk])?;
++        offset = offset.wrapping_add(chunk as u32);
++    }
++    Ok(())
++}
++
++/// Reads in chunks because guest allocations are page-aligned. R0 already
++/// holds the original `ptr_dst` for ARM ABI return, so the function returns
++/// `()` and leaves R0 untouched.
++pub async fn strcpy(core: &mut ArmCore, _: &mut (), ptr_dst: u32, ptr_src: u32) -> Result<()> {
++    let mut buf = [0u8; STR_SCAN_CHUNK];
++    let mut offset: u32 = 0;
++    loop {
++        core.read_bytes(ptr_src.wrapping_add(offset), &mut buf)?;
++        if let Some(pos) = buf.iter().position(|&b| b == 0) {
++            core.write_bytes(ptr_dst.wrapping_add(offset), &buf[..=pos])?;
++            return Ok(());
++        }
++        core.write_bytes(ptr_dst.wrapping_add(offset), &buf)?;
++        offset = offset.wrapping_add(STR_SCAN_CHUNK as u32);
++    }
++}
++
++pub async fn strlen(core: &mut ArmCore, _: &mut (), ptr_str: u32) -> Result<u32> {
++    let mut buf = [0u8; STR_SCAN_CHUNK];
++    let mut len: u32 = 0;
++    loop {
++        core.read_bytes(ptr_str.wrapping_add(len), &mut buf)?;
++        if let Some(pos) = buf.iter().position(|&b| b == 0) {
++            return Ok(len.wrapping_add(pos as u32));
++        }
++        len = len.wrapping_add(STR_SCAN_CHUNK as u32);
++    }
++}
+diff --git a/wie-ktf/src/runtime/init.rs b/wie-ktf/src/runtime/init.rs
+index e13152b4..3a8f8124 100644
+--- a/wie-ktf/src/runtime/init.rs
++++ b/wie-ktf/src/runtime/init.rs
+@@ -49,6 +49,10 @@ pub async fn load_native(
+     let bss_size = parse_bss_size(filename)?;
+ 
+     core.load(data, IMAGE_BASE, data.len() + bss_size as usize)?;
++    // Patterns target instruction encodings, which the guest self-rebase at IMAGE_BASE+1 doesn't rewrite,
++    // so installing before relocation is sound. KTF binaries don't expose a code/metadata boundary here,
++    // so the whole image is scanned; the patterns are long enough that a metadata collision is implausible.
++    wie_core_arm::install_binary_patches(core, data, &[(IMAGE_BASE, data.len() as u32)])?;
+     core.prepare_execution().await?;
+ 
+     register_wipic_svc_handler(core, system, jvm)?;

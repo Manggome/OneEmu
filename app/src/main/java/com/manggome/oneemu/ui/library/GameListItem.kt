@@ -58,6 +58,8 @@ fun GameListItem(
             GameThumbnail(game, Modifier.size(56.dp), titleSize = MaterialTheme.typography.titleLarge.fontSize)
             // Arcade ROM doctor badge: green OK / amber needs something / red cannot run (checked lazily in the background).
             if (system == SystemId.ARCADE) ArcadeStatusDot(rememberArcadeResolution(game), Modifier.align(Alignment.BottomEnd).padding(2.dp))
+            // Feature-phone compatibility: green playable .. red cannot run, grey not checked yet.
+            if (system == SystemId.WIPI) WipiCompatDot(rememberWipiCompat(game), Modifier.align(Alignment.BottomEnd).padding(2.dp))
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {

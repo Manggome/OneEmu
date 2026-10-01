@@ -228,7 +228,11 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
     val importing = importGame
     val importFile = importUri
     if (importing != null && importFile != null) {
-        SaveImportDialog(importing, importFile, onDismiss = { importGame = null; importUri = null })
+        if (importing.system == com.manggome.oneemu.model.SystemId.WIPI.id) {
+            WipiSaveImportDialog(importing, importFile, onDismiss = { importGame = null; importUri = null })
+        } else {
+            SaveImportDialog(importing, importFile, onDismiss = { importGame = null; importUri = null })
+        }
     }
 
     // Resolve the live row so favorite/thumbnail changes made from the sheet show immediately.

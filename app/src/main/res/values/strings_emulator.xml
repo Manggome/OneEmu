@@ -223,4 +223,6 @@
     <string name="deint_bob">밥</string>
     <string name="deint_blend">블렌드</string>
     <string name="deint_adaptive">적응형</string>
+    <!-- Feature phones (WIPI): the core has no save states -->
+    <string name="states_unsupported">이 기종은 세이브 스테이트를 지원하지 않습니다. 게임 안에서 저장해 주세요.</string>
 </resources>
