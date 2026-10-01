@@ -5,7 +5,7 @@
 //! `pid` / `id` or `title` fields equals the loaded game's. Every field is optional; the matching
 //! "auto" core options fall back to these values, explicit option values win.
 
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 
 use serde::Deserialize;
 
@@ -26,6 +26,9 @@ pub struct Quirk {
     pub cpu_budget_ms: Option<u32>,
     /// "jit" | "interpreter": games the JIT gets wrong run on the interpreter.
     pub cpu: Option<String>,
+    /// Handset values for `MC_knlGetSystemProperty`, e.g. `{ PHONENUMBER = "01000000000" }`.
+    #[serde(default)]
+    pub system_properties: BTreeMap<String, String>,
     /// "YYYY-MM-DD": the date the game sees (for date-locked events / broken date APIs).
     pub fixed_date: Option<String>,
     pub midi_polyphony: Option<usize>,
