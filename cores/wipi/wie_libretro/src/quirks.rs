@@ -24,6 +24,8 @@ pub struct Quirk {
     /// Game-time speed in percent (100 = real phone speed).
     pub speed: Option<u32>,
     pub cpu_budget_ms: Option<u32>,
+    /// "jit" | "interpreter": games the JIT gets wrong run on the interpreter.
+    pub cpu: Option<String>,
     /// "YYYY-MM-DD": the date the game sees (for date-locked events / broken date APIs).
     pub fixed_date: Option<String>,
     pub midi_polyphony: Option<usize>,

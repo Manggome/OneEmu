@@ -27,11 +27,16 @@ tracing-subscriber = { version = "^0.3", default-features = false, features = ["
 rustysynth = { version = "^1.3" }
 
 wie-backend = { workspace = true }
+wie-core-arm = { workspace = true }
 wie-j2me = { workspace = true }
 wie-ktf = { workspace = true }
 wie-lgt = { workspace = true }
 wie-skt = { workspace = true }
 wie-util = { workspace = true }
+
+[features]
+# ARM32 JIT (dynarmic). build.sh enables it and provides the prebuilt library.
+jit = ["wie-core-arm/dynarmic"]
 
 [dev-dependencies]
 futures = { workspace = true, features = ["executor"] }

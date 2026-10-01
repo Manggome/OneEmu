@@ -14,6 +14,11 @@ set -euo pipefail
 CORE_ID="wipi"
 SRC_REPO="https://github.com/dlunch/wie"
 SRC_COMMIT="25e2fd65b14959d2332bb7ea93d9899b38602d33"   # dlunch/wie main, 2026-09-30 (0.1.7)
+# ARM32 JIT (0BSD) and the Boost headers it builds against (BSL-1.0, Azahar's trimmed subset).
+DYNARMIC_REPO="https://github.com/azahar-emu/dynarmic"
+DYNARMIC_COMMIT="a46601580d5512d324104f985b5f0209dc980ddc"   # 2026-09-26
+BOOST_REPO="https://github.com/azahar-emu/ext-boost"
+BOOST_COMMIT="6a85c3100499e886e11c87a5c2109eedacea0a61"      # Boost 1.90 headers
 NDK_VERSION="28.2.13676358"
 ANDROID_ABI="arm64-v8a"
 ANDROID_API="26"
@@ -89,6 +94,58 @@ if (( CLEAN )); then
 	rm -rf "$BUILD_DIR"
 fi
 
+# ---------------------------------------------------------------------------
+# dynarmic (static libraries) for the JIT. build_dynarmic <build dir> [extra cmake args...] sets
+# WIE_DYNARMIC_INCLUDE / WIE_DYNARMIC_LIBS for wie-core-arm's build script.
+# ---------------------------------------------------------------------------
+fetch_dynarmic() {
+	local dyn="$SCRIPT_DIR/src/dynarmic" boost="$SCRIPT_DIR/src/ext-boost"
+	if [[ "$(git -C "$dyn" rev-parse HEAD 2>/dev/null)" != "$DYNARMIC_COMMIT" ]]; then
+		log "fetching dynarmic $DYNARMIC_COMMIT"
+		rm -rf "$dyn"
+		git -c core.autocrlf=false clone -q "$DYNARMIC_REPO" "$dyn"
+		git -C "$dyn" checkout -q "$DYNARMIC_COMMIT"
+		git -C "$dyn" submodule update -q --init --depth 1 externals/fmt externals/mcl externals/oaknut externals/robin-map externals/xbyak externals/zycore externals/zydis
+	fi
+	if [[ "$(git -C "$boost" rev-parse HEAD 2>/dev/null)" != "$BOOST_COMMIT" ]]; then
+		log "fetching Boost headers $BOOST_COMMIT"
+		rm -rf "$boost"
+		git init -q "$boost"
+		git -C "$boost" fetch -q --depth 1 "$BOOST_REPO" "$BOOST_COMMIT"
+		git -C "$boost" checkout -q FETCH_HEAD
+	fi
+}
+
+build_dynarmic() {
+	local out="$1"; shift
+	command -v cmake >/dev/null || die "cmake not found (needed for the JIT; set WIPI_JIT=0 to build without it)"
+	fetch_dynarmic
+	local gen=()
+	command -v ninja >/dev/null && gen=(-G Ninja)
+	log "building dynarmic -> $out"
+	cmake -S "$SCRIPT_DIR/src/dynarmic" -B "$out" ${gen[@]+"${gen[@]}"} "$@" \
+		-DCMAKE_BUILD_TYPE=Release -DDYNARMIC_TESTS=OFF -DDYNARMIC_FRONTENDS=A32 \
+		-DDYNARMIC_USE_BUNDLED_EXTERNALS=ON -DDYNARMIC_WARNINGS_AS_ERRORS=OFF \
+		-DBoost_INCLUDE_DIR="$SCRIPT_DIR/src/ext-boost" -DBoost_NO_BOOST_CMAKE=ON >/dev/null
+	cmake --build "$out" --parallel >/dev/null
+	# cargo and cl/clang on Windows need native paths, not MSYS ones.
+	local native="$out" src="$SCRIPT_DIR/src/dynarmic/src"
+	if command -v cygpath >/dev/null; then native="$(cygpath -m "$out")"; src="$(cygpath -m "$src")"; fi
+	local libs="" lib
+	for lib in src/dynarmic/libdynarmic.a externals/mcl/src/libmcl.a externals/fmt/libfmt.a \
+		externals/zydis/libZydis.a externals/zydis/zycore/libZycore.a; do
+		[[ -f "$out/$lib" ]] && libs+="$native/$lib;"
+	done
+	[[ "$libs" == *libdynarmic.a* ]] || die "dynarmic build produced no libdynarmic.a"
+	export WIE_DYNARMIC_INCLUDE="$src"
+	export WIE_DYNARMIC_LIBS="$libs"
+}
+
+# WIPI_JIT=0 builds the interpreter-only core. Host builds get the JIT on Linux/macOS (Windows hosts would
+# need MSVC's environment for cmake; they fall back to the interpreter).
+JIT="${WIPI_JIT:-1}"
+CARGO_FEATURES=()
+
 cd "$SRC_DIR"
 
 if [[ "$MODE" == "test" ]]; then
@@ -98,8 +155,12 @@ if [[ "$MODE" == "test" ]]; then
 fi
 
 if [[ "$MODE" == "host" ]]; then
+	if [[ "$JIT" == "1" && "$(uname -s)" != MINGW* && "$(uname -s)" != MSYS* ]]; then
+		build_dynarmic "$BUILD_DIR/dynarmic-host"
+		CARGO_FEATURES=(--features jit)
+	fi
 	log "building for the host"
-	cargo build -p wie-libretro --release --lib --bins
+	cargo build -p wie-libretro --release --lib --bins ${CARGO_FEATURES[@]+"${CARGO_FEATURES[@]}"}
 	mkdir -p "$BUILD_DIR/host"
 	for f in libwipi_libretro.so libwipi_libretro.dylib wipi_libretro.dll wipi_headless wipi_headless.exe; do
 		[[ -f "$TARGET_DIR/release/$f" ]] && cp -f "$TARGET_DIR/release/$f" "$BUILD_DIR/host/"
@@ -157,12 +218,21 @@ fi
 
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CLANG"
 export CC_aarch64_linux_android="$CLANG"
+export CXX_aarch64_linux_android="${CLANG%.cmd}++"
+[[ -n "$EXE" ]] && CXX_aarch64_linux_android="$CXX_aarch64_linux_android.cmd"
 export AR_aarch64_linux_android="$LLVM_BIN/llvm-ar$EXE"
 # 16 KB page alignment: required on Android 15+ devices, harmless on 4 KB ones.
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
 
+if [[ "$JIT" == "1" ]]; then
+	build_dynarmic "$BUILD_DIR/dynarmic-$ANDROID_ABI" \
+		-DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+		-DANDROID_ABI="$ANDROID_ABI" -DANDROID_PLATFORM="android-$ANDROID_API"
+	CARGO_FEATURES=(--features jit)
+fi
+
 log "building wie-libretro for $RUST_TARGET"
-cargo build -p wie-libretro --release --lib --target "$RUST_TARGET"
+cargo build -p wie-libretro --release --lib --target "$RUST_TARGET" ${CARGO_FEATURES[@]+"${CARGO_FEATURES[@]}"}
 
 BUILT_SO="$TARGET_DIR/$RUST_TARGET/release/libwipi_libretro.so"
 [[ -f "$BUILT_SO" ]] || die "build did not produce $BUILT_SO"

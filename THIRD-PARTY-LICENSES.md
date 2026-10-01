@@ -51,6 +51,8 @@ GPL 조건을 따릅니다. 전문은 [`LICENSE`](LICENSE) 에 있습니다.
 - **피처폰 WIPI 코어** (`cores/wipi`) — wie 와 함께 들어가는 라이브러리: RustJava·arm32_cpu·smaf
   (dlunch, MIT), [rustysynth](https://github.com/sinshu/rustysynth) (MIT), 그 밖의 Rust 크레이트
   (MIT/Apache-2.0). 화면 글꼴은 wie 저장소의 Neo둥근모(SIL OFL 1.1)입니다.
+  ARM JIT 는 [dynarmic](https://github.com/azahar-emu/dynarmic) (0BSD) 과 그 의존성 mcl·fmt·oaknut·robin-map
+  (MIT), 빌드용 Boost 헤더 (BSL-1.0) 입니다. 게임별 고속 패치표는 ParkJeongseop/wie (MIT) 에서 왔습니다.
 - **GeneralUser GS 사운드폰트** v2.0.3 (S. Christian Collins) — 피처폰 배경음악 합성용 코어 에셋.
   자유 사용·재배포 허용, 전문은 `cores/wipi/assets/LICENSE-GeneralUser-GS.txt`.
 

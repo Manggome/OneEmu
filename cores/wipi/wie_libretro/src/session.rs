@@ -101,6 +101,8 @@ impl Session {
 
         let title = game.title.clone().unwrap_or_else(|| "WIPI".into());
         let carrier = game.carrier;
+        wie_core_arm::set_jit_enabled(config.jit);
+        tracing::info!("cpu: {}", if wie_core_arm::jit_enabled() { "jit" } else { "interpreter" });
         let options = Options {
             enable_gdbserver: false,
             aot: None,

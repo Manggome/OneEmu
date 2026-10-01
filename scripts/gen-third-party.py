@@ -80,6 +80,8 @@ def render(cores):
     w('- **피처폰 WIPI 코어** (`cores/wipi`) — wie 와 함께 들어가는 라이브러리: RustJava·arm32_cpu·smaf')
     w('  (dlunch, MIT), [rustysynth](https://github.com/sinshu/rustysynth) (MIT), 그 밖의 Rust 크레이트')
     w('  (MIT/Apache-2.0). 화면 글꼴은 wie 저장소의 Neo둥근모(SIL OFL 1.1)입니다.')
+    w('  ARM JIT 는 [dynarmic](https://github.com/azahar-emu/dynarmic) (0BSD) 과 그 의존성 mcl·fmt·oaknut·robin-map')
+    w('  (MIT), 빌드용 Boost 헤더 (BSL-1.0) 입니다. 게임별 고속 패치표는 ParkJeongseop/wie (MIT) 에서 왔습니다.')
     w('- **GeneralUser GS 사운드폰트** v2.0.3 (S. Christian Collins) — 피처폰 배경음악 합성용 코어 에셋.')
     w('  자유 사용·재배포 허용, 전문은 `cores/wipi/assets/LICENSE-GeneralUser-GS.txt`.\n')
 
