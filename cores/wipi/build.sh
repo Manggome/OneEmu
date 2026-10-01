@@ -124,7 +124,7 @@ build_dynarmic() {
 	command -v ninja >/dev/null && gen=(-G Ninja)
 	log "building dynarmic -> $out"
 	cmake -S "$SCRIPT_DIR/src/dynarmic" -B "$out" ${gen[@]+"${gen[@]}"} "$@" \
-		-DCMAKE_BUILD_TYPE=Release -DDYNARMIC_TESTS=OFF -DDYNARMIC_FRONTENDS=A32 \
+		-DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DDYNARMIC_TESTS=OFF -DDYNARMIC_FRONTENDS=A32 \
 		-DDYNARMIC_USE_BUNDLED_EXTERNALS=ON -DDYNARMIC_WARNINGS_AS_ERRORS=OFF \
 		-DBoost_INCLUDE_DIR="$SCRIPT_DIR/src/ext-boost" -DBoost_NO_BOOST_CMAKE=ON >/dev/null
 	cmake --build "$out" --parallel >/dev/null
