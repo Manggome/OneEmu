@@ -1,0 +1,81 @@
+diff --git a/wie-core-arm/data/binary_patches.toml b/wie-core-arm/data/binary_patches.toml
+index ddd2fae2..7a3afe26 100644
+--- a/wie-core-arm/data/binary_patches.toml
++++ b/wie-core-arm/data/binary_patches.toml
+@@ -4,7 +4,9 @@
+ #   - hash-keyed: `hash` is the MD5 of the main guest binary (KTF
+ #     `client.bin`, LGT `binary.mod`, etc.). Matched and installed on boot.
+ #   - pattern-only (hash omitted): generic patterns that apply to any binary
+-#     matching the bytes. Hash-keyed entries take priority.
++#     matching the bytes. The generic entry is installed first, then the
++#     hash-keyed entry of the binary (if any) on top of it. Only one of the
++#     two may install hooks for a binary (the hook SVC handler is registered once).
+ #
+ # Hook `pc`/`exit_pc` MUST have the Thumb bit (LSB=1); ARM-mode hooks are
+ # not supported. Stack offsets are signed and measured from R7 (Thumb
+@@ -98,3 +100,18 @@ pattern = "70 b5 0b 1c 03 43 03 22 13 40 04 1c"
+ [[entry.hook]]
+ kind = "strlen"
+ pattern = "30 b5 03 23 03 40 04 1c 00 2b"
++
++[[entry]]
++name = "리듬스타 (KTF 010100D2): at most 60 distinct song packs in the result tally"
++hash = "53870d41fc56d30bf082eb96537ebb15"
++
++# After a song the result screen tallies the distinct song packs (`.pak` names) of the song list into a
++# 60-slot stack array (client.bin 0x113e04: memset(sp + 0x34, 0, 60 * 0x80)) without a bound check. With
++# more than 60 packs (the wipiX dump carries 94, the merged song list 109) the copies run over the frame
++# and the callers' saved registers, and the timer callback crashes on a string read as a pointer.
++# Skip new packs once the array is full: `cmp count, #0; bgt dedup; b ...` becomes
++# `cmp count, #60; bge next_song; nop` (the dedup loop is also correct for an empty array: slot 0 is zeroed).
++[[entry.patch]]
++pc = 0x113fa0
++bytes = "3c 28 19 da c0 46"
++expect = "00 28 00 dc 2f e1"
+diff --git a/wie-core-arm/src/binary_patches.rs b/wie-core-arm/src/binary_patches.rs
+index 6945f423..d6e073d8 100644
+--- a/wie-core-arm/src/binary_patches.rs
++++ b/wie-core-arm/src/binary_patches.rs
+@@ -14,20 +14,21 @@ use self::{
+ };
+ 
+ /// Match the binary against the embedded patch table and install any matching
+-/// patches/hooks. The on-disk MD5 selects a hash-keyed entry first, falling
+-/// back to a hash-less generic entry. `scan_ranges` are the `(base, size)` byte
+-/// ranges searched for pattern matching (typically the guest `.text` region).
++/// patches/hooks: the hash-less generic entry first, then the entry keyed by the
++/// binary's MD5, if any. `scan_ranges` are the `(base, size)` byte ranges
++/// searched for pattern matching (typically the guest `.text` region).
+ /// Returns the number of patches + hooks installed.
+ pub fn install_binary_patches(core: &mut ArmCore, data: &[u8], scan_ranges: &[(u32, u32)]) -> Result<usize> {
+     let hash = md5::compute(data).0;
+     let entries = parser::binary_patches();
+-    if let Some(entry) = entries.iter().find(|e| matches!(e.hash, Some(h) if h == hash)) {
+-        return install_entry(core, entry, scan_ranges, true);
+-    }
++    let mut installed = 0;
+     if let Some(entry) = entries.iter().find(|e| e.hash.is_none()) {
+-        return install_entry(core, entry, scan_ranges, false);
++        installed += install_entry(core, entry, scan_ranges, false)?;
+     }
+-    Ok(0)
++    if let Some(entry) = entries.iter().find(|e| matches!(e.hash, Some(h) if h == hash)) {
++        installed += install_entry(core, entry, scan_ranges, true)?;
++    }
++    Ok(installed)
+ }
+ 
+ struct Entry {
+@@ -100,7 +101,11 @@ fn install_entry(core: &mut ArmCore, entry: &Entry, scan_ranges: &[(u32, u32)],
+         tracing::warn!("entry {}: generic entry produced 0 patches/hooks", entry.name);
+     }
+ 
+-    hook::apply_hooks(core, &entry.name, &hooks)?;
++    // The hook SVC handler can be registered once per core: of the generic and the hash-keyed entry,
++    // only one may carry hooks for a given binary.
++    if !hooks.is_empty() {
++        hook::apply_hooks(core, &entry.name, &hooks)?;
++    }
+     Ok(n_patches + hooks.len())
+ }
+ 
