@@ -297,6 +297,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                 Sheet.WIPI_KEYPAD -> com.manggome.oneemu.emu.phone.WipiSettingsSheet(
                     gameId = session.game.id,
                     padConnected = com.manggome.oneemu.emu.input.GamepadDevices.connected().firstOrNull()?.name,
+                    padVendor = com.manggome.oneemu.emu.input.GamepadDevices.connected().firstOrNull()?.vendorId,
                     lastPadMask = { host.lastPadMask },
                     onPadKey = host::forwardPadKey,
                     onPadMotion = host::forwardPadMotion,
