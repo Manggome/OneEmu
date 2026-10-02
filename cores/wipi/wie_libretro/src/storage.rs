@@ -186,6 +186,15 @@ impl SaveDatabaseRepository {
         self.base_path.join(app_id).join("db").join(normalized)
     }
 
+    /// Stores `data` as record 1 of database `name` unless that database already exists.
+    pub fn seed(&self, name: &str, app_id: &str, data: &[u8]) -> bool {
+        let path = self.path_for_database(name, app_id);
+        if path.exists() {
+            return false;
+        }
+        fs::create_dir_all(&path).and_then(|_| fs::write(path.join("1"), data)).is_ok()
+    }
+
     fn directory_usage(path: &Path) -> u64 {
         let Ok(entries) = fs::read_dir(path) else {
             return 0;

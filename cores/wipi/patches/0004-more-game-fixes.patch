@@ -1,0 +1,2000 @@
+diff --git a/wie-backend/src/lib.rs b/wie-backend/src/lib.rs
+index 6ccbffcd..0a720a84 100644
+--- a/wie-backend/src/lib.rs
++++ b/wie-backend/src/lib.rs
+@@ -74,6 +74,38 @@ pub struct Options {
+     pub profile: Option<ProfileCallback>,
+ }
+ 
++/// Size of the file entry `name` in a zip archive, or `None` when it has no such file.
++pub fn zip_entry_size(zip: &[u8], name: &str) -> Result<Option<u64>> {
++    extern crate std; // XXX
++
++    use std::io::Cursor;
++    use zip::ZipArchive;
++
++    let mut archive = ZipArchive::new(Cursor::new(zip)).map_err(|x| WieError::FatalError(format!("Invalid zip archive: {x}")))?;
++    Ok(archive.by_name(name).ok().filter(|file| file.is_file()).map(|file| file.size()))
++}
++
++/// Contents of the file entry `name` in a zip archive, or `None` when it has no such file.
++pub fn read_zip_entry(zip: &[u8], name: &str) -> Result<Option<Vec<u8>>> {
++    extern crate std; // XXX
++
++    use std::io::{Cursor, Read};
++    use zip::ZipArchive;
++
++    let mut archive = ZipArchive::new(Cursor::new(zip)).map_err(|x| WieError::FatalError(format!("Invalid zip archive: {x}")))?;
++    let Ok(mut file) = archive.by_name(name) else {
++        return Ok(None);
++    };
++    if !file.is_file() {
++        return Ok(None);
++    }
++    let mut data = Vec::new();
++    file.read_to_end(&mut data)
++        .map_err(|x| WieError::FatalError(format!("Failed to read zip entry {name}: {x}")))?;
++
++    Ok(Some(data))
++}
++
+ pub fn extract_zip(zip: &[u8]) -> Result<BTreeMap<String, Vec<u8>>> {
+     extern crate std; // XXX
+ 
+diff --git a/wie-backend/src/system/file_system.rs b/wie-backend/src/system/file_system.rs
+index 4c5fee0c..590ba9f8 100644
+--- a/wie-backend/src/system/file_system.rs
++++ b/wie-backend/src/system/file_system.rs
+@@ -49,7 +49,7 @@ fn normalize_guest_path(path: &str) -> Option<String> {
+ #[derive(Clone)]
+ pub struct FilesystemOverlay {
+     platform: Arc<Box<dyn Platform>>,
+-    virtual_files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
++    virtual_files: Arc<Mutex<HashMap<String, Arc<[u8]>>>>,
+     aid: Arc<str>,
+ }
+ 
+@@ -64,7 +64,12 @@ impl FilesystemOverlay {
+ 
+     pub fn add_virtual(&self, path: &str, data: Vec<u8>) {
+         let key = normalize_guest_path(path).unwrap_or_else(|| path.trim_start_matches('/').to_owned());
+-        self.virtual_files.lock().insert(key, data);
++        self.virtual_files.lock().insert(key, data.into());
++    }
++
++    /// The bytes of a file bundled with the app (read-only package data such as the jar), without copying.
++    pub fn virtual_data(&self, path: &str) -> Option<Arc<[u8]>> {
++        self.virtual_files.lock().get(&normalize_guest_path(path)?).cloned()
+     }
+ 
+     pub fn is_valid_path(&self, path: &str) -> bool {
+diff --git a/wie-ktf/src/runtime/svc_ids.rs b/wie-ktf/src/runtime/svc_ids.rs
+index 7d1c4a90..60a19149 100644
+--- a/wie-ktf/src/runtime/svc_ids.rs
++++ b/wie-ktf/src/runtime/svc_ids.rs
+@@ -395,6 +395,7 @@ pub enum WIPICDatabaseMethodId {
+     UpdateRecord = 5,
+     DeleteRecord = 6,
+     ListRecord = 7,
++    /// KTF uses this slot as `mkdir(name, mode)`.
+     SortRecords = 8,
+     GetAccessMode = 9,
+     GetNumberOfRecords = 10,
+@@ -402,7 +403,8 @@ pub enum WIPICDatabaseMethodId {
+     ListDatabases = 12,
+     Unk13 = 13,
+     Unk14 = 14,
+-    Unk15 = 15,
++    /// `tell(fd)`: the stream position (영웅서기3 sizes a file as seek(fd, 0, end) then this).
++    Tell = 15,
+     Exists = 16,
+ }
+ 
+@@ -432,7 +434,7 @@ impl TryFrom<u16> for WIPICDatabaseMethodId {
+             12 => Self::ListDatabases,
+             13 => Self::Unk13,
+             14 => Self::Unk14,
+-            15 => Self::Unk15,
++            15 => Self::Tell,
+             16 => Self::Exists,
+             _ => {
+                 return Err(wie_util::WieError::FatalError(alloc::format!(
+diff --git a/wie-ktf/src/runtime/wipi_c.rs b/wie-ktf/src/runtime/wipi_c.rs
+index 5be854a1..4f3a85b6 100644
+--- a/wie-ktf/src/runtime/wipi_c.rs
++++ b/wie-ktf/src/runtime/wipi_c.rs
+@@ -1,10 +1,10 @@
+-use alloc::{boxed::Box, vec};
++use alloc::boxed::Box;
+ 
+ use jvm::Jvm;
+ use wie_backend::System;
+ use wie_core_arm::{ArmCore, EmulatedFunction, EmulatedFunctionParam, ResultWriter, SvcId};
+ use wie_util::{Result, WieError};
+-use wie_wipi_c::{WIPICMethodBody, WIPICResult};
++use wie_wipi_c::{MAX_METHOD_ARGS, WIPICMethodBody, WIPICResult};
+ 
+ use crate::runtime::SVC_CATEGORY_WIPIC;
+ use crate::runtime::svc_ids::{WIPICKernelMethodId, WIPICTableId};
+@@ -36,20 +36,10 @@ struct CMethodProxy {
+ #[async_trait::async_trait]
+ impl EmulatedFunction<(), WIPICMethodResult, ()> for CMethodProxy {
+     async fn call(&self, core: &mut ArmCore, _: &mut ()) -> Result<WIPICMethodResult> {
+-        let a0 = u32::get(core, 0);
+-        let a1 = u32::get(core, 1);
+-        let a2 = u32::get(core, 2);
+-        let a3 = u32::get(core, 3);
+-        let a4 = u32::get(core, 4);
+-        let a5 = u32::get(core, 5);
+-        let a6 = u32::get(core, 6);
+-        let a7 = u32::get(core, 7);
+-        let a8 = u32::get(core, 8);
++        // As many words as the widest method takes (MC_knlSprintk with its variadic arguments).
++        let args = (0..MAX_METHOD_ARGS).map(|index| u32::get(core, index)).collect();
+ 
+-        let result = self
+-            .body
+-            .call(&mut self.context.clone(), vec![a0, a1, a2, a3, a4, a5, a6, a7, a8].into_boxed_slice())
+-            .await?;
++        let result = self.body.call(&mut self.context.clone(), args).await?;
+ 
+         Ok(WIPICMethodResult { result })
+     }
+@@ -76,7 +66,12 @@ async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm),
+         core,
+         &mut (),
+     )
+-    .await?
++    .await
++    .map_err(|error| match error {
++        // name the guest call site, so the caller can be disassembled
++        WieError::Unimplemented(message) => WieError::Unimplemented(alloc::format!("{message} (called from {lr:#x})")),
++        error => error,
++    })?
+     .write(core, lr)
+ }
+ 
+diff --git a/wie-ktf/src/runtime/wipi_c/context.rs b/wie-ktf/src/runtime/wipi_c/context.rs
+index e5e02902..eb3831fb 100644
+--- a/wie-ktf/src/runtime/wipi_c/context.rs
++++ b/wie-ktf/src/runtime/wipi_c/context.rs
+@@ -1,4 +1,4 @@
+-use alloc::{boxed::Box, vec::Vec};
++use alloc::{boxed::Box, sync::Arc, vec::Vec};
+ 
+ use jvm::{
+     Jvm,
+@@ -6,9 +6,10 @@ use jvm::{
+ };
+ use wipi_types::wipic::{WIPICIndirectPtr, WIPICWord};
+ 
+-use wie_backend::{AsyncCallable, Event, Instant, System};
++use wie_backend::{AsyncCallable, Event, Instant, System, read_zip_entry, zip_entry_size};
+ use wie_core_arm::{Allocator, ArmCore};
+ use wie_jvm_support::JvmSupport;
++use wie_midp::classes::javax::microedition::lcdui::Display;
+ use wie_util::{ByteRead, ByteWrite, Result, WieError, read_generic, write_generic};
+ use wie_wipi_c::{WIPICContext, WIPICMethodBody};
+ 
+@@ -23,6 +24,16 @@ impl KtfWIPICContext {
+     pub fn new(core: ArmCore, system: System, jvm: Jvm) -> Self {
+         Self { core, system, jvm }
+     }
++
++    /// The app's jar (`<AID>.jar` in a KTF archive), the classpath that resources are looked up in.
++    ///
++    /// Resources are read from it directly: going through the JVM class loader copied the whole jar out
++    /// of guest memory and re-parsed it three times per resource and left garbage behind, which made
++    /// resource-heavy loading screens stall (영웅서기 4: 2.6 MB jar, 200-400 ms frames). Names it does not
++    /// contain still go through the class loader.
++    fn app_jar(&self) -> Option<Arc<[u8]>> {
++        self.system.filesystem().virtual_data(&alloc::format!("{}.jar", self.system.aid()))
++    }
+ }
+ 
+ #[async_trait::async_trait]
+@@ -91,6 +102,12 @@ impl WIPICContext for KtfWIPICContext {
+     }
+ 
+     async fn get_resource_size(&self, name: &str) -> Result<Option<usize>> {
++        if let Some(jar) = self.app_jar()
++            && let Some(size) = zip_entry_size(&jar, name.trim_start_matches('/'))?
++        {
++            return Ok(Some(size as usize));
++        }
++
+         let class_loader = JavaLangClassLoader::get_system_class_loader(&self.jvm)
+             .await
+             .map_err(|err| WieError::FatalError(alloc::format!("Failed to get class loader for resource {name:?}: {err:?}")))?;
+@@ -113,7 +130,7 @@ impl WIPICContext for KtfWIPICContext {
+             }
+             None => None,
+         };
+-        match self.jvm.collect_garbage() {
++        match Display::collect_garbage_periodically(&self.jvm, self.system.platform().now()).await {
+             Ok(_) => {}
+             Err(err) => return Err(JvmSupport::to_wie_err(&self.jvm, err).await),
+         }
+@@ -122,6 +139,12 @@ impl WIPICContext for KtfWIPICContext {
+     }
+ 
+     async fn read_resource(&self, name: &str) -> Result<Vec<u8>> {
++        if let Some(jar) = self.app_jar()
++            && let Some(data) = read_zip_entry(&jar, name.trim_start_matches('/'))?
++        {
++            return Ok(data);
++        }
++
+         let class_loader = JavaLangClassLoader::get_system_class_loader(&self.jvm)
+             .await
+             .map_err(|err| WieError::FatalError(alloc::format!("Failed to get class loader for resource {name:?}: {err:?}")))?;
+@@ -142,7 +165,7 @@ impl WIPICContext for KtfWIPICContext {
+             }
+         };
+         drop(stream);
+-        match self.jvm.collect_garbage() {
++        match Display::collect_garbage_periodically(&self.jvm, self.system.platform().now()).await {
+             Ok(_) => {}
+             Err(err) => return Err(JvmSupport::to_wie_err(&self.jvm, err).await),
+         }
+diff --git a/wie-ktf/src/runtime/wipi_c/method_table.rs b/wie-ktf/src/runtime/wipi_c/method_table.rs
+index 100a026b..8f596120 100644
+--- a/wie-ktf/src/runtime/wipi_c/method_table.rs
++++ b/wie-ktf/src/runtime/wipi_c/method_table.rs
+@@ -210,7 +210,7 @@ pub fn get_database_interface(core: &mut ArmCore) -> Result<WIPICDatabaseInterfa
+         list_databases: core.make_svc_stub(SVC_CATEGORY_WIPIC, table_id.function_id(WIPICDatabaseMethodId::ListDatabases))?,
+         unk13: core.make_svc_stub(SVC_CATEGORY_WIPIC, table_id.function_id(WIPICDatabaseMethodId::Unk13))?,
+         unk14: core.make_svc_stub(SVC_CATEGORY_WIPIC, table_id.function_id(WIPICDatabaseMethodId::Unk14))?,
+-        unk15: core.make_svc_stub(SVC_CATEGORY_WIPIC, table_id.function_id(WIPICDatabaseMethodId::Unk15))?,
++        unk15: core.make_svc_stub(SVC_CATEGORY_WIPIC, table_id.function_id(WIPICDatabaseMethodId::Tell))?,
+         unk16: core.make_svc_stub(SVC_CATEGORY_WIPIC, table_id.function_id(WIPICDatabaseMethodId::Exists))?,
+     })
+ }
+@@ -364,7 +364,7 @@ pub fn get_method_body(table_id: WIPICTableId, function_id: u16) -> Option<WIPIC
+         WIPICTableId::Kernel => match WIPICKernelMethodId::try_from(function_id).ok()? {
+             WIPICKernelMethodId::Printk => Some(kernel::printk.into_body()),
+             WIPICKernelMethodId::Sprintk => Some(kernel::sprintk.into_body()),
+-            WIPICKernelMethodId::GetExecNames => Some(gen_stub(2, "MC_knlGetExecNames")),
++            WIPICKernelMethodId::GetExecNames => Some(kernel::get_exec_names.into_body()),
+             WIPICKernelMethodId::Execute => Some(gen_stub(3, "MC_knlExecute")),
+             WIPICKernelMethodId::Mexecute => Some(gen_stub(4, "MC_knlMExecute")),
+             WIPICKernelMethodId::Load => Some(gen_stub(5, "MC_knlLoad")),
+@@ -375,7 +375,7 @@ pub fn get_method_body(table_id: WIPICTableId, function_id: u16) -> Option<WIPIC
+             WIPICKernelMethodId::GetParentProgramId => Some(gen_stub(10, "MC_knlGetParentProgramID")),
+             WIPICKernelMethodId::GetAppManagerId => Some(gen_stub(11, "MC_knlGetAppManagerID")),
+             WIPICKernelMethodId::GetProgramInfo => Some(gen_stub(12, "MC_knlGetProgramInfo")),
+-            WIPICKernelMethodId::GetAccessLevel => Some(gen_stub(13, "MC_knlGetAccessLevel")),
++            WIPICKernelMethodId::GetAccessLevel => Some(kernel::get_access_level.into_body()),
+             WIPICKernelMethodId::GetProgramName => Some(kernel::get_program_name.into_body()),
+             WIPICKernelMethodId::CreateSharedBuf => Some(gen_stub(15, "MC_knlCreateSharedBuf")),
+             WIPICKernelMethodId::DestroySharedBuf => Some(gen_stub(16, "MC_knlDestroySharedBuf")),
+@@ -516,14 +516,14 @@ pub fn get_method_body(table_id: WIPICTableId, function_id: u16) -> Option<WIPIC
+             WIPICDatabaseMethodId::UpdateRecord => Some(database::stat_by_name_ktf.into_body()),
+             WIPICDatabaseMethodId::DeleteRecord => Some(database::delete_record_ktf.into_body()),
+             WIPICDatabaseMethodId::ListRecord => Some(database::list_record.into_body()),
+-            WIPICDatabaseMethodId::SortRecords => Some(gen_stub(8, "MC_dbSortRecords")),
++            WIPICDatabaseMethodId::SortRecords => Some(database::make_directory_ktf.into_body()),
+             WIPICDatabaseMethodId::GetAccessMode => Some(gen_stub(9, "MC_dbGetAccessMode")),
+             WIPICDatabaseMethodId::GetNumberOfRecords => Some(database::get_number_of_records_ktf.into_body()),
+             WIPICDatabaseMethodId::GetRecordSize => Some(database::get_record_size_ktf.into_body()),
+             WIPICDatabaseMethodId::ListDatabases => Some(database::list_databases.into_body()),
+             WIPICDatabaseMethodId::Unk13 => Some(gen_stub(13, "MC_dbUnk13")),
+             WIPICDatabaseMethodId::Unk14 => Some(gen_stub(14, "MC_dbUnk14")),
+-            WIPICDatabaseMethodId::Unk15 => Some(gen_stub(15, "MC_dbUnk15")),
++            WIPICDatabaseMethodId::Tell => Some(database::tell_record_single.into_body()),
+             WIPICDatabaseMethodId::Exists => Some(database::exists_database.into_body()),
+         },
+         WIPICTableId::Interface7 => {
+diff --git a/wie-lgt/data/lgt_java_abi.toml b/wie-lgt/data/lgt_java_abi.toml
+index 0d111954..3c68fa9b 100644
+--- a/wie-lgt/data/lgt_java_abi.toml
++++ b/wie-lgt/data/lgt_java_abi.toml
+@@ -48,6 +48,19 @@ vtable = [
+     { name = "markSupported", descriptor = "()Z", index = 18 },
+ ]
+ 
++[[class]]
++# write([BII)=12 is backed by LGT 학교가는길, which calls slot 12 of a file output stream with (bytes, 0,
++# bytes.length). The CLDC 1.1 declaration order (write(I), write([B), write([BII), flush, close) gives it,
++# and continuing with PrintStream's CLDC order after these five reproduces the confirmed println(String)=34.
++name = "java/io/OutputStream"
++vtable = [
++    { name = "write", descriptor = "(I)V", index = 10 },
++    { name = "write", descriptor = "([B)V", index = 11 },
++    { name = "write", descriptor = "([BII)V", index = 12 },
++    { name = "flush", descriptor = "()V", index = 13 },
++    { name = "close", descriptor = "()V", index = 14 },
++]
++
+ [[class]]
+ name = "java/io/Reader"
+ vtable = [
+@@ -157,12 +170,46 @@ vtable = [
+ ]
+ 
+ [[class]]
++# size/elementAt/removeElementAt/insertElementAt are confirmed; the CLDC 1.1 declaration order (copyInto,
++# trimToSize, ensureCapacity, setSize, capacity, size, isEmpty, elements, contains, indexOf x2,
++# lastIndexOf x2, elementAt, firstElement, lastElement, setElementAt, removeElementAt, insertElementAt,
++# addElement, removeElement, removeAllElements; toString folds into Object's slot) reproduces all four.
+ name = "java/util/Vector"
+ vtable = [
++    { name = "copyInto", descriptor = "([Ljava/lang/Object;)V", index = 10 },
++    { name = "trimToSize", descriptor = "()V", index = 11 },
++    { name = "ensureCapacity", descriptor = "(I)V", index = 12 },
++    { name = "setSize", descriptor = "(I)V", index = 13 },
++    { name = "capacity", descriptor = "()I", index = 14 },
+     { name = "size", descriptor = "()I", index = 15 },
++    { name = "isEmpty", descriptor = "()Z", index = 16 },
++    { name = "elements", descriptor = "()Ljava/util/Enumeration;", index = 17 },
++    { name = "contains", descriptor = "(Ljava/lang/Object;)Z", index = 18 },
++    { name = "indexOf", descriptor = "(Ljava/lang/Object;)I", index = 19 },
++    { name = "indexOf", descriptor = "(Ljava/lang/Object;I)I", index = 20 },
++    { name = "lastIndexOf", descriptor = "(Ljava/lang/Object;)I", index = 21 },
++    { name = "lastIndexOf", descriptor = "(Ljava/lang/Object;I)I", index = 22 },
+     { name = "elementAt", descriptor = "(I)Ljava/lang/Object;", index = 23 },
++    { name = "firstElement", descriptor = "()Ljava/lang/Object;", index = 24 },
++    { name = "lastElement", descriptor = "()Ljava/lang/Object;", index = 25 },
++    { name = "setElementAt", descriptor = "(Ljava/lang/Object;I)V", index = 26 },
+     { name = "removeElementAt", descriptor = "(I)V", index = 27 },
+     { name = "insertElementAt", descriptor = "(Ljava/lang/Object;I)V", index = 28 },
++    { name = "addElement", descriptor = "(Ljava/lang/Object;)V", index = 29 },
++    { name = "removeElement", descriptor = "(Ljava/lang/Object;)Z", index = 30 },
++    { name = "removeAllElements", descriptor = "()V", index = 31 },
++]
++
++[[class]]
++# push=32 is backed by LGT 학교가는길, which calls slot 32 of a Stack with one object argument; it is the
++# first entry after Vector's 22 in the CLDC 1.1 declaration order (push, pop, peek, empty, search).
++name = "java/util/Stack"
++vtable = [
++    { name = "push", descriptor = "(Ljava/lang/Object;)Ljava/lang/Object;", index = 32 },
++    { name = "pop", descriptor = "()Ljava/lang/Object;", index = 33 },
++    { name = "peek", descriptor = "()Ljava/lang/Object;", index = 34 },
++    { name = "empty", descriptor = "()Z", index = 35 },
++    { name = "search", descriptor = "(Ljava/lang/Object;)I", index = 36 },
+ ]
+ 
+ [[class]]
+@@ -173,6 +220,34 @@ vtable = [
+     { name = "get", descriptor = "(I)I", index = 19 },
+ ]
+ 
++[[class]]
++# run=10 is backed by LGT 학교가는길, whose TimerTask subclass has a 13-entry compiler vtable that
++# overrides only slot 10; cancel and scheduledExecutionTime follow in CLDC 1.1 declaration order.
++name = "java/util/TimerTask"
++# The same subclass keeps its own field at word 6 with a hard-coded offset: the platform TimerTask has six
++# instance-field words (lock, state, nextExecutionTime, period), so runtime-only fields are detached.
++instance_field_words = 6
++vtable = [
++    { name = "run", descriptor = "()V", index = 10 },
++    { name = "cancel", descriptor = "()Z", index = 11 },
++    { name = "scheduledExecutionTime", descriptor = "()J", index = 12 },
++]
++
++[[class]]
++# schedule(TimerTask, long, long)=12 is backed by LGT 학교가는길, whose ARM-compiled startApp calls a new
++# Timer's slot 12 with (task, (long) delay, (long) period). It matches the CLDC 1.1 declaration order
++# (schedule(J), schedule(Date), schedule(JJ), schedule(Date,J), scheduleAtFixedRate(JJ),
++# scheduleAtFixedRate(Date,J), cancel); scheduleAtFixedRate(Date,J)=15 has no runtime implementation.
++name = "java/util/Timer"
++vtable = [
++    { name = "schedule", descriptor = "(Ljava/util/TimerTask;J)V", index = 10 },
++    { name = "schedule", descriptor = "(Ljava/util/TimerTask;Ljava/util/Date;)V", index = 11 },
++    { name = "schedule", descriptor = "(Ljava/util/TimerTask;JJ)V", index = 12 },
++    { name = "schedule", descriptor = "(Ljava/util/TimerTask;Ljava/util/Date;J)V", index = 13 },
++    { name = "scheduleAtFixedRate", descriptor = "(Ljava/util/TimerTask;JJ)V", index = 14 },
++    { name = "cancel", descriptor = "()V", index = 16 },
++]
++
+ [[class]]
+ name = "java/lang/Runnable"
+ vtable = [
+diff --git a/wie-lgt/src/emulator.rs b/wie-lgt/src/emulator.rs
+index 322e4f62..cc5b2892 100644
+--- a/wie-lgt/src/emulator.rs
++++ b/wie-lgt/src/emulator.rs
+@@ -214,11 +214,11 @@ impl LgtAppInfo {
+             if line.starts_with(b"Name:") {
+                 name = EUC_KR.decode(&line[5..]).0.trim().to_string();
+             } else if line.starts_with(b"AID:") {
+-                aid = String::from_utf8_lossy(&line[4..]).into();
++                aid = String::from_utf8_lossy(&line[4..]).trim().to_string();
+             } else if line.starts_with(b"PID:") {
+-                pid = String::from_utf8_lossy(&line[4..]).into();
++                pid = String::from_utf8_lossy(&line[4..]).trim().to_string();
+             } else if line.starts_with(b"MClass:") {
+-                mclass = String::from_utf8_lossy(&line[7..]).into();
++                mclass = String::from_utf8_lossy(&line[7..]).trim().to_string();
+             }
+         }
+ 
+@@ -232,8 +232,9 @@ mod tests {
+ 
+     #[test]
+     fn parse_app_info_name() {
+-        let app_info =
+-            LgtAppInfo::parse(b"PID:pid\nAID:aid\nName:\xbf\xb5\xbf\xf5\xbc\xad\xb1\xe24-\xc8\xaf\xbf\xb5\xc0\xc7\xb0\xa1\xb8\xe9\nMClass:Clet\n");
++        let app_info = LgtAppInfo::parse(
++            b"PID:pid\r\nAID:aid\r\nName:\xbf\xb5\xbf\xf5\xbc\xad\xb1\xe24-\xc8\xaf\xbf\xb5\xc0\xc7\xb0\xa1\xb8\xe9\r\nMClass:Clet\r\n",
++        );
+ 
+         assert_eq!(app_info.name, "영웅서기4-환영의가면");
+         assert_eq!(app_info.aid, "aid");
+diff --git a/wie-lgt/src/runtime/java/abi.rs b/wie-lgt/src/runtime/java/abi.rs
+index 572b7aae..5b3069e5 100644
+--- a/wie-lgt/src/runtime/java/abi.rs
++++ b/wie-lgt/src/runtime/java/abi.rs
+@@ -22,6 +22,9 @@ pub struct JavaAbi {
+ pub struct JavaClassAbi {
+     pub name: String,
+     pub vtable_size: Option<usize>,
++    /// Instance-field words of the platform class, including inherited words. Generated subclasses
++    /// place their own fields right after them, so runtime fields that do not fit are detached.
++    pub instance_field_words: Option<usize>,
+     #[serde(default)]
+     pub vtable: Vec<JavaVtableIndex>,
+     #[serde(default)]
+diff --git a/wie-lgt/src/runtime/java/jvm_support.rs b/wie-lgt/src/runtime/java/jvm_support.rs
+index a90b8804..9b045a2d 100644
+--- a/wie-lgt/src/runtime/java/jvm_support.rs
++++ b/wie-lgt/src/runtime/java/jvm_support.rs
+@@ -102,6 +102,11 @@ impl LgtJvmSupport {
+                     .as_any()
+                     .downcast_ref::<JavaField>()
+                     .ok_or_else(|| WieError::FatalError(format!("Unsupported field implementation for {current_name}.{name}{descriptor}")))?;
++                if field.is_detached()? {
++                    return Err(WieError::FatalError(format!(
++                        "{current_name}.{name}{descriptor} is a runtime field outside the platform instance layout"
++                    )));
++                }
+                 return u16::try_from(field.word_index()?)
+                     .map_err(|_| WieError::FatalError(format!("Field word index does not fit LGT ABI for {current_name}.{name}{descriptor}")));
+             }
+diff --git a/wie-lgt/src/runtime/java/jvm_support/class_definition.rs b/wie-lgt/src/runtime/java/jvm_support/class_definition.rs
+index 5ef4b81f..7e0b26d9 100644
+--- a/wie-lgt/src/runtime/java/jvm_support/class_definition.rs
++++ b/wie-lgt/src/runtime/java/jvm_support/class_definition.rs
+@@ -150,10 +150,17 @@ impl JavaClassDefinition {
+             .map(|class| class.instance_field_word_count())
+             .transpose()?
+             .unwrap_or(0);
++        let mut detached_field_word_index = parent_class
++            .as_ref()
++            .map(|class| class.detached_field_word_count())
++            .transpose()?
++            .unwrap_or(0);
++        let platform_field_words = class_abi.and_then(|class| class.instance_field_words);
+         let mut static_field_word_index = 0usize;
+         for (index, field) in field_protos.iter().enumerate() {
+             let is_static = field.access_flags.contains(FieldAccessFlags::STATIC);
+             let word_count = if field.descriptor == "J" || field.descriptor == "D" { 2 } else { 1 };
++            let mut detached = false;
+             let word_index = if is_static {
+                 static_field_word_index
+             } else if let Some(fixed) = fixed_fields
+@@ -161,11 +168,16 @@ impl JavaClassDefinition {
+                 .find(|fixed| fixed.name == field.name && fixed.descriptor == field.descriptor)
+             {
+                 fixed.index as usize
++            } else if platform_field_words.is_some_and(|words| instance_field_word_index + word_count > words) {
++                detached = true;
++                detached_field_word_index
+             } else {
+                 instance_field_word_index
+             };
+             if is_static {
+                 static_field_word_index += word_count;
++            } else if detached {
++                detached_field_word_index += word_count;
+             } else {
+                 instance_field_word_index = instance_field_word_index.max(word_index + word_count);
+             }
+@@ -179,6 +191,7 @@ impl JavaClassDefinition {
+                 &field.descriptor,
+                 field.access_flags,
+                 word_index as u32,
++                detached,
+             )?;
+         }
+         for (offset, field) in additional_fixed_fields.iter().enumerate() {
+@@ -192,6 +205,7 @@ impl JavaClassDefinition {
+                 &field.descriptor,
+                 FieldAccessFlags::PRIVATE,
+                 field.index,
++                false,
+             )?;
+             let word_count = if field.descriptor == "J" || field.descriptor == "D" { 2 } else { 1 };
+             instance_field_word_index = instance_field_word_index.max(field.index as usize + word_count);
+@@ -417,6 +431,22 @@ impl JavaClassDefinition {
+         Ok(self.descriptor()?.instance_field_word_count as usize)
+     }
+ 
++    /// Detached-storage words used by this class and its superclasses (see `JavaField::is_detached`).
++    pub fn detached_field_word_count(&self) -> Result<usize> {
++        let mut count = 0;
++        for field in self.fields()? {
++            if field.is_detached()? {
++                let word_count = if field.descriptor() == "J" || field.descriptor() == "D" { 2 } else { 1 };
++                count = count.max(field.word_index()? as usize + word_count);
++            }
++        }
++        let ptr_super_class = self.descriptor()?.ptr_super_class;
++        if ptr_super_class != 0 && self.descriptor()?.flags & LGT_JAVA_CLASS_SUPER_CLASS_IS_NAME == 0 {
++            count = count.max(Self::from_raw(ptr_super_class, &self.core).detached_field_word_count()?);
++        }
++        Ok(count)
++    }
++
+     pub async fn prepare_generated(&mut self, core: &mut ArmCore, jvm: &Jvm, generated_classes: u32) -> Result<()> {
+         self.patch_declared_instance_field_word_indices()?;
+ 
+@@ -512,6 +542,18 @@ impl JavaClassDefinition {
+         } else {
+             None
+         };
++        if let Some(parent_class) = &parent_class {
++            let parent_words = parent_class.instance_field_word_count()?;
++            if parent_words > descriptor.instance_field_word_count as usize {
++                // the compiler laid this class out on a smaller platform superclass: give that class
++                // `instance_field_words` in data/lgt_java_abi.toml so its runtime-only fields are detached
++                tracing::warn!(
++                    "LGT class {class_name} has {} field words but its superclass {} already uses {parent_words}",
++                    descriptor.instance_field_word_count,
++                    ClassDefinition::name(parent_class)
++                );
++            }
++        }
+         if descriptor.flags & LGT_JAVA_CLASS_SUPER_CLASS_IS_NAME != 0 {
+             descriptor.ptr_super_class = parent_class.as_ref().unwrap().ptr_raw;
+             descriptor.flags &= !LGT_JAVA_CLASS_SUPER_CLASS_IS_NAME;
+diff --git a/wie-lgt/src/runtime/java/jvm_support/class_instance.rs b/wie-lgt/src/runtime/java/jvm_support/class_instance.rs
+index 955ff64b..0408e7f4 100644
+--- a/wie-lgt/src/runtime/java/jvm_support/class_instance.rs
++++ b/wie-lgt/src/runtime/java/jvm_support/class_instance.rs
+@@ -71,9 +71,52 @@ impl JavaClassInstance {
+     pub fn destroy_with_storage(mut self, storage_size: usize) -> Result<()> {
+         let ptr_fields = self.ptr_fields()?;
+         Allocator::free(&mut self.core, ptr_fields, storage_size.max(size_of::<LgtJvmWord>()) as u32)?;
++        let ptr_detached = self.ptr_detached_storage()?;
++        if ptr_detached != 0 {
++            let word_count: u32 = read_generic(&self.core, ptr_detached)?;
++            Allocator::free(&mut self.core, ptr_detached, (word_count + 1) * size_of::<LgtJvmWord>() as u32)?;
++        }
+         Allocator::free(&mut self.core, self.ptr_raw, size_of::<RawJavaClassInstance>() as u32)
+     }
+ 
++    /// Storage for detached fields (`JavaField::is_detached`): the header's `unk1` word points to a word count
++    /// followed by the words. It is allocated on the first write, so objects without such fields keep zero there.
++    fn ptr_detached_storage(&self) -> Result<u32> {
++        let raw: RawJavaClassInstance = read_generic(&self.core, self.ptr_raw)?;
++        Ok(raw.unk1)
++    }
++
++    fn detached_field_address(&self, word_index: u32, width: u32) -> Result<Option<u32>> {
++        let ptr_detached = self.ptr_detached_storage()?;
++        if ptr_detached == 0 {
++            return Ok(None);
++        }
++        let word_count: u32 = read_generic(&self.core, ptr_detached)?;
++        Ok((word_index + width <= word_count).then_some(ptr_detached + (word_index + 1) * size_of::<LgtJvmWord>() as u32))
++    }
++
++    fn allocate_detached_field(&mut self, word_index: u32, width: u32) -> Result<u32> {
++        if let Some(address) = self.detached_field_address(word_index, width)? {
++            return Ok(address);
++        }
++        let mut raw: RawJavaClassInstance = read_generic(&self.core, self.ptr_raw)?;
++        let word_count = word_index + width;
++        let size = (word_count + 1) * size_of::<LgtJvmWord>() as u32;
++        let ptr_detached = Allocator::alloc(&mut self.core, size)?;
++        self.core.write_bytes(ptr_detached, &vec![0; size as usize])?;
++        write_generic(&mut self.core, ptr_detached, word_count)?;
++        if raw.unk1 != 0 {
++            let old_word_count: u32 = read_generic(&self.core, raw.unk1)?;
++            let mut words = vec![0; (old_word_count * size_of::<LgtJvmWord>() as u32) as usize];
++            self.core.read_bytes(raw.unk1 + size_of::<LgtJvmWord>() as u32, &mut words)?;
++            self.core.write_bytes(ptr_detached + size_of::<LgtJvmWord>() as u32, &words)?;
++            Allocator::free(&mut self.core, raw.unk1, (old_word_count + 1) * size_of::<LgtJvmWord>() as u32)?;
++        }
++        raw.unk1 = ptr_detached;
++        write_generic(&mut self.core, self.ptr_raw, raw)?;
++        Ok(ptr_detached + (word_index + 1) * size_of::<LgtJvmWord>() as u32)
++    }
++
+     pub fn class(&self) -> Result<JavaClassDefinition> {
+         let raw: RawJavaClassInstance = read_generic(&self.core, self.ptr_raw)?;
+         let ptr_class = read_generic(&self.core, raw.ptr_dispatch_table)?;
+@@ -119,12 +162,20 @@ impl ClassInstance for JavaClassInstance {
+         let class = self.class().unwrap();
+         let storage_size = self.storage_size().unwrap();
+         let mut core = self.core.clone();
+-        let instance = Self::instantiate(&mut core, &class, storage_size).unwrap();
++        let mut instance = Self::instantiate(&mut core, &class, storage_size).unwrap();
+         let mut fields = vec![0; storage_size];
+         if storage_size != 0 {
+             core.read_bytes(self.ptr_fields().unwrap(), &mut fields).unwrap();
+             core.write_bytes(instance.ptr_fields().unwrap(), &fields).unwrap();
+         }
++        let ptr_detached = self.ptr_detached_storage().unwrap();
++        if ptr_detached != 0 {
++            let word_count: u32 = read_generic(&core, ptr_detached).unwrap();
++            let target = instance.allocate_detached_field(0, word_count).unwrap();
++            let mut words = vec![0; (word_count * size_of::<LgtJvmWord>() as u32) as usize];
++            core.read_bytes(ptr_detached + size_of::<LgtJvmWord>() as u32, &mut words).unwrap();
++            core.write_bytes(target, &words).unwrap();
++        }
+         Ok(Box::new(instance))
+     }
+ 
+@@ -142,14 +193,31 @@ impl ClassInstance for JavaClassInstance {
+     fn get_field(&self, field: &dyn Field) -> JvmResult<JavaValue> {
+         debug_assert!(!field.access_flags().contains(FieldAccessFlags::STATIC));
+         let field_type = JavaType::parse(&field.descriptor());
+-        let word_index = if let Some(field) = field.as_any().downcast_ref::<JavaField>() {
+-            field.word_index().unwrap()
+-        } else {
+-            field.as_any().downcast_ref::<JavaReferenceField>().unwrap().word_index
++        let codec = JavaValueCodec::new(&self.core);
++        let wide = matches!(field_type, JavaType::Long | JavaType::Double);
++        let (address, word_index) = match field.as_any().downcast_ref::<JavaField>() {
++            Some(field) if field.is_detached().unwrap() => {
++                let word_index = field.word_index().unwrap();
++                let Some(address) = self.detached_field_address(word_index, if wide { 2 } else { 1 }).unwrap() else {
++                    // never written: the field still holds its default value
++                    return Ok(if wide {
++                        codec.decode_wide(0, 0, &field_type)
++                    } else {
++                        codec.decode_word(0, &field_type)
++                    });
++                };
++                (address, word_index)
++            }
++            Some(field) => {
++                let word_index = field.word_index().unwrap();
++                (self.field_address(word_index).unwrap(), word_index)
++            }
++            None => {
++                let word_index = field.as_any().downcast_ref::<JavaReferenceField>().unwrap().word_index;
++                (self.field_address(word_index).unwrap(), word_index)
++            }
+         };
+-        let address = self.field_address(word_index).unwrap();
+         let low = read_generic(&self.core, address).unwrap();
+-        let codec = JavaValueCodec::new(&self.core);
+ 
+         // Guest code owns these words and the reference layout is inferred (field tables or the
+         // compiler's reference bitmap), so a word the collector is told is a reference can hold
+@@ -176,12 +244,16 @@ impl ClassInstance for JavaClassInstance {
+ 
+     fn put_field(&mut self, field: &dyn Field, value: JavaValue) -> JvmResult<()> {
+         debug_assert!(!field.access_flags().contains(FieldAccessFlags::STATIC));
+-        let word_index = if let Some(field) = field.as_any().downcast_ref::<JavaField>() {
+-            field.word_index().unwrap()
+-        } else {
+-            field.as_any().downcast_ref::<JavaReferenceField>().unwrap().word_index
++        let wide = matches!(value, JavaValue::Long(_) | JavaValue::Double(_));
++        let address = match field.as_any().downcast_ref::<JavaField>() {
++            Some(field) if field.is_detached().unwrap() => self
++                .allocate_detached_field(field.word_index().unwrap(), if wide { 2 } else { 1 })
++                .unwrap(),
++            Some(field) => self.field_address(field.word_index().unwrap()).unwrap(),
++            None => self
++                .field_address(field.as_any().downcast_ref::<JavaReferenceField>().unwrap().word_index)
++                .unwrap(),
+         };
+-        let address = self.field_address(word_index).unwrap();
+         let codec = JavaValueCodec::new(&self.core);
+ 
+         if matches!(value, JavaValue::Long(_) | JavaValue::Double(_)) {
+diff --git a/wie-lgt/src/runtime/java/jvm_support/field.rs b/wie-lgt/src/runtime/java/jvm_support/field.rs
+index 8e12413a..0829e3b0 100644
+--- a/wie-lgt/src/runtime/java/jvm_support/field.rs
++++ b/wie-lgt/src/runtime/java/jvm_support/field.rs
+@@ -8,6 +8,10 @@ use wipi_types::lgt::java::LgtJavaClassField as RawJavaField;
+ use wie_core_arm::{Allocator, ArmCore};
+ use wie_util::{Result, read_generic, read_null_terminated_string_bytes, write_generic, write_null_terminated_string_bytes};
+ 
++/// `unk2` bit of a runtime-only instance field that the platform layout has no word for. Its word
++/// index addresses the object's detached storage instead of the instance-field words.
++const DETACHED_FIELD: u16 = 1;
++
+ #[derive(Clone)]
+ pub struct JavaField {
+     pub ptr_raw: u32,
+@@ -27,6 +31,7 @@ impl JavaField {
+         descriptor: &str,
+         access_flags: FieldAccessFlags,
+         word_index: u32,
++        detached: bool,
+     ) -> Result<Self> {
+         let ptr_name = Allocator::alloc(core, (name.len() + 1) as u32)?;
+         write_null_terminated_string_bytes(core, ptr_name, name.as_bytes())?;
+@@ -42,7 +47,7 @@ impl JavaField {
+                 ptr_name,
+                 ptr_descriptor,
+                 flags: access_flags.bits(),
+-                unk2: 0,
++                unk2: if detached { DETACHED_FIELD } else { 0 },
+                 word_index,
+             },
+         )?;
+@@ -57,6 +62,10 @@ impl JavaField {
+     pub fn word_index(&self) -> Result<u32> {
+         Ok(self.raw()?.word_index)
+     }
++
++    pub fn is_detached(&self) -> Result<bool> {
++        Ok(self.raw()?.unk2 & DETACHED_FIELD != 0)
++    }
+ }
+ 
+ impl Field for JavaField {
+diff --git a/wie-lgt/src/runtime/stdlib.rs b/wie-lgt/src/runtime/stdlib.rs
+index d025f320..b88929b2 100644
+--- a/wie-lgt/src/runtime/stdlib.rs
++++ b/wie-lgt/src/runtime/stdlib.rs
+@@ -40,6 +40,7 @@ pub fn register_stdlib_svc_handler(core: &mut ArmCore, system: &System) -> Resul
+             x if x == StdlibSvcId::Unk3 as u32 => EmulatedFunction::call(&unk3, core, &mut ()).await?.write(core, lr),
+             x if x == StdlibSvcId::Sprintf as u32 => EmulatedFunction::call(&sprintf, core, &mut ()).await?.write(core, lr),
+             x if x == StdlibSvcId::Memmove as u32 => EmulatedFunction::call(&memmove, core, &mut ()).await?.write(core, lr),
++            x if x == StdlibSvcId::Memcmp as u32 => EmulatedFunction::call(&memcmp, core, &mut ()).await?.write(core, lr),
+             _ => Err(WieError::FatalError(format!("Unknown lgt stdlib import: {:#x}", id.0))),
+         }
+     }
+@@ -320,6 +321,20 @@ async fn strchr(core: &mut ArmCore, _: &mut (), ptr_str: u32, ch: u32) -> Result
+     Ok(position.map_or(0, |position| ptr_str + position as u32))
+ }
+ 
++async fn memcmp(core: &mut ArmCore, _: &mut (), ptr_a: u32, ptr_b: u32, len: u32) -> Result<u32> {
++    tracing::debug!("memcmp({ptr_a:#x}, {ptr_b:#x}, {len:#x})");
++
++    let mut a = alloc::vec![0u8; len as usize];
++    let mut b = alloc::vec![0u8; len as usize];
++    core.read_bytes(ptr_a, &mut a)?;
++    core.read_bytes(ptr_b, &mut b)?;
++
++    Ok(match a.iter().zip(&b).find(|(x, y)| x != y) {
++        Some((x, y)) => (*x as i32 - *y as i32) as u32,
++        None => 0,
++    })
++}
++
+ async fn strstr(core: &mut ArmCore, _: &mut (), ptr_haystack: u32, ptr_needle: u32) -> Result<u32> {
+     tracing::debug!("strstr({ptr_haystack:#x}, {ptr_needle:#x})");
+ 
+diff --git a/wie-lgt/src/runtime/svc_ids.rs b/wie-lgt/src/runtime/svc_ids.rs
+index f002f706..6cc71251 100644
+--- a/wie-lgt/src/runtime/svc_ids.rs
++++ b/wie-lgt/src/runtime/svc_ids.rs
+@@ -140,9 +140,8 @@ pub enum WIPICSvcId {
+     GetFramebufferBpp = 0x36,
+     Printk = 0x64,
+     Sprintk = 0x65,
+-    Unk13 = 0x68,
+     GetCurProgramId = 0x6a,
+-    Exit = 0x6b,
++    Exit = 0x68,
+     GetProgramName = 0x6f,
+     Alloc = 0x75,
+     Calloc = 0x76,
+@@ -191,6 +190,8 @@ pub enum WIPICSvcId {
+     CreateImage = 0xe9,
+     Unk0 = 0xeb,
+     PostEvent = 0xee,
++    FillPolygon = 0xef,
++    DrawPolygon = 0xf0,
+     GetSupportedModeCount = 0x12c,
+     GetSupportedModes = 0x12d,
+     SetCurrentMode = 0x12e,
+@@ -212,10 +213,12 @@ pub enum WIPICSvcId {
+     UpdateRecord = 0x198,
+     SelectRecord = 0x199,
+     ListDatabases = 0x19c,
++    TellRecordSingle = 0x19f,
+     Unk8 = 0x1a0,
+     Connect = 0x258,
+     Close = 0x259,
+     SocketClose = 0x25e,
++    SetReadCb = 0x265,
+     ClipCreate = 0x4b0,
+     ClipFree = 0x4b1,
+     ClipPutData = 0x4b3,
+@@ -255,9 +258,8 @@ impl TryFrom<SvcId> for WIPICSvcId {
+             0x36 => Self::GetFramebufferBpp,
+             0x64 => Self::Printk,
+             0x65 => Self::Sprintk,
+-            0x68 => Self::Unk13,
+             0x6a => Self::GetCurProgramId,
+-            0x6b => Self::Exit,
++            0x68 | 0x6b => Self::Exit,
+             0x6f => Self::GetProgramName,
+             0x75 => Self::Alloc,
+             0x76 => Self::Calloc,
+@@ -306,6 +308,8 @@ impl TryFrom<SvcId> for WIPICSvcId {
+             0xe9 => Self::CreateImage,
+             0xeb => Self::Unk0,
+             0xee => Self::PostEvent,
++            0xef => Self::FillPolygon,
++            0xf0 => Self::DrawPolygon,
+             0x12c => Self::GetSupportedModeCount,
+             0x12d => Self::GetSupportedModes,
+             0x12e => Self::SetCurrentMode,
+@@ -327,10 +331,12 @@ impl TryFrom<SvcId> for WIPICSvcId {
+             0x198 => Self::UpdateRecord,
+             0x199 => Self::SelectRecord,
+             0x19c => Self::ListDatabases,
++            0x19f => Self::TellRecordSingle,
+             0x1a0 => Self::Unk8,
+             0x258 => Self::Connect,
+             0x259 => Self::Close,
+             0x25e => Self::SocketClose,
++            0x265 => Self::SetReadCb,
+             0x4b0 => Self::ClipCreate,
+             0x4b1 => Self::ClipFree,
+             0x4b3 => Self::ClipPutData,
+@@ -386,6 +392,7 @@ pub enum StdlibSvcId {
+     Strlen = 0x411,
+     Memcpy = 0x414,
+     Memmove = 0x415,
++    Memcmp = 0x416,
+     Memset = 0x418,
+     Time = 0x41a,
+     Localtime = 0x420,
+diff --git a/wie-lgt/src/runtime/wipi_c.rs b/wie-lgt/src/runtime/wipi_c.rs
+index 999f35f0..c080c4ef 100644
+--- a/wie-lgt/src/runtime/wipi_c.rs
++++ b/wie-lgt/src/runtime/wipi_c.rs
+@@ -12,7 +12,7 @@ use wie_core_arm::{ArmCore, EmulatedFunction, EmulatedFunctionParam, ResultWrite
+ use wie_jvm_support::JvmSupport;
+ use wie_util::{Result, read_generic, write_generic, write_null_terminated_string_bytes};
+ use wie_wipi_c::{
+-    MethodImpl, WIPICContext, WIPICMethodBody, WIPICResult,
++    MAX_METHOD_ARGS, MethodImpl, WIPICContext, WIPICMethodBody, WIPICResult,
+     api::{database, graphics as shared_graphics, im, kernel, media, misc, net, util},
+ };
+ 
+@@ -56,7 +56,6 @@ async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm),
+         WIPICSvcId::GetFramebufferBpp => graphics::get_framebuffer_bpp.into_body(),
+         WIPICSvcId::Printk => kernel::printk.into_body(),
+         WIPICSvcId::Sprintk => kernel::sprintk.into_body(),
+-        WIPICSvcId::Unk13 => unk13.into_body(),
+         WIPICSvcId::GetCurProgramId => kernel::get_cur_program_id.into_body(),
+         WIPICSvcId::Exit => kernel::exit.into_body(),
+         WIPICSvcId::GetProgramName => kernel::get_program_name.into_body(),
+@@ -107,6 +106,8 @@ async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm),
+         WIPICSvcId::CreateImage => graphics::create_image.into_body(),
+         WIPICSvcId::Unk0 => unk0.into_body(),
+         WIPICSvcId::PostEvent => shared_graphics::post_event.into_body(),
++        WIPICSvcId::FillPolygon => graphics::fill_polygon.into_body(),
++        WIPICSvcId::DrawPolygon => graphics::draw_polygon.into_body(),
+         WIPICSvcId::GetSupportedModeCount => im::get_supported_mode_count.into_body(),
+         WIPICSvcId::GetSupportedModes => im::get_supported_modes.into_body(),
+         WIPICSvcId::SetCurrentMode => im::set_current_mode.into_body(),
+@@ -128,10 +129,12 @@ async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm),
+         WIPICSvcId::UpdateRecord => database::update_record.into_body(),
+         WIPICSvcId::SelectRecord => database::select_record.into_body(),
+         WIPICSvcId::ListDatabases => database::list_databases.into_body(),
++        WIPICSvcId::TellRecordSingle => database::tell_record_single.into_body(),
+         WIPICSvcId::Unk8 => database::exists_database.into_body(),
+         WIPICSvcId::Connect => net::connect.into_body(),
+         WIPICSvcId::Close => net::close.into_body(),
+         WIPICSvcId::SocketClose => net::socket_close.into_body(),
++        WIPICSvcId::SetReadCb => net::set_read_cb.into_body(),
+         WIPICSvcId::ClipCreate => media::clip_create.into_body(),
+         WIPICSvcId::ClipFree => media::clip_free.into_body(),
+         WIPICSvcId::ClipPutData => media::clip_put_data.into_body(),
+@@ -173,20 +176,10 @@ async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm),
+ #[async_trait::async_trait]
+ impl EmulatedFunction<(), WIPICMethodResult, ()> for CMethodProxy {
+     async fn call(&self, core: &mut ArmCore, _: &mut ()) -> Result<WIPICMethodResult> {
+-        let a0 = u32::get(core, 0);
+-        let a1 = u32::get(core, 1);
+-        let a2 = u32::get(core, 2);
+-        let a3 = u32::get(core, 3);
+-        let a4 = u32::get(core, 4);
+-        let a5 = u32::get(core, 5);
+-        let a6 = u32::get(core, 6);
+-        let a7 = u32::get(core, 7);
+-        let a8 = u32::get(core, 8);
+-
+-        let result = self
+-            .body
+-            .call(&mut self.context.clone(), vec![a0, a1, a2, a3, a4, a5, a6, a7, a8].into_boxed_slice())
+-            .await?;
++        // As many words as the widest method takes (MC_knlSprintk with its variadic arguments).
++        let args = (0..MAX_METHOD_ARGS).map(|index| u32::get(core, index)).collect();
++
++        let result = self.body.call(&mut self.context.clone(), args).await?;
+ 
+         Ok(WIPICMethodResult { result })
+     }
+@@ -352,14 +345,6 @@ async fn unk10(_context: &mut dyn WIPICContext, a0: u32, a1: u32, a2: u32, a3: u
+     Ok(0)
+ }
+ 
+-async fn unk13(_context: &mut dyn WIPICContext, a0: u32, a1: u32, a2: u32, a3: u32) -> Result<u32> {
+-    tracing::warn!("stub unk13({a0:#x}, {a1:#x}, {a2:#x}, {a3:#x})");
+-
+-    // kernel
+-
+-    Ok(0)
+-}
+-
+ async fn unk14(_context: &mut dyn WIPICContext, a0: u32, a1: u32, a2: u32, a3: u32) -> Result<u32> {
+     tracing::warn!("stub unk14({a0:#x}, {a1:#x}, {a2:#x}, {a3:#x})");
+ 
+diff --git a/wie-lgt/src/runtime/wipi_c/graphics.rs b/wie-lgt/src/runtime/wipi_c/graphics.rs
+index b0fc1a97..d3741b17 100644
+--- a/wie-lgt/src/runtime/wipi_c/graphics.rs
++++ b/wie-lgt/src/runtime/wipi_c/graphics.rs
+@@ -242,9 +242,12 @@ fn read_record<T: Pod>(context: &dyn WIPICContext, handle: WIPICIndirectPtr) ->
+     read_generic(context, address)
+ }
+ 
+-fn create_backing(context: &mut dyn WIPICContext, width: u32, height: u32) -> Result<WIPICIndirectPtr> {
++/// `slack_rows` extra rows follow the pixels without being part of the framebuffer.
++fn create_backing(context: &mut dyn WIPICContext, width: u32, height: u32, slack_rows: u32) -> Result<WIPICIndirectPtr> {
+     let bpl = width.checked_mul(2).ok_or(WieError::AllocationFailure)?;
+-    let size = bpl.checked_mul(height).ok_or(WieError::AllocationFailure)?;
++    let size = bpl
++        .checked_mul(height.checked_add(slack_rows).ok_or(WieError::AllocationFailure)?)
++        .ok_or(WieError::AllocationFailure)?;
+     let pixels = context.alloc(size)?;
+     let pixels_address = context.data_ptr(pixels)?;
+     context.write_bytes(pixels_address, &vec![0; size as usize])?;
+@@ -378,7 +381,11 @@ pub async fn get_screen_framebuffer(context: &mut dyn WIPICContext, kind: WIPICW
+         return Ok(WIPICIndirectPtr(state.ptr_screen_wrapper));
+     }
+ 
+-    let ptr_backing = create_backing(context, state.physical_width, state.physical_height)?;
++    // Apps that request the annunciator offset the raw screen pointer by its height themselves and
++    // can still clear a full physical height from there: 액션퍼즐패밀리3 clears `width * 320` pixels
++    // from row 24, 24 rows past the end, which corrupted the next heap block. Those rows are never
++    // shown, so give the screen backing that much slack.
++    let ptr_backing = create_backing(context, state.physical_width, state.physical_height, requested_application_y(&state))?;
+     let ptr_screen_view = create_view(context, ptr_backing, 0, 0, state.physical_width, state.physical_height)?;
+     let ptr_wrapper = alloc_record(
+         context,
+@@ -406,7 +413,7 @@ pub async fn create_offscreen_framebuffer(context: &mut dyn WIPICContext, width:
+         return Err(WieError::AllocationFailure);
+     }
+ 
+-    let ptr_backing = create_backing(context, width as u32, height as u32)?;
++    let ptr_backing = create_backing(context, width as u32, height as u32, 0)?;
+     let ptr_view = create_view(context, ptr_backing, 0, 0, width as u32, height as u32)?;
+     alloc_record(
+         context,
+@@ -656,6 +663,46 @@ pub async fn draw_rect(
+     )
+ }
+ 
++fn read_polygon(context: &dyn WIPICContext, ptr_x: WIPICWord, ptr_y: WIPICWord, count: i32, graphics: &ResolvedContext) -> Result<Vec<(i32, i32)>> {
++    (0..count.max(0) as u32)
++        .map(|index| {
++            let x: i32 = read_generic(context, ptr_x + index * 4)?;
++            let y: i32 = read_generic(context, ptr_y + index * 4)?;
++            Ok((x.wrapping_add(graphics.translation_x), y.wrapping_add(graphics.translation_y)))
++        })
++        .collect()
++}
++
++pub async fn fill_polygon(
++    context: &mut dyn WIPICContext,
++    dst: WIPICIndirectPtr,
++    ptr_x: WIPICWord,
++    ptr_y: WIPICWord,
++    count: i32,
++    ptr_graphics: WIPICWord,
++) -> Result<()> {
++    let resolved = resolve_framebuffer(context, dst)?;
++    let graphics = resolve_context(context, &resolved, ptr_graphics)?;
++    let color = resolved.framebuffer.pixel_to_color(graphics.foreground);
++    let points = read_polygon(context, ptr_x, ptr_y, count, &graphics)?;
++    primitives::fill_polygon(context, &resolved.framebuffer, &points, color, graphics.clip)
++}
++
++pub async fn draw_polygon(
++    context: &mut dyn WIPICContext,
++    dst: WIPICIndirectPtr,
++    ptr_x: WIPICWord,
++    ptr_y: WIPICWord,
++    count: i32,
++    ptr_graphics: WIPICWord,
++) -> Result<()> {
++    let resolved = resolve_framebuffer(context, dst)?;
++    let graphics = resolve_context(context, &resolved, ptr_graphics)?;
++    let color = resolved.framebuffer.pixel_to_color(graphics.foreground);
++    let points = read_polygon(context, ptr_x, ptr_y, count, &graphics)?;
++    primitives::draw_polygon(context, &resolved.framebuffer, &points, color, graphics.clip)
++}
++
+ #[allow(clippy::too_many_arguments)]
+ pub async fn draw_arc(
+     context: &mut dyn WIPICContext,
+@@ -965,7 +1012,7 @@ pub async fn create_image(
+     let (width, height) = (image.width(), image.height());
+     let colors = image.colors();
+ 
+-    let ptr_backing = create_backing(context, width, height)?;
++    let ptr_backing = create_backing(context, width, height, 0)?;
+     let pixels = colors.iter().map(|&color| Rgb565Pixel::from_color(color)).collect::<Vec<_>>();
+     let backing: WIPICFramebuffer = read_record(context, ptr_backing)?;
+     context.write_bytes(context.data_ptr(backing.buf)?, bytemuck::cast_slice(&pixels))?;
+diff --git a/wie-midp/src/classes/javax/microedition/lcdui/display.rs b/wie-midp/src/classes/javax/microedition/lcdui/display.rs
+index 3972ddb4..f4578e98 100644
+--- a/wie-midp/src/classes/javax/microedition/lcdui/display.rs
++++ b/wie-midp/src/classes/javax/microedition/lcdui/display.rs
+@@ -5,7 +5,7 @@ use jvm_class_proto::{JavaFieldProto, JavaMethodProto};
+ use jvm_types::{ClassAccessFlags, FieldAccessFlags, MethodAccessFlags};
+ use rustjava_runtime::classes::java::lang::{Runnable, String as JavaString};
+ 
+-use wie_backend::{Event, text_layout::wrap};
++use wie_backend::{Event, Instant, text_layout::wrap};
+ use wie_jvm_support::{JvmSupport, WieJavaClassProto, WieJvmContext};
+ 
+ use crate::classes::javax::microedition::{
+@@ -18,7 +18,7 @@ const TITLE_HORIZONTAL_PADDING: i32 = 4;
+ const TITLE_VERTICAL_PADDING: i32 = 2;
+ const TICKER_HEIGHT: i32 = 16;
+ const TICKER_INTERVAL_MS: u64 = 100;
+-const GARBAGE_COLLECTION_INTERVAL_MS: i64 = 1000;
++const GARBAGE_COLLECTION_INTERVAL_MS: i32 = 1000;
+ const SOFTKEY_HEIGHT: i32 = 18;
+ 
+ const TITLE_BACKGROUND: i32 = 0x263746;
+@@ -126,7 +126,9 @@ impl Display {
+                 JavaFieldProto::new("paintDisabled", "Z", FieldAccessFlags::PRIVATE),
+                 JavaFieldProto::new("repaintPending", "Z", FieldAccessFlags::PRIVATE),
+                 JavaFieldProto::new("redrawServiced", "Z", FieldAccessFlags::PRIVATE),
+-                JavaFieldProto::new("lastGarbageCollection", "J", FieldAccessFlags::PRIVATE),
++                // Low 32 bits of the platform time of the last periodic collection (0 = none yet). Static: the
++                // platforms' other safe points (KTF resource access) share the interval.
++                JavaFieldProto::new("lastGarbageCollection", "I", FieldAccessFlags::PRIVATE | FieldAccessFlags::STATIC),
+                 JavaFieldProto::new("alertGeneration", "I", FieldAccessFlags::PRIVATE),
+                 JavaFieldProto::new("tickerGeneration", "I", FieldAccessFlags::PRIVATE),
+             ],
+@@ -1020,17 +1022,29 @@ impl Display {
+             screen.paint(&*image);
+         }
+ 
+-        // A full collection walks every reachable object; once per paint it dominated frame time in
+-        // paint-heavy games, so collect at most once per interval of game time.
+-        let now = context.system().platform().now().raw() as i64;
+-        let last_collection: i64 = jvm
+-            .get_field(&this, "javax/microedition/lcdui/Display", "lastGarbageCollection", "J")
++        Self::collect_garbage_periodically(jvm, context.system().platform().now()).await
++    }
++
++    /// Collects garbage at a safe point (no host code holds unrooted objects) unless a collection ran less than
++    /// [`GARBAGE_COLLECTION_INTERVAL_MS`] of game time ago. A full collection walks every reachable object; once
++    /// per paint it dominated frame time in paint-heavy games, and once per resource access it stalled KTF
++    /// games that load many resources in a row (메이플스토리 도적편: ~180 ms frames while loading).
++    pub async fn collect_garbage_periodically(jvm: &Jvm, now: Instant) -> JvmResult<()> {
++        let now = now.raw() as i32;
++        let last: i32 = jvm
++            .get_static_field("javax/microedition/lcdui/Display", "lastGarbageCollection", "I")
+             .await?;
+-        if now - last_collection >= GARBAGE_COLLECTION_INTERVAL_MS {
+-            jvm.put_field(&mut this, "javax/microedition/lcdui/Display", "lastGarbageCollection", "J", now)
+-                .await?;
+-            jvm.collect_garbage()?;
++        if last != 0 && (0..GARBAGE_COLLECTION_INTERVAL_MS).contains(&now.wrapping_sub(last)) {
++            return Ok(());
+         }
++        jvm.put_static_field(
++            "javax/microedition/lcdui/Display",
++            "lastGarbageCollection",
++            "I",
++            if now == 0 { 1 } else { now },
++        )
++        .await?;
++        jvm.collect_garbage()?;
+ 
+         Ok(())
+     }
+diff --git a/wie-wipi-c/src/api/database.rs b/wie-wipi-c/src/api/database.rs
+index 793cb9ba..49feff73 100644
+--- a/wie-wipi-c/src/api/database.rs
++++ b/wie-wipi-c/src/api/database.rs
+@@ -26,9 +26,9 @@ use crate::context::WIPICContext;
+ /// `buffer_ptr`. Every op reads the struct, mutates it, writes it back —
+ /// no host-side global state.
+ ///
+-/// `select_record` with a non-zero recid is treated as a seek: KTF apps
+-/// use slot 4 to position the cursor at known byte offsets within the
+-/// single backing record, e.g. for multi-slot save files.
++/// Slot 4 (`select_record_ktf`) is an `lseek`-style seek: KTF apps use it
++/// to position the cursor at known byte offsets within the single backing
++/// record (multi-slot save files) and to measure the record size.
+ #[derive(Pod, Zeroable, Copy, Clone)]
+ #[repr(C)]
+ struct DatabaseHandle {
+@@ -286,6 +286,18 @@ pub async fn seek_record_single(context: &mut dyn WIPICContext, db_id: i32, offs
+     Ok(position as i32)
+ }
+ 
++/// The current position of a stream handle (the `tell` of `seek_record_single`).
++/// 액션퍼즐패밀리4 measures a file as `seek(fd, 0, 2)` followed by this call.
++pub async fn tell_record_single(context: &mut dyn WIPICContext, db_id: i32) -> Result<i32> {
++    tracing::debug!("MC_dbTellRecordSingle({db_id:#x})");
++
++    let Some(handle) = load_handle(context, db_id)? else {
++        return Ok(-25); // M_E_INVALIDHANDLE
++    };
++
++    Ok(handle.read_cursor as i32)
++}
++
+ pub async fn list_record_info(context: &mut dyn WIPICContext, ptr_name: WIPICWord, buf_ptr: WIPICWord, capacity: WIPICWord) -> Result<i32> {
+     tracing::debug!("MC_dbListRecordInfo({ptr_name:#x}, {buf_ptr:#x}, {capacity})");
+ 
+@@ -331,22 +343,17 @@ pub async fn list_record_info(context: &mut dyn WIPICContext, ptr_name: WIPICWor
+ }
+ 
+ pub async fn exists_database(context: &mut dyn WIPICContext, ptr_name: WIPICWord, r#type: i32) -> Result<i32> {
+-    tracing::debug!("MC_dbExistsDataBase({ptr_name:#x}, {type})");
+-
+     let Ok(name) = String::from_utf8(read_null_terminated_string_bytes(context, ptr_name)?) else {
+         return Ok(-22);
+     };
+-    if read_packaged_database(context, &name).await?.is_some() {
+-        return Ok(0);
+-    }
++    let exists = read_packaged_database(context, &name).await?.is_some() || {
++        let system = context.system();
++        let pid = system.pid().to_owned();
++        system.platform().database_repository().exists(&name, &pid).await
++    };
++    tracing::debug!("MC_dbExistsDataBase({name:?}, {type}) -> {exists}");
+ 
+-    let system = context.system();
+-    let pid = system.pid().to_owned();
+-    if system.platform().database_repository().exists(&name, &pid).await {
+-        Ok(0)
+-    } else {
+-        Ok(-12) // M_E_NOENT
+-    }
++    if exists { Ok(0) } else { Ok(-12) } // M_E_NOENT
+ }
+ 
+ pub async fn stream_write(context: &mut dyn WIPICContext, db_id: i32, buf_ptr: WIPICWord, buf_len: WIPICWord) -> Result<i32> {
+@@ -558,38 +565,53 @@ pub async fn stream_read(context: &mut dyn WIPICContext, db_id: i32, buf_ptr: WI
+     Ok(take as _)
+ }
+ 
+-/// KTF custom slot 4 — repurposed from standard `MC_dbSelectRecord` into a
+-/// stream-control op `(handle, offset, mode)` that seeks both read/write
+-/// cursors. The standard WIPI signature `(db_id, rec_id, buf_ptr, buf_len)`
+-/// is not implemented; LGT routes do not use this slot.
+-pub async fn select_record_ktf(context: &mut dyn WIPICContext, db_id: i32, rec_id: i32, mode: WIPICWord, _buf_len: WIPICWord) -> Result<i32> {
+-    tracing::debug!("MC_dbSelectRecord({db_id:#x}, {rec_id}, mode={mode:#x}, {_buf_len})");
++/// KTF custom slot 4 — repurposed from standard `MC_dbSelectRecord` into
++/// `seek(handle, offset, whence)` on the open record with `lseek` semantics:
++/// whence 0/1/2 = from the start / the current position / the end, both
++/// cursors move, and the new position is returned. The standard WIPI
++/// signature `(db_id, rec_id, buf_ptr, buf_len)` is not implemented; LGT
++/// routes do not use this slot.
++///
++/// The return value matters: 이노티아 연대기2's file-size helper (client.bin
++/// 0x122fa8) does `cur = seek(0, 1); start = seek(0, 0); end = seek(0, 2);
++/// seek(cur, 0)` and allocates `end - start` bytes for the record; 붕어빵타이쿤3
++/// appends records after `seek(fd, 0, 2)`. Multi-slot
++/// saves seek from the start to a fixed slot offset, which may lie past the
++/// current end (`stream_write` zero-fills the gap).
++pub async fn select_record_ktf(context: &mut dyn WIPICContext, db_id: i32, offset: i32, whence: i32, _arg3: WIPICWord) -> Result<i32> {
++    tracing::debug!("MC_dbSelectRecord({db_id:#x}, {offset}, whence={whence})");
+ 
+     let Some(mut handle) = load_handle(context, db_id)? else {
+         return Ok(-25); // M_E_INVALIDHANDLE
+     };
+ 
+-    // KTF reuses slot 4 as a stream-control op `(handle, offset, mode)`. The
+-    // shapes observed across games:
+-    //
+-    //   - `(handle, slot_offset, 0)` — multi-slot save files store each
+-    //     slot at a known byte offset within record 1; this seeks both
+-    //     cursors so the next read/write hits the right slot while
+-    //     preserving the bytes belonging to the other slots.
+-    //   - `(handle, 0, 0)` and `(handle, 0, 2)` — rewinds both cursors.
+-    //     mode=0 vs 2 isn't a length and isn't truncate (truncating on
+-    //     mode=2 on the read path destroys a prefetched buffer during a
+-    //     subsequent re-open and wipes the saved record). Both are treated
+-    //     as plain seek-and-rewind.
+-    if rec_id >= 0 {
+-        let offset = rec_id as u32;
+-        handle.read_cursor = offset;
+-        handle.write_cursor = offset;
+-        write_generic(context, db_id as _, handle)?;
+-        return Ok(0);
++    let base = match whence {
++        0 => 0,
++        1 => handle.read_cursor as i64,
++        2 => handle.buffer_len as i64,
++        _ => return Ok(-22),
++    };
++    let Ok(position) = u32::try_from(base + offset as i64) else {
++        return Ok(-22); // before the start
++    };
++    if position > i32::MAX as u32 {
++        return Ok(-22);
+     }
++    handle.read_cursor = position;
++    handle.write_cursor = position;
++    write_generic(context, db_id as _, handle)?;
++
++    Ok(position as i32)
++}
+ 
+-    Ok(-22) // M_E_BADRECID
++/// KTF slot 8 — `mkdir(name, mode)`. 겟앰프드 creates its "ga" directory this way (client.bin 0x1243ca)
++/// and then opens "/ga/<file>". Databases are kept by their full name, so directories need no storage
++/// of their own and creating one always succeeds.
++pub async fn make_directory_ktf(context: &mut dyn WIPICContext, ptr_name: WIPICWord, mode: i32) -> Result<i32> {
++    let name = read_null_terminated_string_bytes(context, ptr_name)?;
++    tracing::debug!("MC_fsMkDir({:?}, {mode})", String::from_utf8_lossy(&name));
++
++    Ok(0)
+ }
+ 
+ /// Slot 5 — KTF custom `db_stat_by_name`. From observed call shape:
+@@ -745,25 +767,36 @@ async fn get_database_from_db_id(context: &mut dyn WIPICContext, db_id: i32) ->
+ }
+ 
+ async fn read_packaged_database(context: &mut dyn WIPICContext, name: &str) -> Result<Option<Vec<u8>>> {
++    // KTF dumps carry the app's own files (preloaded or downloaded data, databases such as 리듬스타's
++    // musicdata.dat song list) as P/<name>, mounted on the virtual filesystem with the P/ prefix
++    // trimmed. They are what the app wrote to its storage, so they win over a same-named jar resource: 이노티아 연대기2 validates its data files by an
++    // 8-byte trailer (payload length + 0xff00ff00) that only the P/ copies carry, and deletes them all
++    // when it opens the jar's eventdata.dat instead. 데몬헌터 stats and opens its bundled Config.dat
++    // this way too.
++    let filesystem = context.system().filesystem();
++    if filesystem.exists(name).await {
++        let mut data = Vec::new();
++        let mut buf = [0u8; 4096];
++        loop {
++            let Some(read) = filesystem.read(name, data.len(), buf.len(), &mut buf).await else {
++                break;
++            };
++            if read == 0 {
++                break;
++            }
++            data.extend_from_slice(&buf[..read]);
++            if read < buf.len() {
++                break;
++            }
++        }
++        return Ok(Some(data));
++    }
++
+     if context.get_resource_size(name).await?.is_some() {
+         return Ok(Some(context.read_resource(name).await?));
+     }
+ 
+-    // KTF dumps carry the handset's databases as P/<name> files (mounted on the virtual filesystem
+-    // with P/ trimmed): 리듬스타's musicdata.dat is the single record of its song database.
+-    let filesystem = context.system().filesystem();
+-    if !filesystem.exists(name).await {
+-        return Ok(None);
+-    }
+-    let mut data = Vec::new();
+-    let mut buf = [0u8; 4096];
+-    while let Some(read) = filesystem.read(name, data.len(), buf.len(), &mut buf).await {
+-        data.extend_from_slice(&buf[..read]);
+-        if read < buf.len() {
+-            break;
+-        }
+-    }
+-    Ok(Some(data))
++    Ok(None)
+ }
+ 
+ #[cfg(test)]
+@@ -777,8 +810,8 @@ mod tests {
+     use crate::context::test::TestContext;
+ 
+     use super::{
+-        KTF_DATABASE_STORAGE_LIMIT, delete_database, exists_database, list_databases, list_record_info, open_database, select_record, stream_read,
+-        stream_write, update_record,
++        KTF_DATABASE_STORAGE_LIMIT, delete_database, exists_database, list_databases, list_record_info, open_database, select_record,
++        select_record_ktf, stream_read, stream_write, tell_record_single, update_record,
+     };
+ 
+     #[futures_test::test]
+@@ -793,6 +826,30 @@ mod tests {
+         assert_eq!(list_databases(&mut context).await.unwrap(), KTF_DATABASE_STORAGE_LIMIT as i32 - 4);
+     }
+ 
++    #[futures_test::test]
++    async fn ktf_seek_returns_position_and_end_appends() {
++        let mut context = database_test_context();
++        let db_id = open_test_database(&mut context).await;
++        context.write_bytes(0x2000, &[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
++        assert_eq!(stream_write(&mut context, db_id, 0x2000, 8).await.unwrap(), 8);
++
++        // size = seek(fd, 0, end) - seek(fd, 0, start)
++        assert_eq!(select_record_ktf(&mut context, db_id, 0, 2, 0).await.unwrap(), 8);
++        assert_eq!(select_record_ktf(&mut context, db_id, 0, 0, 0).await.unwrap(), 0);
++        assert_eq!(select_record_ktf(&mut context, db_id, 4, 1, 0).await.unwrap(), 4);
++
++        assert_eq!(select_record_ktf(&mut context, db_id, 0, 2, 0).await.unwrap(), 8);
++        assert_eq!(stream_write(&mut context, db_id, 0x2000, 2).await.unwrap(), 2);
++        assert_eq!(select_record_ktf(&mut context, db_id, 0, 2, 0).await.unwrap(), 10);
++        assert_eq!(tell_record_single(&mut context, db_id).await.unwrap(), 10);
++
++        assert_eq!(select_record_ktf(&mut context, db_id, 0, 0, 0).await.unwrap(), 0);
++        let mut data = [0; 10];
++        assert_eq!(stream_read(&mut context, db_id, 0x2100, 10).await.unwrap(), 10);
++        context.read_bytes(0x2100, &mut data).unwrap();
++        assert_eq!(data, [1, 2, 3, 4, 5, 6, 7, 8, 1, 2]);
++    }
++
+     #[futures_test::test]
+     async fn exists_database_reports_missing_and_existing_database() {
+         let mut context = database_test_context();
+@@ -864,6 +921,28 @@ mod tests {
+         assert_eq!(&data, b"seed-data");
+     }
+ 
++    #[futures_test::test]
++    async fn ktf_seek_returns_positions_from_start_current_and_end() {
++        let mut context = database_test_context();
++        let db_id = open_test_database(&mut context).await;
++        context.write_bytes(0x2000, &[1, 2, 3, 4, 5]).unwrap();
++        assert_eq!(stream_write(&mut context, db_id, 0x2000, 5).await.unwrap(), 5);
++
++        // 이노티아 연대기2's file-size helper: seek(0, CUR), seek(0, SET), seek(0, END), seek(cur, SET).
++        assert_eq!(select_record_ktf(&mut context, db_id, 2, 0, 0).await.unwrap(), 2);
++        assert_eq!(select_record_ktf(&mut context, db_id, 0, 1, 0).await.unwrap(), 2);
++        assert_eq!(select_record_ktf(&mut context, db_id, 0, 0, 0).await.unwrap(), 0);
++        assert_eq!(select_record_ktf(&mut context, db_id, 0, 2, 0).await.unwrap(), 5);
++        assert_eq!(select_record_ktf(&mut context, db_id, -2, 2, 0).await.unwrap(), 3);
++        assert_eq!(stream_read(&mut context, db_id, 0x2100, 2).await.unwrap(), 2);
++        let mut data = [0; 2];
++        context.read_bytes(0x2100, &mut data).unwrap();
++        assert_eq!(data, [4, 5]);
++
++        assert_eq!(select_record_ktf(&mut context, db_id, -1, 0, 0).await.unwrap(), -22);
++        assert_eq!(select_record_ktf(&mut context, db_id, 0, 3, 0).await.unwrap(), -22);
++    }
++
+     fn database_test_context() -> TestContext {
+         let system = System::new(Box::new(TestPlatform::new()), "test-pid", "test-aid", DefaultTaskRunner);
+         TestContext::with_system(system)
+diff --git a/wie-wipi-c/src/api/graphics.rs b/wie-wipi-c/src/api/graphics.rs
+index e34ce9fa..7bf3fc4c 100644
+--- a/wie-wipi-c/src/api/graphics.rs
++++ b/wie-wipi-c/src/api/graphics.rs
+@@ -275,7 +275,6 @@ pub async fn draw_image(
+     let framebuffer = FrameBuffer(read_generic(context, context.data_ptr(framebuffer)?)?);
+     let image: WIPICImage = read_generic(context, context.data_ptr(image)?)?;
+ 
+-    let src_image = FrameBuffer(image.img).image(context)?;
+     let clip = Clip {
+         x: dx as _,
+         y: dy as _,
+@@ -283,7 +282,7 @@ pub async fn draw_image(
+         height: h as _,
+     };
+ 
+-    primitives::draw_image(context, &framebuffer, dx, dy, w as u32, h as u32, &*src_image, sx, sy, clip)
++    primitives::draw_framebuffer(context, &framebuffer, dx, dy, w as u32, h as u32, &FrameBuffer(image.img), sx, sy, clip)
+ }
+ 
+ pub async fn flush_lcd(
+diff --git a/wie-wipi-c/src/api/graphics/primitives.rs b/wie-wipi-c/src/api/graphics/primitives.rs
+index 48b0a580..ae7430a4 100644
+--- a/wie-wipi-c/src/api/graphics/primitives.rs
++++ b/wie-wipi-c/src/api/graphics/primitives.rs
+@@ -1,8 +1,10 @@
+ #![allow(clippy::too_many_arguments)]
+ 
+-use alloc::{string::String, vec};
++use alloc::{string::String, vec, vec::Vec};
+ 
+-use wie_backend::canvas::{Clip, Color, Image, PixelType, Rgb8Pixel};
++use bytemuck::{Zeroable, cast_slice, cast_slice_mut};
++
++use wie_backend::canvas::{ArgbPixel, Canvas, Clip, Color, Image, PixelType, Rgb8Pixel, Rgb565Pixel};
+ use wie_util::{Result, read_null_terminated_string_bytes};
+ 
+ use crate::{WIPICContext, api::graphics::FrameBuffer};
+@@ -37,7 +39,7 @@ pub fn read_text(context: &dyn WIPICContext, address: u32, length: i32) -> Resul
+ 
+ fn write_canvas<F>(context: &mut dyn WIPICContext, framebuffer: &FrameBuffer, operation: F) -> Result<()>
+ where
+-    F: FnOnce(&mut dyn wie_backend::canvas::Canvas),
++    F: FnOnce(&mut dyn Canvas),
+ {
+     let mut canvas = framebuffer.canvas(context)?;
+     operation(&mut **canvas);
+@@ -87,6 +89,48 @@ pub fn draw_rect(
+     write_canvas(context, framebuffer, |canvas| canvas.draw_rect(x, y, width, height, color, clip))
+ }
+ 
++pub fn draw_polygon(context: &mut dyn WIPICContext, framebuffer: &FrameBuffer, points: &[(i32, i32)], color: Color, clip: Clip) -> Result<()> {
++    write_canvas(context, framebuffer, |canvas| stroke_polygon(canvas, points, color, clip))
++}
++
++/// Fills the even-odd interior of the polygon together with its outline.
++pub fn fill_polygon(context: &mut dyn WIPICContext, framebuffer: &FrameBuffer, points: &[(i32, i32)], color: Color, clip: Clip) -> Result<()> {
++    let (Some(min_y), Some(max_y)) = (points.iter().map(|p| p.1).min(), points.iter().map(|p| p.1).max()) else {
++        return Ok(());
++    };
++    let first = min_y.max(clip.y).max(0);
++    let last = max_y
++        .min(clip.y.saturating_add(clip.height as i32) - 1)
++        .min(framebuffer.0.height as i32 - 1);
++
++    write_canvas(context, framebuffer, |canvas| {
++        let mut crossings = vec![];
++        for y in first..=last {
++            crossings.clear();
++            for (index, &(x1, y1)) in points.iter().enumerate() {
++                let (x2, y2) = points[(index + 1) % points.len()];
++                if y1 == y2 || y < y1.min(y2) || y >= y1.max(y2) {
++                    continue;
++                }
++                let x = x1 as i64 + (y as i64 - y1 as i64) * (x2 as i64 - x1 as i64) / (y2 as i64 - y1 as i64);
++                crossings.push(x.clamp(i32::MIN as i64, i32::MAX as i64) as i32);
++            }
++            crossings.sort_unstable();
++            for span in crossings.as_chunks::<2>().0 {
++                canvas.fill_rect(span[0], y, span[1].abs_diff(span[0]) + 1, 1, color, clip);
++            }
++        }
++        stroke_polygon(canvas, points, color, clip);
++    })
++}
++
++fn stroke_polygon(canvas: &mut dyn Canvas, points: &[(i32, i32)], color: Color, clip: Clip) {
++    for (index, &(x1, y1)) in points.iter().enumerate() {
++        let (x2, y2) = points[(index + 1) % points.len()];
++        canvas.draw_line(x1, y1, x2, y2, color, clip);
++    }
++}
++
+ pub fn draw_arc(
+     context: &mut dyn WIPICContext,
+     framebuffer: &FrameBuffer,
+@@ -149,10 +193,7 @@ pub fn copy_area(
+     source_y: i32,
+     clip: Clip,
+ ) -> Result<()> {
+-    let image = framebuffer.image(context)?;
+-    write_canvas(context, framebuffer, |canvas| {
+-        canvas.draw(x, y, width, height, &*image, source_x, source_y, clip)
+-    })
++    draw_framebuffer(context, framebuffer, x, y, width, height, framebuffer, source_x, source_y, clip)
+ }
+ 
+ pub fn copy_framebuffer(
+@@ -167,10 +208,163 @@ pub fn copy_framebuffer(
+     source_y: i32,
+     clip: Clip,
+ ) -> Result<()> {
+-    let image = source.image(context)?;
+-    write_canvas(context, destination, |canvas| {
+-        canvas.draw(x, y, width, height, &*image, source_x, source_y, clip)
+-    })
++    draw_framebuffer(context, destination, x, y, width, height, source, source_x, source_y, clip)
++}
++
++/// Draws the `width`x`height` area of `source` at (`source_x`, `source_y`) onto `framebuffer` at (`x`, `y`)
++/// inside `clip`, exactly like `Canvas::draw` (source alpha blended over the destination), but only reads
++/// and writes the guest rows the drawing covers. Going through a full-framebuffer canvas copied both
++/// framebuffers out of guest memory and the whole destination back for every call; KTF games issue ~100
++/// MC_grpDrawImage per frame (메이플스토리 도적편), which made that copying the biggest cost of a frame.
++pub fn draw_framebuffer(
++    context: &mut dyn WIPICContext,
++    framebuffer: &FrameBuffer,
++    x: i32,
++    y: i32,
++    width: u32,
++    height: u32,
++    source: &FrameBuffer,
++    source_x: i32,
++    source_y: i32,
++    clip: Clip,
++) -> Result<()> {
++    let area = (x, y, width, height, source_x, source_y, clip);
++    match (source.0.bpp, framebuffer.0.bpp) {
++        // RGB565 has no alpha and converts to a color and back losslessly: a plain copy
++        (16, 16) => copy::<Rgb565Pixel>(context, framebuffer, source, area),
++        (16, 32) => blit::<Rgb565Pixel, ArgbPixel, false>(context, framebuffer, source, area),
++        (32, 16) => blit::<ArgbPixel, Rgb565Pixel, true>(context, framebuffer, source, area),
++        (32, 32) => blit::<ArgbPixel, ArgbPixel, false>(context, framebuffer, source, area),
++        _ => {
++            let image = source.image(context)?;
++            draw_image(context, framebuffer, x, y, width, height, &*image, source_x, source_y, clip)
++        }
++    }
++}
++
++type BlitArea = (i32, i32, u32, u32, i32, i32, Clip);
++
++fn copy<T: PixelType>(context: &mut dyn WIPICContext, destination: &FrameBuffer, source: &FrameBuffer, area: BlitArea) -> Result<()> {
++    let Some((x, y, source_x, source_y, columns, rows)) = blit_bounds(destination, source, area) else {
++        return Ok(());
++    };
++    let pixels = read_rows::<T>(context, source, source_x, source_y, columns, rows)?;
++    write_rows::<T>(context, destination, x, y, columns, &pixels)
++}
++
++/// Destination and source positions and the size of the part of `area` that lands in both framebuffers and
++/// the clip, or `None` when nothing does.
++fn blit_bounds(
++    destination: &FrameBuffer,
++    source: &FrameBuffer,
++    (x, y, width, height, source_x, source_y, clip): BlitArea,
++) -> Option<(i64, i64, i64, i64, usize, usize)> {
++    let (x, y, source_x, source_y) = (x as i64, y as i64, source_x as i64, source_y as i64);
++    // the offsets inside the drawn area that land in the destination, the source and the clip
++    let x_start = 0i64.max(-x).max(-source_x).max(clip.x as i64 - x);
++    let x_end = (width as i64)
++        .min(destination.0.width as i64 - x)
++        .min(source.0.width as i64 - source_x)
++        .min(clip.x as i64 + clip.width as i64 - x);
++    let y_start = 0i64.max(-y).max(-source_y).max(clip.y as i64 - y);
++    let y_end = (height as i64)
++        .min(destination.0.height as i64 - y)
++        .min(source.0.height as i64 - source_y)
++        .min(clip.y as i64 + clip.height as i64 - y);
++    if x_start >= x_end || y_start >= y_end {
++        return None;
++    }
++
++    Some((
++        x + x_start,
++        y + y_start,
++        source_x + x_start,
++        source_y + y_start,
++        (x_end - x_start) as usize,
++        (y_end - y_start) as usize,
++    ))
++}
++
++/// `OPAQUE_DESTINATION`: `D` has no alpha and converts losslessly (a fully transparent source pixel then
++/// leaves the destination pixel as it is).
++fn blit<S: PixelType, D: PixelType, const OPAQUE_DESTINATION: bool>(
++    context: &mut dyn WIPICContext,
++    destination: &FrameBuffer,
++    source: &FrameBuffer,
++    area: BlitArea,
++) -> Result<()> {
++    let Some((x, y, source_x, source_y, columns, rows)) = blit_bounds(destination, source, area) else {
++        return Ok(());
++    };
++
++    // all source rows are read before the destination is written, so drawing a framebuffer onto itself
++    // sees a snapshot like the canvas path did
++    let source_pixels = read_rows::<S>(context, source, source_x, source_y, columns, rows)?;
++    let mut pixels = read_rows::<D>(context, destination, x, y, columns, rows)?;
++    for (pixel, &source_pixel) in pixels.iter_mut().zip(source_pixels.iter()) {
++        let color = S::to_color(source_pixel);
++        *pixel = match color.a {
++            255 => D::from_color(color),
++            0 if OPAQUE_DESTINATION => continue,
++            // fully transparent: the destination color, made opaque (what blending with factor 0 gives)
++            0 => D::from_color(Color {
++                a: 0xff,
++                ..D::to_color(*pixel)
++            }),
++            _ => D::from_color(blend(color, D::to_color(*pixel))),
++        };
++    }
++    write_rows::<D>(context, destination, x, y, columns, &pixels)
++}
++
++/// `color` over `background`, the formula of `ImageBufferCanvas`'s blended pixel writes.
++fn blend(color: Color, background: Color) -> Color {
++    let factor = color.a as f32 / 255.0;
++
++    Color {
++        a: 0xff,
++        r: (color.r as f32 * factor + background.r as f32 * (1.0 - factor)) as u8,
++        g: (color.g as f32 * factor + background.g as f32 * (1.0 - factor)) as u8,
++        b: (color.b as f32 * factor + background.b as f32 * (1.0 - factor)) as u8,
++    }
++}
++
++fn pixel_offset(framebuffer: &FrameBuffer, x: i64, y: i64) -> u32 {
++    // rows are `width` pixels apart, like FrameBuffer::image reads them
++    ((y * framebuffer.0.width as i64 + x) * (framebuffer.0.bpp / 8) as i64) as u32
++}
++
++fn read_rows<T: PixelType>(
++    context: &dyn WIPICContext,
++    framebuffer: &FrameBuffer,
++    x: i64,
++    y: i64,
++    columns: usize,
++    rows: usize,
++) -> Result<Vec<T::DataType>> {
++    let base = context.data_ptr(framebuffer.0.buf)?;
++    let mut pixels = vec![T::DataType::zeroed(); columns * rows];
++    for (row, line) in pixels.chunks_mut(columns).enumerate() {
++        context.read_bytes(base + pixel_offset(framebuffer, x, y + row as i64), cast_slice_mut(line))?;
++    }
++
++    Ok(pixels)
++}
++
++fn write_rows<T: PixelType>(
++    context: &mut dyn WIPICContext,
++    framebuffer: &FrameBuffer,
++    x: i64,
++    y: i64,
++    columns: usize,
++    pixels: &[T::DataType],
++) -> Result<()> {
++    let base = context.data_ptr(framebuffer.0.buf)?;
++    for (row, line) in pixels.chunks(columns).enumerate() {
++        context.write_bytes(base + pixel_offset(framebuffer, x, y + row as i64), cast_slice(line))?;
++    }
++
++    Ok(())
+ }
+ 
+ /// Draws `string` with its 12px cell top at `y` (ink starts at `y`, like the original
+@@ -291,17 +485,84 @@ pub fn set_rgb_pixels(
+ 
+ #[cfg(test)]
+ mod tests {
++    use alloc::{vec, vec::Vec};
++
+     use wie_backend::canvas::{Clip, Color};
+     use wie_util::{ByteRead, ByteWrite, Result};
+ 
+     use crate::{
+         api::graphics::{
+             FrameBuffer,
+-            primitives::{fill_rect, get_rgb_pixels, put_pixel, set_rgb_pixels},
++            primitives::{draw_framebuffer, draw_image, fill_rect, get_rgb_pixels, put_pixel, set_rgb_pixels},
+         },
+         context::{WIPICContext, test::TestContext},
+     };
+ 
++    #[test]
++    fn rgb565_converts_to_a_color_and_back_losslessly() {
++        use wie_backend::canvas::{PixelType, Rgb565Pixel};
++
++        for raw in 0..=u16::MAX {
++            assert_eq!(Rgb565Pixel::from_color(Rgb565Pixel::to_color(raw)), raw);
++        }
++    }
++
++    #[test]
++    fn draw_framebuffer_matches_the_canvas_drawing() -> Result<()> {
++        // every source/destination depth, partly offscreen, clipped, translucent pixels, and onto itself
++        for (source_bpp, destination_bpp) in [(16, 16), (16, 32), (32, 16), (32, 32)] {
++            for (x, y, width, height, source_x, source_y, (clip_x, clip_y, clip_width, clip_height)) in [
++                (1, 2, 5, 4, 0, 1, (0, 0, 9, 7)),
++                (-3, -2, 9, 9, 2, 1, (1, 1, 6, 4)),
++                (4, 3, 30, 30, -2, -1, (0, 0, 100, 100)),
++                (0, 0, 8, 6, 0, 0, (2, 0, 3, 6)),
++            ] {
++                let clip = Clip {
++                    x: clip_x,
++                    y: clip_y,
++                    width: clip_width,
++                    height: clip_height,
++                };
++                let mut results = Vec::new();
++                for fast in [false, true] {
++                    let mut context = TestContext::new();
++                    let source = FrameBuffer::new(&mut context, 7, 6, source_bpp)?;
++                    let destination = FrameBuffer::new(&mut context, 9, 7, destination_bpp)?;
++                    let mut state = source_bpp * 31 + destination_bpp;
++                    for framebuffer in [&source, &destination] {
++                        let size = framebuffer.0.width * framebuffer.0.height * framebuffer.0.bpp / 8;
++                        let bytes = (0..size)
++                            .map(|_| {
++                                state = state.wrapping_mul(1_103_515_245).wrapping_add(12345);
++                                (state >> 16) as u8
++                            })
++                            .collect::<Vec<_>>();
++                        let address = context.data_ptr(framebuffer.0.buf)?;
++                        context.write_bytes(address, &bytes)?;
++                    }
++                    for (target, from) in [(&destination, &source), (&source, &source)] {
++                        if fast {
++                            draw_framebuffer(&mut context, target, x, y, width, height, from, source_x, source_y, clip)?;
++                        } else {
++                            let image = from.image(&mut context)?;
++                            draw_image(&mut context, target, x, y, width, height, &*image, source_x, source_y, clip)?;
++                        }
++                    }
++                    let mut pixels = Vec::new();
++                    for framebuffer in [&source, &destination] {
++                        let size = framebuffer.0.width * framebuffer.0.height * framebuffer.0.bpp / 8;
++                        let mut bytes = vec![0; size as usize];
++                        context.read_bytes(context.data_ptr(framebuffer.0.buf)?, &mut bytes)?;
++                        pixels.push(bytes);
++                    }
++                    results.push(pixels);
++                }
++                assert!(results[0] == results[1], "{source_bpp}->{destination_bpp} at ({x}, {y})");
++            }
++        }
++        Ok(())
++    }
++
+     #[test]
+     fn drawing_primitives_write_the_guest_framebuffer() -> Result<()> {
+         let mut context = TestContext::new();
+diff --git a/wie-wipi-c/src/api/kernel.rs b/wie-wipi-c/src/api/kernel.rs
+index 638b5ead..c8f4ba52 100644
+--- a/wie-wipi-c/src/api/kernel.rs
++++ b/wie-wipi-c/src/api/kernel.rs
+@@ -1,7 +1,9 @@
+ pub mod sprintf;
+ 
+ use alloc::{
++    borrow::ToOwned,
+     boxed::Box,
++    format,
+     string::{String, ToString},
+     vec::Vec,
+ };
+@@ -266,11 +268,16 @@ pub async fn sprintk(
+     a3: WIPICWord,
+     a4: WIPICWord,
+     a5: WIPICWord,
++    a6: WIPICWord,
++    a7: WIPICWord,
++    a8: WIPICWord,
++    a9: WIPICWord,
+ ) -> Result<WIPICWord> {
+-    tracing::debug!("MC_knlSprintk({dest:#x}, {ptr_format:#x}, {a1}, {a2}, {a3}, {a4}, {a5})",);
++    tracing::debug!("MC_knlSprintk({dest:#x}, {ptr_format:#x}, {a0}, {a1}, {a2}, {a3}, {a4}, {a5}, ...)",);
+ 
++    // Variadic: games pass up to nine values (Zenonia 2's save slot line: date, time, play time, map, level).
+     let format_string = read_null_terminated_string_bytes(context, ptr_format)?;
+-    let result = sprintf(context, &format_string, &[a0, a1, a2, a3, a4, a5])?;
++    let result = sprintf(context, &format_string, &[a0, a1, a2, a3, a4, a5, a6, a7, a8, a9])?;
+ 
+     write_null_terminated_string_bytes(context, dest, &result)?;
+ 
+@@ -303,6 +310,43 @@ pub async fn get_cur_program_id(_context: &mut dyn WIPICContext) -> Result<WIPIC
+     Ok(1)
+ }
+ 
++/// `MC_knlGetAccessLevel()`: the permission bits granted to the running program. The emulator
++/// grants every bit; 이노티아 연대기2 requires `level & 0xbc == 0xbc` before it reads PHONENUMBER
++/// (client.bin 0x12af8c).
++pub async fn get_access_level(_context: &mut dyn WIPICContext) -> Result<i32> {
++    tracing::debug!("MC_knlGetAccessLevel()");
++
++    Ok(0xff)
++}
++
++/// `MC_knlGetExecNames(program, _, _, buf, buf_size)`: writes the executable path of an installed
++/// program and returns the number of names. A KTF program is installed as `<AID>/<AID>.jar` (the jar
++/// in a KTF archive is named after the AID); 이노티아 연대기2 (client.bin 0x12b044) asks for its own
++/// AID and reads it back from the last 21 characters of that path.
++pub async fn get_exec_names(
++    context: &mut dyn WIPICContext,
++    ptr_program: WIPICWord,
++    _a1: i32,
++    _a2: i32,
++    ptr_buf: WIPICWord,
++    buf_size: i32,
++) -> Result<i32> {
++    tracing::debug!("MC_knlGetExecNames({ptr_program:#x}, {_a1}, {_a2}, {ptr_buf:#x}, {buf_size})");
++
++    let aid = context.system().aid().to_owned();
++    if ptr_program != 0 && read_null_terminated_string_bytes(context, ptr_program)? != aid.as_bytes() {
++        return Ok(0); // only the running program is installed
++    }
++
++    let path = format!("{aid}/{aid}.jar");
++    if buf_size < path.len() as i32 + 1 {
++        return Ok(-18); // M_E_SHORTBUF
++    }
++    write_null_terminated_string_bytes(context, ptr_buf, path.as_bytes())?;
++
++    Ok(1)
++}
++
+ pub async fn get_program_name(context: &mut dyn WIPICContext, name_buf: WIPICWord, buf_size: i32) -> Result<i32> {
+     tracing::debug!("MC_knlGetProgramName({name_buf:#x}, {buf_size})");
+ 
+@@ -346,7 +390,7 @@ mod test {
+ 
+         write_null_terminated_string_bytes(&mut context, format, "%d".as_bytes()).unwrap();
+         sprintk
+-            .call(&mut context, Box::new([dest, format, 1234, 0, 0, 0, 0, 0, 0, 0]))
++            .call(&mut context, Box::new([dest, format, 1234, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+             .await
+             .unwrap();
+         let result = read_null_terminated_string_bytes(&context, dest).unwrap();
+@@ -354,12 +398,21 @@ mod test {
+ 
+         write_null_terminated_string_bytes(&mut context, format, "test %02d".as_bytes()).unwrap();
+         sprintk
+-            .call(&mut context, Box::new([dest, format, 1, 0, 0, 0, 0, 0, 0, 0]))
++            .call(&mut context, Box::new([dest, format, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+             .await
+             .unwrap();
+         let result = read_null_terminated_string_bytes(&context, dest).unwrap();
+         assert_eq!(String::from_utf8(result).unwrap(), "test 01");
+ 
++        let dest = context.alloc_raw(32).unwrap();
++        write_null_terminated_string_bytes(&mut context, format, "%d%d%d%d%d%d%d%d%d".as_bytes()).unwrap();
++        sprintk
++            .call(&mut context, Box::new([dest, format, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0]))
++            .await
++            .unwrap();
++        let result = read_null_terminated_string_bytes(&context, dest).unwrap();
++        assert_eq!(String::from_utf8(result).unwrap(), "123456789");
++
+         Ok(())
+     }
+ 
+diff --git a/wie-wipi-c/src/api/net.rs b/wie-wipi-c/src/api/net.rs
+index 17d4376a..c05c4985 100644
+--- a/wie-wipi-c/src/api/net.rs
++++ b/wie-wipi-c/src/api/net.rs
+@@ -42,3 +42,11 @@ pub async fn socket_close(_context: &mut dyn WIPICContext, fd: i32) -> Result<i3
+ 
+     Ok(-1) // M_E_ERROR
+ }
++
++/// `MC_netSetReadCB(fd, cb, param)`. Sockets are not emulated, so no fd is valid; games
++/// clear the callback (`cb` = NULL) on teardown before closing, with fd -1 when they never connected.
++pub async fn set_read_cb(_context: &mut dyn WIPICContext, fd: i32, cb: WIPICWord, param: WIPICWord) -> Result<i32> {
++    tracing::warn!("stub MC_netSetReadCB({fd}, {cb:#x}, {param:#x})");
++
++    Ok(-1) // M_E_ERROR
++}
+diff --git a/wie-wipi-c/src/lib.rs b/wie-wipi-c/src/lib.rs
+index 8a08c710..49c8cbdd 100644
+--- a/wie-wipi-c/src/lib.rs
++++ b/wie-wipi-c/src/lib.rs
+@@ -6,7 +6,7 @@ mod context;
+ mod method;
+ 
+ pub use self::context::{WIPICContext, WIPICResult};
+-pub use self::method::{MethodBody, MethodImpl};
++pub use self::method::{MAX_METHOD_ARGS, MethodBody, MethodImpl};
+ 
+ use alloc::boxed::Box;
+ 
+diff --git a/wie-wipi-c/src/method.rs b/wie-wipi-c/src/method.rs
+index 48d926e5..71851f48 100644
+--- a/wie-wipi-c/src/method.rs
++++ b/wie-wipi-c/src/method.rs
+@@ -103,7 +103,13 @@ macro_rules! methods {
+         __generate!($context, $raw_type, P0, P1, P2, P3, P4, P5, P6);
+         __generate!($context, $raw_type, P0, P1, P2, P3, P4, P5, P6, P7);
+         __generate!($context, $raw_type, P0, P1, P2, P3, P4, P5, P6, P7, P8);
++        __generate!($context, $raw_type, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9);
++        __generate!($context, $raw_type, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10);
++        __generate!($context, $raw_type, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11);
+     };
+ }
+ 
+ methods!(WIPICContext, WIPICWord);
++
++/// The most arguments a method body takes; platform dispatchers pass this many words.
++pub const MAX_METHOD_ARGS: usize = 12;
+diff --git a/wie-wipi-java/src/classes/net/wie/card_canvas.rs b/wie-wipi-java/src/classes/net/wie/card_canvas.rs
+index c090d9ae..142776fc 100644
+--- a/wie-wipi-java/src/classes/net/wie/card_canvas.rs
++++ b/wie-wipi-java/src/classes/net/wie/card_canvas.rs
+@@ -10,7 +10,7 @@ use wie_midp::classes::{
+     net::wie::MIDPKeyCode,
+ };
+ 
+-use crate::classes::org::kwis::msp::lcdui::Card;
++use crate::classes::org::kwis::msp::lcdui::{Card, Graphics};
+ 
+ #[repr(i32)]
+ #[allow(clippy::upper_case_acronyms, non_camel_case_types)]
+@@ -133,7 +133,10 @@ impl CardCanvas {
+                 // wie private
+                 JavaMethodProto::new("handleNotifyEvent", "(III)V", Self::handle_notify_event, MethodAccessFlags::PROTECTED),
+             ],
+-            fields: vec![JavaFieldProto::new("cards", "Ljava/util/Vector;", FieldAccessFlags::PRIVATE)],
++            fields: vec![
++                JavaFieldProto::new("cards", "Ljava/util/Vector;", FieldAccessFlags::PRIVATE),
++                JavaFieldProto::new("graphics", "Lorg/kwis/msp/lcdui/Graphics;", FieldAccessFlags::PRIVATE),
++            ],
+             access_flags: ClassAccessFlags::PUBLIC,
+         }
+     }
+@@ -154,12 +157,43 @@ impl CardCanvas {
+         Ok(())
+     }
+ 
+-    async fn paint(jvm: &Jvm, _context: &mut WieJvmContext, this: ClassInstanceRef<Self>, g: ClassInstanceRef<MidpGraphics>) -> JvmResult<()> {
++    async fn paint(jvm: &Jvm, _context: &mut WieJvmContext, mut this: ClassInstanceRef<Self>, g: ClassInstanceRef<MidpGraphics>) -> JvmResult<()> {
+         tracing::debug!("net.wie.CardCanvas::paint({this:?}, {g:?})");
+ 
+-        let graphics = jvm
+-            .new_class("org/kwis/msp/lcdui/Graphics", "(Ljavax/microedition/lcdui/Graphics;)V", (g,))
++        // Cards get the same Graphics on every paint, like the handset's screen Graphics. Games keep the
++        // one they were painted with and draw into it from their own thread (놈3); a wrapper created per
++        // paint was collected after another thread's paint while the game still held it in registers.
++        let cached: ClassInstanceRef<Graphics> = jvm
++            .get_field(&this, "net/wie/CardCanvas", "graphics", "Lorg/kwis/msp/lcdui/Graphics;")
++            .await?;
++        let wraps_g = !cached.is_null() && {
++            let wrapped: ClassInstanceRef<MidpGraphics> = jvm
++                .get_field(
++                    &cached,
++                    "org/kwis/msp/lcdui/Graphics",
++                    "midpGraphics",
++                    "Ljavax/microedition/lcdui/Graphics;",
++                )
++                .await?;
++            !wrapped.is_null() && wrapped.identity() == g.identity()
++        };
++        let graphics = if wraps_g {
++            cached
++        } else {
++            let graphics: ClassInstanceRef<Graphics> = jvm
++                .new_class("org/kwis/msp/lcdui/Graphics", "(Ljavax/microedition/lcdui/Graphics;)V", (g,))
++                .await?
++                .into();
++            jvm.put_field(
++                &mut this,
++                "net/wie/CardCanvas",
++                "graphics",
++                "Lorg/kwis/msp/lcdui/Graphics;",
++                graphics.clone(),
++            )
+             .await?;
++            graphics
++        };
+ 
+         let cards = jvm.get_field(&this, "net/wie/CardCanvas", "cards", "Ljava/util/Vector;").await?;
+         let length = jvm.invoke_virtual(&cards, "java/util/Vector", "size", "()I", ()).await?;
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/lcdui/card.rs b/wie-wipi-java/src/classes/org/kwis/msp/lcdui/card.rs
+index d8e22269..27c170f3 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/lcdui/card.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/lcdui/card.rs
+@@ -468,6 +468,7 @@ mod test {
+                     JavaFieldProto::new("keyCount", "I", FieldAccessFlags::PRIVATE),
+                     JavaFieldProto::new("notifyCount", "I", FieldAccessFlags::PRIVATE),
+                     JavaFieldProto::new("paintCount", "I", FieldAccessFlags::PRIVATE),
++                    JavaFieldProto::new("paintGraphics", "Lorg/kwis/msp/lcdui/Graphics;", FieldAccessFlags::PRIVATE),
+                 ],
+                 access_flags: ClassAccessFlags::PUBLIC,
+             }
+@@ -508,6 +509,14 @@ mod test {
+         async fn paint(jvm: &Jvm, _: &mut WieJvmContext, mut this: ClassInstanceRef<Self>, graphics: ClassInstanceRef<Graphics>) -> JvmResult<()> {
+             let paint_count: i32 = jvm.get_field(&this, "test/TestCard", "paintCount", "I").await?;
+             jvm.put_field(&mut this, "test/TestCard", "paintCount", "I", paint_count + 1).await?;
++            jvm.put_field(
++                &mut this,
++                "test/TestCard",
++                "paintGraphics",
++                "Lorg/kwis/msp/lcdui/Graphics;",
++                graphics.clone(),
++            )
++            .await?;
+ 
+             let x: i32 = jvm.get_field(&this, "test/TestCard", "x", "I").await?;
+             let y: i32 = jvm.get_field(&this, "test/TestCard", "y", "I").await?;
+@@ -838,6 +847,18 @@ mod test {
+                     .invoke_virtual(&first, "org/kwis/msp/lcdui/Card", "serviceRepaints", "()V", ())
+                     .await?;
+                 assert_eq!(jvm.get_field::<i32>(&first, "test/TestCard", "paintCount", "I").await?, paint_count + 1);
++                // Games keep the Graphics they were painted with, so every paint hands out the same one.
++                let painted: ClassInstanceRef<Graphics> = jvm
++                    .get_field(&first, "test/TestCard", "paintGraphics", "Lorg/kwis/msp/lcdui/Graphics;")
++                    .await?;
++                let _: () = jvm.invoke_virtual(&first, "org/kwis/msp/lcdui/Card", "repaint", "()V", ()).await?;
++                let _: () = jvm
++                    .invoke_virtual(&first, "org/kwis/msp/lcdui/Card", "serviceRepaints", "()V", ())
++                    .await?;
++                let repainted: ClassInstanceRef<Graphics> = jvm
++                    .get_field(&first, "test/TestCard", "paintGraphics", "Lorg/kwis/msp/lcdui/Graphics;")
++                    .await?;
++                assert_eq!(repainted.identity(), painted.identity());
+ 
+                 let other_canvas: ClassInstanceRef<CardCanvas> = jvm.new_class("net/wie/CardCanvas", "()V", ()).await?.into();
+                 let _: () = jvm

@@ -107,7 +107,7 @@ fn run() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let mut game = None;
     let mut frames = 1800u64;
-    let mut keys: Vec<(u64, KeyCode)> = Vec::new();
+    let mut keys: Vec<(u64, KeyCode, u64)> = Vec::new();
     let mut dump: Option<PathBuf> = None;
     let mut every = 60u64;
     let mut options = Vec::new();
@@ -135,8 +135,13 @@ fn run() -> anyhow::Result<()> {
             "--keys" => {
                 for item in args.next().unwrap_or_default().split(',').filter(|s| !s.is_empty()) {
                     let (f, k) = item.split_once(':').ok_or_else(|| anyhow::anyhow!("bad key item {item}"))?;
+                    // "KEY~N" holds the key for N frames instead of the default 4-frame tap.
+                    let (k, hold) = match k.split_once('~') {
+                        Some((k, n)) => (k, n.trim().parse()?),
+                        None => (k, 4u64),
+                    };
                     let key = parse_key(k.trim()).ok_or_else(|| anyhow::anyhow!("unknown key {k}"))?;
-                    keys.push((f.trim().parse()?, key));
+                    keys.push((f.trim().parse()?, key, hold));
                 }
             }
             _ => game = Some(PathBuf::from(a)),
@@ -170,11 +175,12 @@ fn run() -> anyhow::Result<()> {
     let mut worst_ms = 0f64;
     let mut ran = 0;
     let mut audible_frames = 0u64;
+    let mut presented = 0u64;
     let mut audio_peak = 0i32;
     for frame in 0..frames {
         let mut set = KeySet::default();
-        for (at, key) in &keys {
-            if frame >= *at && frame < at + 4 {
+        for (at, key, hold) in &keys {
+            if frame >= *at && frame < at + hold {
                 set.press(*key);
             }
         }
@@ -195,6 +201,7 @@ fn run() -> anyhow::Result<()> {
             break;
         }
         if let Some(v) = &out.video {
+            presented += 1;
             last = Some(v.clone());
         }
         if let (Some(d), Some((px, w, h))) = (&dump, &last)
@@ -210,6 +217,8 @@ fn run() -> anyhow::Result<()> {
     let total = started.elapsed().as_secs_f64();
     println!("frames: {ran}, avg {:.2} ms/frame, worst {:.2} ms", total * 1000.0 / ran.max(1) as f64, worst_ms);
     println!("audio: sound in {audible_frames} of {ran} frames, peak {audio_peak}");
+    // Frames in which the game presented a new picture: the game's own frame rate under this CPU budget.
+    println!("presented: {presented} of {ran} frames ({:.1} fps)", presented as f64 * 60.0 / ran.max(1) as f64);
 
     if let Some((px, w, h)) = &last {
         let lit = px.iter().filter(|p| **p & 0xffffff != 0).count();
