@@ -298,6 +298,8 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     gameId = session.game.id,
                     padConnected = com.manggome.oneemu.emu.input.GamepadDevices.connected().firstOrNull()?.name,
                     padVendor = com.manggome.oneemu.emu.input.GamepadDevices.connected().firstOrNull()?.vendorId,
+                    padId = com.manggome.oneemu.emu.input.GamepadDevices.connected().firstOrNull()
+                        ?.let { com.manggome.oneemu.emu.input.GamepadMapping.deviceKey(it) },
                     lastPadMask = { host.lastPadMask },
                     onPadKey = host::forwardPadKey,
                     onPadMotion = host::forwardPadMotion,

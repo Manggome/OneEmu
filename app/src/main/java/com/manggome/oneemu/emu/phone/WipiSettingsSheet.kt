@@ -100,6 +100,7 @@ fun WipiSettingsSheet(
     gameId: Long,
     padConnected: String?,
     padVendor: Int?,
+    padId: String?,
     lastPadMask: () -> Int,
     onPadKey: (android.view.KeyEvent) -> Boolean,
     onPadMotion: (android.view.MotionEvent) -> Boolean,
@@ -174,7 +175,7 @@ fun WipiSettingsSheet(
         }
     }
 
-    if (mappingOpen) WipiPadMappingDialog(gameId, padConnected, padVendor, lastPadMask, onPadKey, onPadMotion, onDismiss = { mappingOpen = false })
+    if (mappingOpen) WipiPadMappingDialog(gameId, padConnected, padVendor, padId, lastPadMask, onPadKey, onPadMotion, onDismiss = { mappingOpen = false })
 }
 
 @Composable
@@ -242,6 +243,7 @@ fun WipiPadMappingDialog(
     gameId: Long,
     padConnected: String?,
     padVendor: Int?,
+    padId: String?,
     lastPadMask: () -> Int,
     onPadKey: (android.view.KeyEvent) -> Boolean,
     onPadMotion: (android.view.MotionEvent) -> Boolean,
@@ -253,6 +255,11 @@ fun WipiPadMappingDialog(
     var mapping by remember { mutableStateOf(WipiPadMapping.DEFAULT) }
     var perGame by remember { mutableStateOf(false) }
     var style by remember { mutableStateOf(styleFor(padVendor)) }
+    val styleKey = padId?.let { androidx.datastore.preferences.core.stringPreferencesKey("wipi.pad_style.$it") }
+    LaunchedEffect(styleKey) {
+        val saved = styleKey?.let { settings.get(it, "") }.orEmpty()
+        PadStyle.entries.firstOrNull { it.name == saved }?.let { style = it }
+    }
     var picking by remember { mutableStateOf<Int?>(null) }
     var lit by remember { mutableStateOf(0) }
 
@@ -305,7 +312,10 @@ fun WipiPadMappingDialog(
                     PadStyle.PS to stringResource(R.string.wipi_map_style_ps),
                 ),
                 style,
-            ) { style = it }
+            ) { picked ->
+                style = picked
+                styleKey?.let { k -> scope.launch { settings.set(k, picked.name) } }
+            }
             Spacer(Modifier.height(14.dp))
 
             Box(Modifier.size(360.dp, 240.dp).align(Alignment.CenterHorizontally)) {
