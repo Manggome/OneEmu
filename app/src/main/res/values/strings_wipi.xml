@@ -58,7 +58,11 @@
     <string name="wipi_map_title">게임패드 키매핑</string>
     <string name="wipi_map_connected">연결된 게임패드: %1$s</string>
     <string name="wipi_map_none">연결된 게임패드 없음</string>
-    <string name="wipi_map_style_retro">레트로</string>
+    <string name="wipi_map_style_nintendo">닌텐도</string>
+    <string name="wipi_map_connected_mode">연결된 게임패드: %1$s (%2$s)</string>
+    <string name="wipi_map_mode_nintendo">닌텐도 모드</string>
+    <string name="wipi_map_mode_ps">PlayStation 모드</string>
+    <string name="wipi_map_mode_xbox">Xbox 모드</string>
     <string name="wipi_map_style_xbox">Xbox</string>
     <string name="wipi_map_style_ps">PlayStation</string>
     <string name="wipi_map_hint">패드 버튼을 누르면 해당 버튼이 켜집니다 · 버튼을 눌러 피처폰 키를 지정</string>

@@ -99,6 +99,7 @@ private fun SectionTitle(text: String) {
 fun WipiSettingsSheet(
     gameId: Long,
     padConnected: String?,
+    padVendor: Int?,
     lastPadMask: () -> Int,
     onPadKey: (android.view.KeyEvent) -> Boolean,
     onPadMotion: (android.view.MotionEvent) -> Boolean,
@@ -173,7 +174,7 @@ fun WipiSettingsSheet(
         }
     }
 
-    if (mappingOpen) WipiPadMappingDialog(gameId, padConnected, lastPadMask, onPadKey, onPadMotion, onDismiss = { mappingOpen = false })
+    if (mappingOpen) WipiPadMappingDialog(gameId, padConnected, padVendor, lastPadMask, onPadKey, onPadMotion, onDismiss = { mappingOpen = false })
 }
 
 @Composable
@@ -187,20 +188,31 @@ private fun SwitchRow(title: String, desc: String?, checked: Boolean, onChange: 
     }
 }
 
-private enum class PadStyle { RETRO, XBOX, PS }
+private enum class PadStyle { NINTENDO, XBOX, PS }
 
-/** Face / shoulder legend of a RetroPad button on the chosen controller family (positions stay the same). */
+/** The legend family printed on a pad, from its USB/Bluetooth vendor id (Nintendo-mode pads report 057e). */
+private fun styleFor(vendorId: Int?): PadStyle = when (vendorId) {
+    0x057e -> PadStyle.NINTENDO
+    0x054c -> PadStyle.PS
+    else -> PadStyle.XBOX
+}
+
+/**
+ * Legend of a pad button on the chosen controller family. Android reports face buttons by position
+ * (BUTTON_A = bottom, B = right, X = left, Y = top) whatever is printed on them — a Switch-mode pad sends its
+ * "B" as BUTTON_A — so the chips sit where the button is and only the printed letter changes.
+ */
 private fun padLabel(button: Int, style: PadStyle): String = when (button) {
-    Buttons.B -> when (style) { PadStyle.RETRO -> "B"; PadStyle.XBOX -> "A"; PadStyle.PS -> "✕" }
-    Buttons.A -> when (style) { PadStyle.RETRO -> "A"; PadStyle.XBOX -> "B"; PadStyle.PS -> "○" }
-    Buttons.Y -> when (style) { PadStyle.RETRO -> "Y"; PadStyle.XBOX -> "X"; PadStyle.PS -> "□" }
-    Buttons.X -> when (style) { PadStyle.RETRO -> "X"; PadStyle.XBOX -> "Y"; PadStyle.PS -> "△" }
-    Buttons.L -> when (style) { PadStyle.RETRO -> "L"; PadStyle.XBOX -> "LB"; PadStyle.PS -> "L1" }
-    Buttons.R -> when (style) { PadStyle.RETRO -> "R"; PadStyle.XBOX -> "RB"; PadStyle.PS -> "R1" }
-    Buttons.L2 -> when (style) { PadStyle.RETRO -> "ZL"; PadStyle.XBOX -> "LT"; PadStyle.PS -> "L2" }
-    Buttons.R2 -> when (style) { PadStyle.RETRO -> "ZR"; PadStyle.XBOX -> "RT"; PadStyle.PS -> "R2" }
-    Buttons.SELECT -> when (style) { PadStyle.RETRO -> "Select"; PadStyle.XBOX -> "View"; PadStyle.PS -> "Share" }
-    Buttons.START -> when (style) { PadStyle.RETRO -> "Start"; PadStyle.XBOX -> "Menu"; PadStyle.PS -> "Options" }
+    Buttons.A -> when (style) { PadStyle.NINTENDO -> "B"; PadStyle.XBOX -> "A"; PadStyle.PS -> "✕" }
+    Buttons.B -> when (style) { PadStyle.NINTENDO -> "A"; PadStyle.XBOX -> "B"; PadStyle.PS -> "○" }
+    Buttons.X -> when (style) { PadStyle.NINTENDO -> "Y"; PadStyle.XBOX -> "X"; PadStyle.PS -> "□" }
+    Buttons.Y -> when (style) { PadStyle.NINTENDO -> "X"; PadStyle.XBOX -> "Y"; PadStyle.PS -> "△" }
+    Buttons.L -> when (style) { PadStyle.NINTENDO -> "L"; PadStyle.XBOX -> "LB"; PadStyle.PS -> "L1" }
+    Buttons.R -> when (style) { PadStyle.NINTENDO -> "R"; PadStyle.XBOX -> "RB"; PadStyle.PS -> "R1" }
+    Buttons.L2 -> when (style) { PadStyle.NINTENDO -> "ZL"; PadStyle.XBOX -> "LT"; PadStyle.PS -> "L2" }
+    Buttons.R2 -> when (style) { PadStyle.NINTENDO -> "ZR"; PadStyle.XBOX -> "RT"; PadStyle.PS -> "R2" }
+    Buttons.SELECT -> when (style) { PadStyle.NINTENDO -> "−"; PadStyle.XBOX -> "View"; PadStyle.PS -> "Share" }
+    Buttons.START -> when (style) { PadStyle.NINTENDO -> "+"; PadStyle.XBOX -> "Menu"; PadStyle.PS -> "Options" }
     Buttons.L3 -> if (style == PadStyle.XBOX) "LS" else "L3"
     Buttons.R3 -> if (style == PadStyle.XBOX) "RS" else "R3"
     Buttons.UP -> "↑"
@@ -214,7 +226,8 @@ private fun padLabel(button: Int, style: PadStyle): String = when (button) {
 private val CHIP_AT: Map<Int, Pair<Float, Float>> = mapOf(
     Buttons.L2 to (48f to 22f), Buttons.L to (110f to 22f), Buttons.R to (250f to 22f), Buttons.R2 to (312f to 22f),
     Buttons.UP to (80f to 90f), Buttons.LEFT to (36f to 132f), Buttons.RIGHT to (124f to 132f), Buttons.DOWN to (80f to 174f),
-    Buttons.X to (280f to 90f), Buttons.Y to (236f to 132f), Buttons.A to (324f to 132f), Buttons.B to (280f to 174f),
+    // Android positions: BUTTON_Y top, BUTTON_X left, BUTTON_B right, BUTTON_A bottom.
+    Buttons.Y to (280f to 90f), Buttons.X to (236f to 132f), Buttons.B to (324f to 132f), Buttons.A to (280f to 174f),
     Buttons.SELECT to (152f to 112f), Buttons.START to (208f to 112f),
     Buttons.L3 to (142f to 212f), Buttons.R3 to (218f to 212f),
 )
@@ -228,6 +241,7 @@ private val CHIP_AT: Map<Int, Pair<Float, Float>> = mapOf(
 fun WipiPadMappingDialog(
     gameId: Long,
     padConnected: String?,
+    padVendor: Int?,
     lastPadMask: () -> Int,
     onPadKey: (android.view.KeyEvent) -> Boolean,
     onPadMotion: (android.view.MotionEvent) -> Boolean,
@@ -238,7 +252,7 @@ fun WipiPadMappingDialog(
     var loaded by remember { mutableStateOf(false) }
     var mapping by remember { mutableStateOf(WipiPadMapping.DEFAULT) }
     var perGame by remember { mutableStateOf(false) }
-    var style by remember { mutableStateOf(PadStyle.RETRO) }
+    var style by remember { mutableStateOf(styleFor(padVendor)) }
     var picking by remember { mutableStateOf<Int?>(null) }
     var lit by remember { mutableStateOf(0) }
 
@@ -270,14 +284,23 @@ fun WipiPadMappingDialog(
             Text(stringResource(R.string.wipi_map_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
             Text(
-                if (padConnected != null) stringResource(R.string.wipi_map_connected, padConnected) else stringResource(R.string.wipi_map_none),
+                if (padConnected != null) {
+                    val mode = when (styleFor(padVendor)) {
+                        PadStyle.NINTENDO -> stringResource(R.string.wipi_map_mode_nintendo)
+                        PadStyle.PS -> stringResource(R.string.wipi_map_mode_ps)
+                        PadStyle.XBOX -> stringResource(R.string.wipi_map_mode_xbox)
+                    }
+                    stringResource(R.string.wipi_map_connected_mode, padConnected, mode)
+                } else {
+                    stringResource(R.string.wipi_map_none)
+                },
                 fontSize = 13.sp,
                 color = OneEmuColors.OnSurfaceMuted,
             )
             Spacer(Modifier.height(12.dp))
             ChoiceRow(
                 listOf(
-                    PadStyle.RETRO to stringResource(R.string.wipi_map_style_retro),
+                    PadStyle.NINTENDO to stringResource(R.string.wipi_map_style_nintendo),
                     PadStyle.XBOX to stringResource(R.string.wipi_map_style_xbox),
                     PadStyle.PS to stringResource(R.string.wipi_map_style_ps),
                 ),
