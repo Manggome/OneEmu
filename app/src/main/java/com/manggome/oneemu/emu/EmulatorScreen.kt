@@ -166,7 +166,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                 com.manggome.oneemu.emu.phone.PhoneScreen(
                     state = wipiState,
                     landscape = config.landscape,
-                    keypadVisible = wipiState.showKeypad && !hidePad,
+                    keypadVisible = wipiState.showKeypad && !hidePad && !(wipiState.hideWithPad && ui.gamepadConnected),
                     fastForward = ui.fastForward,
                     gameAspect = if (geometry.height > 0) geometry.width.toFloat() / geometry.height else 0.75f,
                     onBits = { bits -> host.onPadInput(com.manggome.oneemu.emu.pad.PadInput(phone = bits)) },
@@ -298,6 +298,8 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     gameId = session.game.id,
                     padConnected = com.manggome.oneemu.emu.input.GamepadDevices.connected().firstOrNull()?.name,
                     lastPadMask = { host.lastPadMask },
+                    onPadKey = host::forwardPadKey,
+                    onPadMotion = host::forwardPadMotion,
                     onDismiss = { sheet = Sheet.NONE },
                 )
                 Sheet.NONE -> {}

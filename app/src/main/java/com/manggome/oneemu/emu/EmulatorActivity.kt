@@ -466,6 +466,12 @@ class EmulatorActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    /** For dialogs (own windows) that show what the pad presses: feeds the pad handler as if the event came here. */
+    fun forwardPadKey(event: KeyEvent): Boolean =
+        event.keyCode != KeyEvent.KEYCODE_BACK && GamepadInput.isControllerEvent(event) && gamepad.onKeyEvent(event)
+
+    fun forwardPadMotion(event: MotionEvent): Boolean = gamepad.onMotionEvent(event)
+
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (gamepad.onMotionEvent(event)) return true
         return super.dispatchGenericMotionEvent(event)

@@ -73,7 +73,13 @@ fun layoutPhone(
     }
 
     if (!keypadVisible) {
-        val game = shrink(Rect(0f, 0f, w, h), topAnchored = !landscape)
+        val game = if (state.stretch) {
+            val nw = w * ss
+            val nh = h * ss
+            Rect((w - nw) / 2f, (h - nh) / 2f, (w + nw) / 2f, (h + nh) / 2f)
+        } else {
+            shrink(Rect(0f, 0f, w, h), topAnchored = !landscape)
+        }
         return PhoneLayout(game, emptyList(), Offset(margin, margin), Offset(w - margin - 40f * dp, margin), overlay = false)
     }
 

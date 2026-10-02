@@ -25,6 +25,8 @@ object WipiPrefs {
     val OVERLAY_OPACITY = floatPreferencesKey("wipi.overlay_opacity")
     val SHOW_KEYPAD = booleanPreferencesKey("wipi.show_keypad")
     val FOLD_DPAD = booleanPreferencesKey("wipi.fold_dpad")
+    val HIDE_WITH_PAD = booleanPreferencesKey("wipi.hide_keypad_with_pad")
+    val STRETCH = booleanPreferencesKey("wipi.stretch_without_keypad")
 
     const val KEYPAD_SCALE_MIN = 0.6f
     const val KEYPAD_SCALE_MAX = 1.0f
@@ -39,11 +41,21 @@ object WipiPrefs {
         val overlayOpacity: Float = 0.45f,
         val showKeypad: Boolean = true,
         val foldDpad: Boolean = false,
+        /** No handset keys while a gamepad is connected: the picture gets the whole screen. */
+        val hideWithPad: Boolean = true,
+        /** Without the keypad, stretch the picture over the screen instead of keeping the game's shape. */
+        val stretch: Boolean = false,
     ) {
         fun arrangement(landscapeNow: Boolean): Arrangement = if (landscapeNow) landscape else portrait
     }
 
     fun observe(settings: Settings): Flow<State> = combine(
+        observeKeypad(settings),
+        settings.observe(HIDE_WITH_PAD, true),
+        settings.observe(STRETCH, false),
+    ) { s, hide, stretch -> s.copy(hideWithPad = hide, stretch = stretch) }
+
+    private fun observeKeypad(settings: Settings): Flow<State> = combine(
         combine(
             settings.observe(DESIGN, Design.CLASSIC.name),
             settings.observe(ARRANGEMENT_PORTRAIT, Arrangement.PHONE.name),

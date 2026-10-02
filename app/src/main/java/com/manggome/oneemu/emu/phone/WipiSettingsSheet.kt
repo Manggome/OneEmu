@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -48,6 +49,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.emu.EmulatorSession.Buttons
@@ -93,7 +96,14 @@ private fun SectionTitle(text: String) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WipiSettingsSheet(gameId: Long, padConnected: String?, lastPadMask: () -> Int, onDismiss: () -> Unit) {
+fun WipiSettingsSheet(
+    gameId: Long,
+    padConnected: String?,
+    lastPadMask: () -> Int,
+    onPadKey: (android.view.KeyEvent) -> Boolean,
+    onPadMotion: (android.view.MotionEvent) -> Boolean,
+    onDismiss: () -> Unit,
+) {
     val settings = remember { OneEmuApp.get().settings }
     val scope = rememberCoroutineScope()
     val state by remember { WipiPrefs.observe(settings) }.collectAsState(WipiPrefs.State())
@@ -147,6 +157,14 @@ fun WipiSettingsSheet(gameId: Long, padConnected: String?, lastPadMask: () -> In
             SwitchRow(stringResource(R.string.wipi_settings_show_keypad), stringResource(R.string.wipi_settings_show_keypad_desc), state.showKeypad) { v ->
                 scope.launch { settings.set(WipiPrefs.SHOW_KEYPAD, v) }
             }
+            SwitchRow(stringResource(R.string.wipi_settings_hide_with_pad), stringResource(R.string.wipi_settings_hide_with_pad_desc), state.hideWithPad) { v ->
+                scope.launch { settings.set(WipiPrefs.HIDE_WITH_PAD, v) }
+            }
+            SectionTitle(stringResource(R.string.wipi_settings_fill))
+            ChoiceRow(
+                listOf(false to stringResource(R.string.wipi_fill_fit), true to stringResource(R.string.wipi_fill_stretch)),
+                state.stretch,
+            ) { v -> scope.launch { settings.set(WipiPrefs.STRETCH, v) } }
 
             Spacer(Modifier.height(16.dp))
             OutlinedButton(onClick = { mappingOpen = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
@@ -155,7 +173,7 @@ fun WipiSettingsSheet(gameId: Long, padConnected: String?, lastPadMask: () -> In
         }
     }
 
-    if (mappingOpen) WipiPadMappingDialog(gameId, padConnected, lastPadMask, onDismiss = { mappingOpen = false })
+    if (mappingOpen) WipiPadMappingDialog(gameId, padConnected, lastPadMask, onPadKey, onPadMotion, onDismiss = { mappingOpen = false })
 }
 
 @Composable
@@ -207,7 +225,14 @@ private val CHIP_AT: Map<Int, Pair<Float, Float>> = mapOf(
  * all games, or this game's own when "이 게임만 따로 설정" is on.
  */
 @Composable
-fun WipiPadMappingDialog(gameId: Long, padConnected: String?, lastPadMask: () -> Int, onDismiss: () -> Unit) {
+fun WipiPadMappingDialog(
+    gameId: Long,
+    padConnected: String?,
+    lastPadMask: () -> Int,
+    onPadKey: (android.view.KeyEvent) -> Boolean,
+    onPadMotion: (android.view.MotionEvent) -> Boolean,
+    onDismiss: () -> Unit,
+) {
     val settings = remember { OneEmuApp.get().settings }
     val scope = rememberCoroutineScope()
     var loaded by remember { mutableStateOf(false) }
@@ -233,6 +258,7 @@ fun WipiPadMappingDialog(gameId: Long, padConnected: String?, lastPadMask: () ->
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        ForwardPadInput(onPadKey, onPadMotion)
         Column(
             Modifier
                 .padding(16.dp)
@@ -294,6 +320,16 @@ fun WipiPadMappingDialog(gameId: Long, padConnected: String?, lastPadMask: () ->
             }
 
             Spacer(Modifier.height(8.dp))
+            val pressed = PRESS_NAMES.filter { (bit, _) -> lit and bit != 0 }.joinToString(" + ") { (bit, _) -> padLabel(bit, style) }
+            Text(
+                if (pressed.isEmpty()) stringResource(R.string.wipi_map_press_none) else stringResource(R.string.wipi_map_pressed, pressed),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (pressed.isEmpty()) OneEmuColors.OnSurfaceMuted else OneEmuColors.Accent,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(4.dp))
             Text(stringResource(R.string.wipi_map_hint), fontSize = 12.sp, color = OneEmuColors.OnSurfaceMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth().padding(top = 12.dp).clickable { perGame = !perGame }, verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.wipi_map_per_game), fontSize = 15.sp, modifier = Modifier.weight(1f))
@@ -350,5 +386,35 @@ fun WipiPadMappingDialog(gameId: Long, padConnected: String?, lastPadMask: () ->
             },
             confirmButton = { TextButton(onClick = { picking = null }) { Text(stringResource(R.string.cancel)) } },
         )
+    }
+}
+
+/** Pad buttons in the order the "pressed" line lists them. */
+private val PRESS_NAMES: List<Pair<Int, String>> = listOf(
+    Buttons.UP to "UP", Buttons.DOWN to "DOWN", Buttons.LEFT to "LEFT", Buttons.RIGHT to "RIGHT",
+    Buttons.A to "A", Buttons.B to "B", Buttons.X to "X", Buttons.Y to "Y",
+    Buttons.L to "L", Buttons.R to "R", Buttons.L2 to "L2", Buttons.R2 to "R2",
+    Buttons.L3 to "L3", Buttons.R3 to "R3", Buttons.START to "START", Buttons.SELECT to "SELECT",
+)
+
+/**
+ * A Dialog is its own window: the pad's key and stick events go to it, not to the emulator activity. This hands
+ * them to the activity's pad handler so the dialog can show what is pressed.
+ */
+@Composable
+private fun ForwardPadInput(onKey: (android.view.KeyEvent) -> Boolean, onMotion: (android.view.MotionEvent) -> Boolean) {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.parent as? DialogWindowProvider)?.window
+        val original = window?.callback
+        if (window != null && original != null) {
+            window.callback = object : android.view.Window.Callback by original {
+                override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean = onKey(event) || original.dispatchKeyEvent(event)
+
+                override fun dispatchGenericMotionEvent(event: android.view.MotionEvent): Boolean =
+                    onMotion(event) || original.dispatchGenericMotionEvent(event)
+            }
+        }
+        onDispose { if (window != null && original != null) window.callback = original }
     }
 }
