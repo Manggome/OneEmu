@@ -1,0 +1,1855 @@
+diff --git a/wie-core-arm/src/core.rs b/wie-core-arm/src/core.rs
+index ea0aa8c3..2054736b 100644
+--- a/wie-core-arm/src/core.rs
++++ b/wie-core-arm/src/core.rs
+@@ -67,6 +67,8 @@ pub(crate) struct ArmCoreInner {
+     last_thread_id: ThreadId,
+     svc_handlers: BTreeMap<u32, Arc<Box<dyn RegisteredFunction>>>,
+     next_stub_address: u32,
++    /// Stub address per (category, id). A stub only encodes those two, so equal requests share one.
++    svc_stubs: BTreeMap<(u32, u32), u32>,
+     profile: Option<ProfileState>,
+ }
+ 
+@@ -124,6 +126,7 @@ impl ArmCore {
+             last_thread_id: 0,
+             svc_handlers: BTreeMap::new(),
+             next_stub_address: FUNCTIONS_BASE,
++            svc_stubs: BTreeMap::new(),
+             profile,
+         };
+ 
+@@ -393,6 +396,9 @@ impl ArmCore {
+         if !inner.svc_handlers.contains_key(&category) {
+             return Err(WieError::FatalError(format!("Unknown SVC handler category: {category}")));
+         }
++        if let Some(address) = inner.svc_stubs.get(&(category, id)) {
++            return Ok(*address);
++        }
+ 
+         let address = inner.next_stub_address;
+         if address + SVC_STUB_SIZE > FUNCTIONS_BASE + FUNCTIONS_SIZE as u32 {
+@@ -420,6 +426,7 @@ impl ArmCore {
+         inner.engine.mem_write(address, &stub)?;
+ 
+         tracing::trace!("Register SVC stub at {address:#x}, category={category}, id={id}");
++        inner.svc_stubs.insert((category, id), address + 1);
+ 
+         Ok(address + 1)
+     }
+diff --git a/wie-ktf/src/runtime/java/interface.rs b/wie-ktf/src/runtime/java/interface.rs
+index ce27e27c..5c87bd5e 100644
+--- a/wie-ktf/src/runtime/java/interface.rs
++++ b/wie-ktf/src/runtime/java/interface.rs
+@@ -11,12 +11,12 @@ use jvm::{ClassInstanceRef, Jvm, runtime::JavaLangString};
+ use rustjava_runtime::classes::java::util::Vector;
+ use wipi_types::ktf::{InitParam2, java::WIPIJBInterface};
+ 
+-use wie_core_arm::{Allocator, ArmCore, EmulatedFunction, ResultWriter, SvcId};
++use wie_core_arm::{Allocator, ArmCore, EmulatedFunction, ResultWriter, RunFunctionResult, SvcId};
+ use wie_jvm_support::JvmSupport;
+ use wie_util::{ByteRead, Result, WieError, read_generic, read_null_terminated_string_bytes, write_generic};
+ 
+ use crate::runtime::java::jvm_support::{
+-    JavaClassDefinition, JavaClassInstance, JavaMethod, JavaMethodResult, JavaVtable, KtfJvmSupport, KtfJvmWord,
++    JavaClassDefinition, JavaClassInstance, JavaMethod, JavaMethodResult, JavaVtable, KtfJvmSupport, KtfJvmThreadContext, KtfJvmWord,
+ };
+ use crate::runtime::{SVC_CATEGORY_JAVA_INTERFACE, svc_ids::JavaSvcId};
+ 
+@@ -310,9 +310,16 @@ async fn call_native(core: &mut ArmCore, _: &mut (), address: u32, ptr_data: u32
+         return Err(WieError::FatalError("jump native address is null".to_string()));
+     }
+ 
++    let ptr_thread_context = KtfJvmSupport::current_thread_context(core)?;
++    write_generic(
++        core,
++        ptr_thread_context + offset_of!(KtfJvmThreadContext, native_result_type) as u32,
++        0u32,
++    )?;
++
+     // TODO correctly figure out parameter
+     let caller_sp = core.save_context().sp;
+-    let result = match core.run_function::<u32>(address, &[ptr_data, ptr_data]).await {
++    let result = match core.run_function::<WideResult>(address, &[ptr_data, ptr_data]).await {
+         Ok(result) => result,
+         Err(WieError::JavaExceptionUnwind {
+             context_base,
+@@ -322,12 +329,38 @@ async fn call_native(core: &mut ArmCore, _: &mut (), address: u32, ptr_data: u32
+         Err(err) => return Err(err),
+     };
+ 
+-    write_generic(core, ptr_data, result)?;
+-    write_generic(core, ptr_data + 4, 0u32)?;
++    // Compiled natives return their value through the thread context (a nonzero type, then the value),
++    // leaving r0 unspecified; host methods return it in r0:r1. 던전앤파이터 격투가편's frame loop sleeps
++    // for the value its update method stores there (the old r0 read made that an 11-second sleep).
++    let context: KtfJvmThreadContext = read_generic(core, ptr_thread_context)?;
++    let (low, high) = if context.native_result_type != 0 {
++        (context.native_result[0], context.native_result[1])
++    } else {
++        (result.low, result.high)
++    };
++
++    // The caller reads the result back from the buffer: one word, or both for a long/double.
++    write_generic(core, ptr_data, low)?;
++    write_generic(core, ptr_data + 4, high)?;
+ 
+     Ok(JavaMethodResult::new(vec![ptr_data], None))
+ }
+ 
++/// A function's r0:r1 result, the register pair of a 64-bit return value.
++struct WideResult {
++    low: u32,
++    high: u32,
++}
++
++impl RunFunctionResult<WideResult> for WideResult {
++    fn get(core: &ArmCore) -> Self {
++        Self {
++            low: core.read_param(0).unwrap(),
++            high: core.read_param(1).unwrap(),
++        }
++    }
++}
++
+ async fn java_jump_2(core: &mut ArmCore, _: &mut (), arg1: u32, arg2: u32, address: u32) -> Result<JavaMethodResult> {
+     tracing::trace!("java_jump_2({arg1:#x}, {arg2:#x}, {address:#x})");
+ 
+diff --git a/wie-ktf/src/runtime/java/jvm_support.rs b/wie-ktf/src/runtime/java/jvm_support.rs
+index 7c467389..11f00d59 100644
+--- a/wie-ktf/src/runtime/java/jvm_support.rs
++++ b/wie-ktf/src/runtime/java/jvm_support.rs
+@@ -50,6 +50,9 @@ pub type KtfJvmWord = u32;
+ pub struct KtfJvmThreadContext {
+     unk: [u32; 8],
+     current_java_exception_handler: u32,
++    /// Set by a compiled native method that returns a value (2 for an int), with the value after it.
++    pub native_result_type: u32,
++    pub native_result: [u32; 2],
+ }
+ 
+ #[repr(C)]
+diff --git a/wie-ktf/src/runtime/wipi_c/method_table.rs b/wie-ktf/src/runtime/wipi_c/method_table.rs
+index 8f596120..bedbc5c5 100644
+--- a/wie-ktf/src/runtime/wipi_c/method_table.rs
++++ b/wie-ktf/src/runtime/wipi_c/method_table.rs
+@@ -9,7 +9,7 @@ use wie_core_arm::ArmCore;
+ use wie_util::{Result, WieError};
+ use wie_wipi_c::{
+     MethodImpl, WIPICContext, WIPICMethodBody,
+-    api::{database, graphics, im, kernel, media, misc, net, uic, util},
++    api::{database, graphics, im, kernel, media, misc, net, record_database, uic, util},
+ };
+ 
+ use crate::runtime::{
+@@ -493,13 +493,21 @@ pub fn get_method_body(table_id: WIPICTableId, function_id: u16) -> Option<WIPIC
+             WIPICGraphicsMethodId::GetImageInfo => Some(gen_stub(59, "OEMC_grpGetImageInfo")),
+         },
+         WIPICTableId::Interface3 => get_unk3_method_table().into_iter().nth(function_id as usize),
+-        WIPICTableId::Interface4 => {
+-            if function_id < 64 {
+-                Some(gen_stub(4, "stub"))
+-            } else {
+-                None
+-            }
+-        }
++        // The record database (`MC_db*`), in the WIPI-C order. Slots 0, 1, 3, 4, 5 and 8 are confirmed by
++        // 겟앰프드's call shapes; the others stay named stubs until a game shows how it calls them.
++        WIPICTableId::Interface4 => match function_id {
++            0 => Some(record_database::open_record_database.into_body()),
++            1 => Some(record_database::close_record_database.into_body()),
++            2 => Some(gen_stub(2, "MC_dbDeleteDataBase")),
++            3 => Some(record_database::insert_record.into_body()),
++            4 => Some(record_database::select_record.into_body()),
++            5 => Some(record_database::update_record.into_body()),
++            6 => Some(gen_stub(6, "MC_dbDeleteRecord")),
++            7 => Some(gen_stub(7, "MC_dbListRecords")),
++            8 => Some(record_database::list_filtered_records.into_body()),
++            9..64 => Some(gen_stub(4, "stub")),
++            _ => None,
++        },
+         WIPICTableId::Interface5 => {
+             if function_id < 64 {
+                 Some(gen_stub(5, "stub"))
+diff --git a/wie-lgt/src/emulator.rs b/wie-lgt/src/emulator.rs
+index cc5b2892..7dfe7099 100644
+--- a/wie-lgt/src/emulator.rs
++++ b/wie-lgt/src/emulator.rs
+@@ -1,4 +1,4 @@
+-use core::pin::Pin;
++use core::{pin::Pin, task::Poll};
+ 
+ use alloc::{
+     borrow::ToOwned,
+@@ -20,7 +20,7 @@ use wie_core_arm::{Allocator, ArmCore};
+ use wie_jvm_support::JvmSupport;
+ use wie_util::{Result, WieError};
+ 
+-use crate::runtime::{LgtJvmSupport, init::load_native};
++use crate::runtime::{LgtJvmSupport, init::load_native, java_exception};
+ 
+ struct LgtTaskRunner {
+     core: ArmCore,
+@@ -28,8 +28,28 @@ struct LgtTaskRunner {
+ 
+ #[async_trait::async_trait]
+ impl TaskRunner for LgtTaskRunner {
+-    async fn run(&self, future: Pin<Box<dyn Future<Output = Result<()>> + Send>>) -> Result<()> {
+-        self.core.run_in_thread(async move || future.await)?.await
++    async fn run(&self, mut future: Pin<Box<dyn Future<Output = Result<()>> + Send>>) -> Result<()> {
++        let mut core = self.core.clone();
++        let ptr_thread_context = java_exception::new_thread_context(&mut core)?;
++
++        let mut poll_core = self.core.clone();
++        let result = self
++            .core
++            .run_in_thread(move || {
++                core::future::poll_fn(move |context| {
++                    // Java exception-handler frames belong to the thread that pushed them.
++                    if let Err(error) = java_exception::set_current_thread_context(&mut poll_core, ptr_thread_context) {
++                        return Poll::Ready(Err(error));
++                    }
++
++                    future.as_mut().poll(context)
++                })
++            })?
++            .await;
++
++        java_exception::free_thread_context(&mut core, ptr_thread_context)?;
++
++        result
+     }
+ }
+ 
+diff --git a/wie-lgt/src/runtime.rs b/wie-lgt/src/runtime.rs
+index dd5958fd..6546bf5f 100644
+--- a/wie-lgt/src/runtime.rs
++++ b/wie-lgt/src/runtime.rs
+@@ -11,4 +11,5 @@ const SVC_CATEGORY_JAVA: u32 = 4;
+ const SVC_CATEGORY_STDLIB: u32 = 5;
+ const SVC_CATEGORY_MISSING_JAVA_VTABLE_ENTRY: u32 = 6;
+ 
++pub(crate) use java::exception as java_exception;
+ pub use java::LgtJvmSupport;
+diff --git a/wie-lgt/src/runtime/java.rs b/wie-lgt/src/runtime/java.rs
+index 5f436600..0fe4563d 100644
+--- a/wie-lgt/src/runtime/java.rs
++++ b/wie-lgt/src/runtime/java.rs
+@@ -13,7 +13,7 @@ use crate::runtime::{SVC_CATEGORY_JAVA, SVC_CATEGORY_MISSING_JAVA_VTABLE_ENTRY};
+ 
+ mod abi;
+ pub mod classes;
+-mod exception;
++pub(crate) mod exception;
+ mod interface;
+ mod jvm_support;
+ 
+diff --git a/wie-lgt/src/runtime/java/classes/net/wie/lgt_class_loader.rs b/wie-lgt/src/runtime/java/classes/net/wie/lgt_class_loader.rs
+index d314afda..5b8de750 100644
+--- a/wie-lgt/src/runtime/java/classes/net/wie/lgt_class_loader.rs
++++ b/wie-lgt/src/runtime/java/classes/net/wie/lgt_class_loader.rs
+@@ -2,6 +2,7 @@ use alloc::{
+     boxed::Box,
+     string::{String as RustString, ToString},
+     vec,
++    vec::Vec,
+ };
+ use core::mem::size_of;
+ 
+@@ -17,7 +18,7 @@ use wipi_types::lgt::java::{LgtJavaClass as RawJavaClass, LgtJavaClassDescriptor
+ use wie_core_arm::ArmCore;
+ use wie_util::{Result, read_generic, read_null_terminated_string_bytes};
+ 
+-use crate::runtime::java::jvm_support::LgtJvmSupport;
++use crate::runtime::java::{abi::JAVA_ABI, jvm_support::LgtJvmSupport};
+ 
+ type ClassLoaderProto = JavaClassProto<ArmCore>;
+ 
+@@ -41,6 +42,7 @@ impl LgtClassLoader {
+             ],
+             fields: vec![
+                 JavaFieldProto::new("generatedClasses", "I", FieldAccessFlags::PRIVATE),
++                JavaFieldProto::new("nextAppendedVirtualMethodIndex", "I", FieldAccessFlags::PRIVATE),
+                 JavaFieldProto::new("nativeStrings", "Ljava/util/Vector;", FieldAccessFlags::PRIVATE),
+                 JavaFieldProto::new(
+                     "instance",
+@@ -54,7 +56,7 @@ impl LgtClassLoader {
+ 
+     async fn init(
+         jvm: &Jvm,
+-        _: &mut ArmCore,
++        core: &mut ArmCore,
+         mut this: ClassInstanceRef<Self>,
+         parent: ClassInstanceRef<ClassLoader>,
+         generated_classes: i32,
+@@ -64,6 +66,18 @@ impl LgtClassLoader {
+             .await?;
+         jvm.put_field(&mut this, "net/wie/LgtClassLoader", "generatedClasses", "I", generated_classes)
+             .await?;
++        let first_appended_index = match Self::first_appended_vtable_index(core, generated_classes as u32) {
++            Ok(index) => index,
++            Err(error) => return Err(jvm.exception("net/wie/WieError", &error.to_string()).await),
++        };
++        jvm.put_field(
++            &mut this,
++            "net/wie/LgtClassLoader",
++            "nextAppendedVirtualMethodIndex",
++            "I",
++            first_appended_index as i32,
++        )
++        .await?;
+         let native_strings: ClassInstanceRef<Vector> = jvm.new_class("java/util/Vector", "()V", ()).await?.into();
+         jvm.put_field(&mut this, "net/wie/LgtClassLoader", "nativeStrings", "Ljava/util/Vector;", native_strings)
+             .await?;
+@@ -71,24 +85,74 @@ impl LgtClassLoader {
+             .await
+     }
+ 
+-    fn find_raw_class(core: &ArmCore, generated_classes: u32, name: &str) -> Result<Option<u32>> {
++    /// Every generated class record with its descriptor, in bucket order.
++    fn generated_classes(core: &ArmCore, generated_classes: u32) -> Result<Vec<(u32, RawJavaClassDescriptor)>> {
++        let mut classes = Vec::new();
+         let last_bucket: u32 = read_generic(core, generated_classes)?;
+         for bucket in 0..=last_bucket {
+             let mut ptr_class: u32 = read_generic(core, generated_classes + size_of::<u32>() as u32 + bucket * size_of::<u32>() as u32)?;
+             while ptr_class != 0 {
+                 let raw: RawJavaClass = read_generic(core, ptr_class)?;
+                 let descriptor: RawJavaClassDescriptor = read_generic(core, raw.ptr_descriptor)?;
+-                let class_name = RustString::from_utf8(read_null_terminated_string_bytes(core, descriptor.ptr_name)?)
+-                    .map_err(|error| wie_util::WieError::FatalError(alloc::format!("Invalid LGT class name: {error}")))?;
+-                if class_name == name {
+-                    return Ok(Some(ptr_class));
+-                }
+-                ptr_class = descriptor.ptr_next_class;
++                let ptr_next_class = descriptor.ptr_next_class;
++                classes.push((ptr_class, descriptor));
++                ptr_class = ptr_next_class;
++            }
++        }
++        Ok(classes)
++    }
++
++    fn find_raw_class(core: &ArmCore, generated_classes: u32, name: &str) -> Result<Option<u32>> {
++        for (ptr_class, descriptor) in Self::generated_classes(core, generated_classes)? {
++            let class_name = RustString::from_utf8(read_null_terminated_string_bytes(core, descriptor.ptr_name)?)
++                .map_err(|error| wie_util::WieError::FatalError(alloc::format!("Invalid LGT class name: {error}")))?;
++            if class_name == name {
++                return Ok(Some(ptr_class));
+             }
+         }
+         Ok(None)
+     }
+ 
++    /// The first virtual-table index past every compiler-generated table and every fixed ABI slot.
++    fn first_appended_vtable_index(core: &ArmCore, generated_classes: u32) -> Result<usize> {
++        let compiler_entries = Self::generated_classes(core, generated_classes)?
++            .into_iter()
++            .map(|(_, descriptor)| descriptor.vtable_count as usize)
++            .max()
++            .unwrap_or(0);
++        let abi_entries = JAVA_ABI
++            .class
++            .iter()
++            .flat_map(|class| class.vtable.iter().map(|entry| entry.index + 1).chain(class.vtable_size))
++            .max()
++            .unwrap_or(0);
++        Ok(compiler_entries.max(abi_entries))
++    }
++
++    /// Hands out a virtual-table index for a method appended at link time (see
++    /// `LgtJvmSupport::virtual_method_index`): at least `minimum`, and above every index handed out before.
++    pub async fn take_appended_vtable_index(jvm: &Jvm, minimum: usize) -> JvmResult<usize> {
++        let mut loader: ClassInstanceRef<Self> = jvm
++            .get_static_field("net/wie/LgtClassLoader", "instance", "Lnet/wie/LgtClassLoader;")
++            .await?;
++        if loader.is_null() {
++            return Err(jvm.exception("net/wie/WieError", "LGT Java runtime context not created").await);
++        }
++        let next: i32 = jvm
++            .get_field(&loader, "net/wie/LgtClassLoader", "nextAppendedVirtualMethodIndex", "I")
++            .await?;
++        let index = (next as usize).max(minimum);
++        jvm.put_field(
++            &mut loader,
++            "net/wie/LgtClassLoader",
++            "nextAppendedVirtualMethodIndex",
++            "I",
++            (index + 1) as i32,
++        )
++        .await?;
++        Ok(index)
++    }
++
+     async fn find_class(
+         jvm: &Jvm,
+         core: &mut ArmCore,
+diff --git a/wie-lgt/src/runtime/java/exception.rs b/wie-lgt/src/runtime/java/exception.rs
+index 496ced0c..044c7509 100644
+--- a/wie-lgt/src/runtime/java/exception.rs
++++ b/wie-lgt/src/runtime/java/exception.rs
+@@ -1,4 +1,4 @@
+-use core::mem::size_of;
++use core::mem::{offset_of, size_of};
+ 
+ use bytemuck::{Pod, Zeroable};
+ 
+@@ -8,23 +8,85 @@ use wie_util::{Result, read_generic, write_generic};
+ const SUPPORT_CONTEXT_BASE: u32 = 0x7fff0000;
+ const FRAME_WORDS: u32 = 18;
+ 
+-// Fixed guest-memory context shared by the LGT Java SVC handlers.
++// Fixed guest-memory context shared by the LGT Java SVC handlers. It points at the running thread's
++// context: each thread has its own chain of exception-handler frames, and threads switch at any
++// yield, also between a push and its pop.
+ #[repr(C)]
+ #[derive(Clone, Copy, Pod, Zeroable)]
+ struct JavaSupportContext {
++    ptr_current_thread_context: u32,
++}
++
++#[repr(C)]
++#[derive(Clone, Copy, Pod, Zeroable)]
++struct JavaThreadContext {
+     ptr_current_exception_frame: u32,
+     ptr_pending_exception: u32,
+ }
+ 
++/// Gives code running outside a task that set up its own context (see `LgtTaskRunner`) one to use.
+ pub fn init(core: &mut ArmCore) -> Result<()> {
+-    write_generic(core, SUPPORT_CONTEXT_BASE, JavaSupportContext::zeroed())
++    if current_thread_context(core)? != 0 {
++        return Ok(());
++    }
++    let ptr_thread_context = new_thread_context(core)?;
++    set_current_thread_context(core, ptr_thread_context)
++}
++
++pub fn new_thread_context(core: &mut ArmCore) -> Result<u32> {
++    let ptr_thread_context = Allocator::alloc(core, size_of::<JavaThreadContext>() as u32)?;
++    write_generic(core, ptr_thread_context, JavaThreadContext::zeroed())?;
++    Ok(ptr_thread_context)
++}
++
++pub fn free_thread_context(core: &mut ArmCore, ptr_thread_context: u32) -> Result<()> {
++    Allocator::free(core, ptr_thread_context, size_of::<JavaThreadContext>() as u32)
++}
++
++pub fn set_current_thread_context(core: &mut ArmCore, ptr_thread_context: u32) -> Result<()> {
++    write_generic(
++        core,
++        SUPPORT_CONTEXT_BASE + offset_of!(JavaSupportContext, ptr_current_thread_context) as u32,
++        ptr_thread_context,
++    )
++}
++
++fn current_thread_context(core: &ArmCore) -> Result<u32> {
++    let support_context: JavaSupportContext = read_generic(core, SUPPORT_CONTEXT_BASE)?;
++    Ok(support_context.ptr_current_thread_context)
++}
++
++/// Starts a call from the platform into guest code. Guest code must not unwind past it into a handler
++/// its caller pushed: that caller is suspended in host code, so the exception has to come back through
++/// the call instead. Hands back the caller's chain for [`leave_guest_call`].
++pub fn enter_guest_call(core: &mut ArmCore) -> Result<(u32, u32)> {
++    let ptr_thread_context = current_thread_context(core)?;
++    let thread_context: JavaThreadContext = read_generic(core, ptr_thread_context)?;
++    write_generic(core, ptr_thread_context, JavaThreadContext::zeroed())?;
++    Ok((thread_context.ptr_current_exception_frame, thread_context.ptr_pending_exception))
++}
++
++/// Ends a call started with [`enter_guest_call`], dropping frames the call left behind when an
++/// exception propagated out of it.
++pub fn leave_guest_call(core: &mut ArmCore, (ptr_exception_frame, ptr_pending_exception): (u32, u32)) -> Result<()> {
++    let ptr_thread_context = current_thread_context(core)?;
++    let mut thread_context: JavaThreadContext = read_generic(core, ptr_thread_context)?;
++    while thread_context.ptr_current_exception_frame != 0 {
++        let ptr_frame = thread_context.ptr_current_exception_frame;
++        thread_context.ptr_current_exception_frame = read_generic(core, ptr_frame)?;
++        Allocator::free(core, ptr_frame, FRAME_WORDS * size_of::<u32>() as u32)?;
++    }
++    thread_context.ptr_current_exception_frame = ptr_exception_frame;
++    thread_context.ptr_pending_exception = ptr_pending_exception;
++    write_generic(core, ptr_thread_context, thread_context)
+ }
+ 
+ pub fn push(core: &mut ArmCore) -> Result<()> {
+     let context = core.save_context();
+-    let mut support_context: JavaSupportContext = read_generic(core, SUPPORT_CONTEXT_BASE)?;
++    let ptr_thread_context = current_thread_context(core)?;
++    let mut thread_context: JavaThreadContext = read_generic(core, ptr_thread_context)?;
+     let frame = [
+-        support_context.ptr_current_exception_frame,
++        thread_context.ptr_current_exception_frame,
+         context.r0,
+         context.r1,
+         context.r2,
+@@ -45,24 +107,25 @@ pub fn push(core: &mut ArmCore) -> Result<()> {
+     ];
+     let ptr_frame = Allocator::alloc(core, FRAME_WORDS * size_of::<u32>() as u32)?;
+     write_generic(core, ptr_frame, frame)?;
+-    support_context.ptr_current_exception_frame = ptr_frame;
+-    support_context.ptr_pending_exception = 0;
+-    write_generic(core, SUPPORT_CONTEXT_BASE, support_context)
++    thread_context.ptr_current_exception_frame = ptr_frame;
++    thread_context.ptr_pending_exception = 0;
++    write_generic(core, ptr_thread_context, thread_context)
+ }
+ 
+ pub fn pop(core: &mut ArmCore) -> Result<()> {
+-    let mut support_context: JavaSupportContext = read_generic(core, SUPPORT_CONTEXT_BASE)?;
+-    let frame: [u32; FRAME_WORDS as usize] = read_generic(core, support_context.ptr_current_exception_frame)?;
+-    let ptr_frame = support_context.ptr_current_exception_frame;
+-    support_context.ptr_current_exception_frame = frame[0];
+-    support_context.ptr_pending_exception = 0;
+-    write_generic(core, SUPPORT_CONTEXT_BASE, support_context)?;
++    let ptr_thread_context = current_thread_context(core)?;
++    let mut thread_context: JavaThreadContext = read_generic(core, ptr_thread_context)?;
++    let frame: [u32; FRAME_WORDS as usize] = read_generic(core, thread_context.ptr_current_exception_frame)?;
++    let ptr_frame = thread_context.ptr_current_exception_frame;
++    thread_context.ptr_current_exception_frame = frame[0];
++    thread_context.ptr_pending_exception = 0;
++    write_generic(core, ptr_thread_context, thread_context)?;
+     Allocator::free(core, ptr_frame, FRAME_WORDS * size_of::<u32>() as u32)
+ }
+ 
+ pub fn pending(core: &ArmCore) -> Result<u32> {
+-    let support_context: JavaSupportContext = read_generic(core, SUPPORT_CONTEXT_BASE)?;
+-    Ok(support_context.ptr_pending_exception)
++    let thread_context: JavaThreadContext = read_generic(core, current_thread_context(core)?)?;
++    Ok(thread_context.ptr_pending_exception)
+ }
+ 
+ pub fn unwind(core: &mut ArmCore, ptr_exception: u32) -> Result<Option<u32>> {
+@@ -71,15 +134,16 @@ pub fn unwind(core: &mut ArmCore, ptr_exception: u32) -> Result<Option<u32>> {
+         return Ok(None);
+     }
+ 
+-    let mut support_context: JavaSupportContext = read_generic(core, SUPPORT_CONTEXT_BASE)?;
+-    if support_context.ptr_current_exception_frame == 0 {
++    let ptr_thread_context = current_thread_context(core)?;
++    let mut thread_context: JavaThreadContext = read_generic(core, ptr_thread_context)?;
++    if thread_context.ptr_current_exception_frame == 0 {
+         return Ok(None);
+     }
+ 
+-    let ptr_frame = support_context.ptr_current_exception_frame;
++    let ptr_frame = thread_context.ptr_current_exception_frame;
+     let frame: [u32; FRAME_WORDS as usize] = read_generic(core, ptr_frame)?;
+-    support_context.ptr_pending_exception = ptr_exception;
+-    write_generic(core, SUPPORT_CONTEXT_BASE, support_context)?;
++    thread_context.ptr_pending_exception = ptr_exception;
++    write_generic(core, ptr_thread_context, thread_context)?;
+ 
+     let context = ArmCoreContext {
+         r0: frame[1],
+@@ -111,7 +175,7 @@ mod tests {
+     use wie_core_arm::{Allocator, ArmCore};
+     use wie_util::Result;
+ 
+-    use super::{init, pending, pop, push, unwind};
++    use super::{init, new_thread_context, pending, pop, push, set_current_thread_context, unwind};
+ 
+     #[test]
+     fn exception_frame_restores_guest_context() -> Result<()> {
+@@ -148,4 +212,32 @@ mod tests {
+ 
+         Ok(())
+     }
++
++    #[test]
++    fn exception_frames_belong_to_their_thread() -> Result<()> {
++        let mut core = ArmCore::new(wie_backend::Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })?;
++        Allocator::init(&mut core)?;
++        let first = new_thread_context(&mut core)?;
++        let second = new_thread_context(&mut core)?;
++
++        let mut context = core.save_context();
++        context.lr = 0x4001;
++        core.restore_context(&context);
++        set_current_thread_context(&mut core, first)?;
++        push(&mut core)?;
++
++        // another thread runs between the push and the throw: it must not land in the first thread's handler
++        set_current_thread_context(&mut core, second)?;
++        assert_eq!(unwind(&mut core, 0x1234)?, None);
++
++        set_current_thread_context(&mut core, first)?;
++        assert_eq!(unwind(&mut core, 0x1234)?, Some(0x4001));
++        pop(&mut core)?;
++
++        Ok(())
++    }
+ }
+diff --git a/wie-lgt/src/runtime/java/interface.rs b/wie-lgt/src/runtime/java/interface.rs
+index d13fd55b..1bde91e5 100644
+--- a/wie-lgt/src/runtime/java/interface.rs
++++ b/wie-lgt/src/runtime/java/interface.rs
+@@ -459,8 +459,12 @@ async fn java_instantiate(core: &mut ArmCore, jvm: &mut Jvm, ptr_class_object: u
+     let definition = JavaLangClass::to_rust_class(jvm, &class_object)
+         .await
+         .map_err(|JavaError::JavaException(instance)| WieError::JavaException(LgtJvmSupport::class_instance_raw(&*instance)))?;
+-    let instance = definition
+-        .instantiate(jvm)
++    // Through the JVM like arrays (java_instantiate_array), so the object is tracked by the collector and held
++    // by the current frame: generated code keeps new objects in registers and on its stack, which the collector
++    // does not scan, so objects the platform creates for it while it builds this one (a Vector's element array
++    // during `new Stack()`) would otherwise be freed under it.
++    let instance = jvm
++        .instantiate_class(&definition.name())
+         .await
+         .map_err(|JavaError::JavaException(instance)| WieError::JavaException(LgtJvmSupport::class_instance_raw(&*instance)))?;
+     let ptr_instance = LgtJvmSupport::class_instance_raw(&*instance);
+@@ -828,6 +832,17 @@ async fn java_link_imported_classes(
+         .await?;
+     }
+ 
++    // linking a later class can append entries to a superclass of one linked before
++    for index in 0..class_count {
++        let link: RawJavaClassLink = read_generic(
++            core,
++            imported_classes + size_of::<u32>() as u32 + index * size_of::<RawJavaClassLink>() as u32,
++        )?;
++        let class_name = String::from_utf8(read_null_terminated_string_bytes(core, link.ptr_name)?)
++            .map_err(|error| WieError::FatalError(format!("Invalid LGT imported class name: {error}")))?;
++        LgtJvmSupport::inherit_appended_vtable_entries(jvm, &class_name).await?;
++    }
++
+     Ok(())
+ }
+ 
+@@ -901,14 +916,22 @@ mod tests {
+         sync::atomic::{AtomicBool, Ordering},
+     };
+ 
+-    use wipi_types::lgt::java::{LgtJavaClass as RawJavaClass, LgtJavaClassLink as RawJavaClassLink};
++    use jvm::ClassInstance;
++    use wipi_types::lgt::java::{LgtJavaClass as RawJavaClass, LgtJavaClassInstance as RawJavaClassInstance, LgtJavaClassLink as RawJavaClassLink};
+ 
+     use test_utils::TestPlatform;
+     use wie_backend::{DefaultTaskRunner, System};
+     use wie_core_arm::{Allocator, ArmCore};
+     use wie_util::{ByteWrite, Result, read_generic, write_generic, write_null_terminated_string_bytes};
+ 
+-    use super::{LgtJvmSupport, java_link_imported_classes};
++    use super::{LgtJvmSupport, java_create_runtime_context, java_link_imported_classes};
++
++    /// A generated-class collection with no classes.
++    fn empty_generated_classes(core: &mut ArmCore) -> Result<u32> {
++        let generated_classes = Allocator::alloc(core, 2 * size_of::<u32>() as u32)?;
++        core.write_bytes(generated_classes, &[0; 2 * size_of::<u32>()])?;
++        Ok(generated_classes)
++    }
+ 
+     #[test]
+     fn test_imported_member_link_outputs() -> Result<()> {
+@@ -929,6 +952,8 @@ mod tests {
+             context.sp = stack + 0x100;
+             core.restore_context(&context);
+             let mut jvm = LgtJvmSupport::init(&mut core, &system_clone, None).await?;
++            let generated_classes = empty_generated_classes(&mut core)?;
++            java_create_runtime_context(&mut core, &mut jvm, generated_classes, 0).await?;
+             let class_name = "org/kwis/msp/lcdui/Font";
+             jvm.resolve_class(class_name).await.unwrap();
+ 
+@@ -1054,4 +1079,58 @@ mod tests {
+ 
+         Ok(())
+     }
++
++    #[test]
++    fn appended_virtual_methods_reach_subclasses_built_earlier() -> Result<()> {
++        let mut system = System::new(Box::new(TestPlatform::new()), "", "", DefaultTaskRunner);
++        let done = Arc::new(AtomicBool::new(false));
++        let done_clone = done.clone();
++        let system_clone = system.clone();
++
++        system.spawn(async move || {
++            let mut core = ArmCore::new(wie_backend::Options {
++                enable_gdbserver: false,
++                aot: None,
++                profile: None,
++            })?;
++            Allocator::init(&mut core)?;
++            let mut context = core.save_context();
++            let stack = Allocator::alloc(&mut core, 0x100)?;
++            context.sp = stack + 0x100;
++            core.restore_context(&context);
++            let mut jvm = LgtJvmSupport::init(&mut core, &system_clone, None).await?;
++            let generated_classes = empty_generated_classes(&mut core)?;
++            java_create_runtime_context(&mut core, &mut jvm, generated_classes, 0).await?;
++
++            // the subclass and one of its instances exist before its superclass gets an appended slot
++            let shell: Box<dyn ClassInstance> = jvm.instantiate_class("org/kwis/msp/lwc/ShellComponent").await.unwrap();
++            let show = LgtJvmSupport::virtual_method_index(&jvm, "org/kwis/msp/lwc/ShellComponent", "show", "()V").await?;
++            let get_width = LgtJvmSupport::virtual_method_index(&jvm, "org/kwis/msp/lwc/Component", "getWidth", "()I").await?;
++            assert_ne!(show, get_width);
++            // past the fixed ABI slots (java/util/Stack ends at 36)
++            assert!(show.min(get_width) > 36);
++            assert_eq!(
++                LgtJvmSupport::virtual_method_index(&jvm, "org/kwis/msp/lwc/ShellComponent", "getWidth", "()I").await?,
++                get_width
++            );
++
++            let instance: RawJavaClassInstance = read_generic(&core, LgtJvmSupport::class_instance_raw(&*shell))?;
++            for (index, class_name, name, descriptor) in [
++                (show, "org/kwis/msp/lwc/ShellComponent", "show", "()V"),
++                (get_width, "org/kwis/msp/lwc/Component", "getWidth", "()I"),
++            ] {
++                let target: u32 = read_generic(&core, instance.ptr_dispatch_table + (u32::from(index) + 1) * size_of::<u32>() as u32)?;
++                assert_eq!(target, LgtJvmSupport::non_virtual_method_target(&jvm, class_name, name, descriptor)?);
++            }
++
++            done_clone.store(true, Ordering::Relaxed);
++            Ok(())
++        });
++
++        while !done.load(Ordering::Relaxed) {
++            system.tick()?;
++        }
++
++        Ok(())
++    }
+ }
+diff --git a/wie-lgt/src/runtime/java/jvm_support.rs b/wie-lgt/src/runtime/java/jvm_support.rs
+index 9b045a2d..ff7f7a80 100644
+--- a/wie-lgt/src/runtime/java/jvm_support.rs
++++ b/wie-lgt/src/runtime/java/jvm_support.rs
+@@ -122,16 +122,9 @@ impl LgtJvmSupport {
+     }
+ 
+     pub async fn virtual_method_index(jvm: &Jvm, class_name: &str, name: &str, descriptor: &str) -> Result<u16> {
+-        let class = jvm
+-            .get_class(class_name)
+-            .ok_or_else(|| WieError::FatalError(format!("Class not loaded while linking virtual method: {class_name}")))?;
+-        let definition = class
+-            .definition
+-            .as_any()
+-            .downcast_ref::<JavaClassDefinition>()
+-            .ok_or_else(|| WieError::FatalError(format!("Unsupported class implementation while linking virtual method: {class_name}")))?
+-            .clone();
+-        let mut methods = definition.vtable_entries(jvm).await?;
++        let definition = Self::class_definition(jvm, class_name)?;
++        definition.inherit_appended_vtable_entries(jvm).await?;
++        let methods = definition.vtable_entries(jvm).await?;
+         if let Some(index) = methods.iter().position(|entry| {
+             entry
+                 .method
+@@ -143,38 +136,50 @@ impl LgtJvmSupport {
+         }
+ 
+         // TODO Remove this fallback once data/lgt_java_abi.toml covers every linked virtual method.
+-        let mut current_name = String::from(class_name);
+-        let method = loop {
+-            let class = jvm
+-                .get_class(&current_name)
+-                .ok_or_else(|| WieError::FatalError(format!("Class not loaded while linking virtual method: {current_name}")))?;
+-            if let Some(method) = class.definition.method(name, descriptor, false) {
+-                break method
+-                    .as_any()
+-                    .downcast_ref::<JavaMethod>()
+-                    .ok_or_else(|| WieError::FatalError(format!("Unsupported method implementation for {current_name}.{name}{descriptor}")))?
+-                    .clone();
+-            }
+-
+-            let Some(parent_name) = class.definition.super_class_name() else {
+-                return Err(WieError::FatalError(format!(
+-                    "Unable to resolve virtual method {class_name}.{name}{descriptor}"
+-                )));
+-            };
+-            current_name = parent_name;
+-        };
+-
+-        let index = methods.len();
+-        methods.push(JavaVtableEntry {
++        // The method gets a new slot in the class that declares it, so every subclass inherits it. The
++        // slot comes after every slot in use: compiler-generated tables (whose own methods follow the
++        // platform layout the compiler knew), fixed ABI slots of classes not loaded yet, and earlier
++        // appended slots, which may sit in subclasses this class does not know about.
++        let (declaring, method) = definition
++            .resolve_virtual_method(jvm, name, descriptor)?
++            .ok_or_else(|| WieError::FatalError(format!("Unable to resolve virtual method {class_name}.{name}{descriptor}")))?;
++        let mut entries = declaring.vtable_entries(jvm).await?;
++        let index = LgtClassLoader::take_appended_vtable_index(jvm, entries.len().max(methods.len()))
++            .await
++            .map_err(|JavaError::JavaException(instance)| WieError::JavaException(Self::class_instance_raw(&*instance)))?;
++        tracing::debug!(
++            "Appending virtual method {}.{name}{descriptor} at index {index} (linking {class_name})",
++            ClassDefinition::name(&declaring)
++        );
++        entries.resize(index, JavaVtableEntry { target: 0, method: None });
++        entries.push(JavaVtableEntry {
+             target: method.target()?,
+             method: Some(method),
+         });
+-        definition.set_vtable_entries(&methods)?;
++        declaring.set_vtable_entries(&entries)?;
++        definition.inherit_appended_vtable_entries(jvm).await?;
+ 
+         u16::try_from(index)
+             .map_err(|_| WieError::FatalError(format!("Virtual method index does not fit LGT ABI for {class_name}.{name}{descriptor}")))
+     }
+ 
++    /// Brings classes built before link-time lookups appended entries to their superclasses up to date.
++    pub async fn inherit_appended_vtable_entries(jvm: &Jvm, class_name: &str) -> Result<()> {
++        Self::class_definition(jvm, class_name)?.inherit_appended_vtable_entries(jvm).await
++    }
++
++    fn class_definition(jvm: &Jvm, class_name: &str) -> Result<JavaClassDefinition> {
++        let class = jvm
++            .get_class(class_name)
++            .ok_or_else(|| WieError::FatalError(format!("Class not loaded while linking virtual method: {class_name}")))?;
++        Ok(class
++            .definition
++            .as_any()
++            .downcast_ref::<JavaClassDefinition>()
++            .ok_or_else(|| WieError::FatalError(format!("Unsupported class implementation while linking virtual method: {class_name}")))?
++            .clone())
++    }
++
+     pub async fn interface_dispatch_table(jvm: &mut Jvm, class_name: &str) -> Result<u32> {
+         let class = jvm
+             .resolve_class(class_name)
+diff --git a/wie-lgt/src/runtime/java/jvm_support/class_definition.rs b/wie-lgt/src/runtime/java/jvm_support/class_definition.rs
+index 7e0b26d9..1f0372f4 100644
+--- a/wie-lgt/src/runtime/java/jvm_support/class_definition.rs
++++ b/wie-lgt/src/runtime/java/jvm_support/class_definition.rs
+@@ -73,16 +73,17 @@ impl JavaClassDefinition {
+             .collect::<Vec<_>>();
+ 
+         let parent_class = if let Some(parent_name) = parent_class_name {
+-            Some(
+-                jvm.resolve_class(parent_name)
+-                    .await
+-                    .unwrap()
+-                    .definition
+-                    .as_any()
+-                    .downcast_ref::<JavaClassDefinition>()
+-                    .unwrap()
+-                    .clone(),
+-            )
++            let parent_class = jvm
++                .resolve_class(parent_name)
++                .await
++                .unwrap()
++                .definition
++                .as_any()
++                .downcast_ref::<JavaClassDefinition>()
++                .unwrap()
++                .clone();
++            parent_class.inherit_appended_vtable_entries(jvm).await?;
++            Some(parent_class)
+         } else {
+             None
+         };
+@@ -559,6 +560,9 @@ impl JavaClassDefinition {
+             descriptor.flags &= !LGT_JAVA_CLASS_SUPER_CLASS_IS_NAME;
+         }
+         let mut declared_methods = self.methods()?;
++        if let Some(parent_class) = &parent_class {
++            parent_class.inherit_appended_vtable_entries(jvm).await?;
++        }
+         let virtual_methods = if descriptor.ptr_vtable != 0 {
+             let parent_methods = if let Some(parent_class) = &parent_class {
+                 parent_class.vtable_entries(jvm).await?
+@@ -663,19 +667,98 @@ impl JavaClassDefinition {
+         write_generic(core, self.raw()?.ptr_descriptor, descriptor)?;
+         let mut raw = self.raw()?;
+         raw.unk1 = ptr_vtable;
+-        write_generic(core, self.ptr_raw, raw)
++        write_generic(core, self.ptr_raw, raw)?;
++
++        // the compiler table ends with this class's own methods; slots appended past it belong to superclasses
++        self.inherit_appended_vtable_entries(jvm).await
+     }
+ 
++    /// Replaces the virtual table. It is rewritten in place while it fits the allocation, so
++    /// existing instances, which point at the table directly, see the new entries.
+     pub fn set_vtable_entries(&self, entries: &[JavaVtableEntry]) -> Result<()> {
+         let mut core = self.core.clone();
+-        let ptr_vtable = JavaVtable::allocate(&mut core, entries.len())?;
+-        JavaVtable::write(&mut core, ptr_vtable, self.ptr_raw, entries)?;
+         let mut descriptor = self.descriptor()?;
+-        descriptor.vtable_count = entries.len() as u16;
+-        write_generic(&mut core, self.raw()?.ptr_descriptor, descriptor)?;
+         let mut raw = self.raw()?;
+-        raw.unk1 = ptr_vtable;
+-        write_generic(&mut core, self.ptr_raw, raw)
++        if !JavaVtable::fits(descriptor.vtable_count as usize, entries.len()) {
++            tracing::warn!(
++                "LGT class {} outgrew its virtual table ({} entries); existing instances keep the old one",
++                ClassDefinition::name(self),
++                entries.len()
++            );
++            raw.unk1 = JavaVtable::allocate(&mut core, entries.len())?;
++            write_generic(&mut core, self.ptr_raw, raw)?;
++        }
++        JavaVtable::write(&mut core, raw.unk1, self.ptr_raw, entries)?;
++        descriptor.vtable_count = entries.len() as u16;
++        write_generic(&mut core, raw.ptr_descriptor, descriptor)
++    }
++
++    /// Copies the entries that `LgtJvmSupport::virtual_method_index` appended to superclasses after
++    /// this class (or one between) was built, resolved to this class's overrides. Appended indices
++    /// increase monotonically, so a superclass with a longer table has entries this class is missing.
++    pub async fn inherit_appended_vtable_entries(&self, jvm: &Jvm) -> Result<()> {
++        let mut hierarchy = vec![self.clone()];
++        while let Some(parent_name) = ClassDefinition::super_class_name(hierarchy.last().unwrap()) {
++            let parent = jvm
++                .get_class(&parent_name)
++                .ok_or_else(|| WieError::FatalError(format!("Superclass not loaded: {parent_name}")))?
++                .definition
++                .as_any()
++                .downcast_ref::<JavaClassDefinition>()
++                .ok_or_else(|| WieError::FatalError(format!("Unsupported superclass implementation: {parent_name}")))?
++                .clone();
++            hierarchy.push(parent);
++        }
++
++        for index in (0..hierarchy.len() - 1).rev() {
++            let (class, parent) = (&hierarchy[index], &hierarchy[index + 1]);
++            if parent.descriptor()?.vtable_count <= class.descriptor()?.vtable_count {
++                continue;
++            }
++
++            let parent_entries = parent.vtable_entries(jvm).await?;
++            let mut entries = class.vtable_entries(jvm).await?;
++            for entry in &parent_entries[entries.len()..] {
++                let entry = match &entry.method {
++                    Some(method) => match class.resolve_virtual_method(jvm, &method.name(), &method.descriptor())? {
++                        Some((_, method)) => JavaVtableEntry {
++                            target: method.target()?,
++                            method: Some(method),
++                        },
++                        None => entry.clone(),
++                    },
++                    None => entry.clone(),
++                };
++                entries.push(entry);
++            }
++            class.set_vtable_entries(&entries)?;
++        }
++
++        Ok(())
++    }
++
++    /// The method a virtual call on this class runs, with its declaring class: this class or the nearest superclass declaring it.
++    pub fn resolve_virtual_method(&self, jvm: &Jvm, name: &str, descriptor: &str) -> Result<Option<(Self, JavaMethod)>> {
++        let mut class = self.clone();
++        loop {
++            if let Some(method) = class.methods()?.into_iter().find(|method| {
++                method.name() == name && method.descriptor() == descriptor && !method.access_flags().contains(MethodAccessFlags::STATIC)
++            }) {
++                return Ok(Some((class, method)));
++            }
++
++            let Some(parent_name) = ClassDefinition::super_class_name(&class) else {
++                return Ok(None);
++            };
++            class = jvm
++                .get_class(&parent_name)
++                .ok_or_else(|| WieError::FatalError(format!("Superclass not loaded: {parent_name}")))?
++                .definition
++                .as_any()
++                .downcast_ref::<JavaClassDefinition>()
++                .ok_or_else(|| WieError::FatalError(format!("Unsupported superclass implementation: {parent_name}")))?
++                .clone();
++        }
+     }
+ 
+     pub fn set_link_state(&self, link_state: u16) -> Result<()> {
+diff --git a/wie-lgt/src/runtime/java/jvm_support/method.rs b/wie-lgt/src/runtime/java/jvm_support/method.rs
+index 7dc2870c..dde034b4 100644
+--- a/wie-lgt/src/runtime/java/jvm_support/method.rs
++++ b/wie-lgt/src/runtime/java/jvm_support/method.rs
+@@ -12,7 +12,10 @@ use wie_core_arm::{
+ use wie_jvm_support::native::{NativeJavaValueCodec, decode_method_arguments, encode_method_arguments, method_argument_word_count};
+ use wie_util::{Result, WieError, read_generic, read_null_terminated_string_bytes, write_generic, write_null_terminated_string_bytes};
+ 
+-use crate::runtime::{SVC_CATEGORY_JAVA, java::JavaSvcFunctions};
++use crate::runtime::{
++    SVC_CATEGORY_JAVA,
++    java::{JavaSvcFunctions, exception},
++};
+ 
+ use super::value::JavaValueCodec;
+ 
+@@ -163,7 +166,10 @@ impl Method for JavaMethod {
+             tracing::error!("LGT method {name} has no code (target 0)");
+             return Err(jvm.exception("net/wie/WieError", &format!("{name} has no code (unlinked import)")).await);
+         }
+-        let result: Result<JavaMethodRunResult> = self.core.clone().run_function(target, &raw_args).await;
++        let mut core = self.core.clone();
++        let caller_exception_frames = exception::enter_guest_call(&mut core).unwrap();
++        let result: Result<JavaMethodRunResult> = core.run_function(target, &raw_args).await;
++        exception::leave_guest_call(&mut core, caller_exception_frames).unwrap();
+         match result.map(|result| {
+             if matches!(return_type, JavaType::Double | JavaType::Long) {
+                 codec.decode_wide(result.low, result.high, &return_type)
+diff --git a/wie-lgt/src/runtime/java/jvm_support/vtable.rs b/wie-lgt/src/runtime/java/jvm_support/vtable.rs
+index ef95f5bd..2dfe6731 100644
+--- a/wie-lgt/src/runtime/java/jvm_support/vtable.rs
++++ b/wie-lgt/src/runtime/java/jvm_support/vtable.rs
+@@ -17,11 +17,20 @@ pub struct JavaVtableEntry {
+     pub method: Option<JavaMethod>,
+ }
+ 
++/// Entries every virtual table has room for. Link-time lookups append entries to tables that
++/// instances already point at, so tables grow in place up to this size.
++const VTABLE_CAPACITY: usize = 1024;
++
+ pub struct JavaVtable;
+ 
+ impl JavaVtable {
+     pub fn allocate(core: &mut ArmCore, entry_count: usize) -> Result<u32> {
+-        Allocator::alloc(core, ((entry_count + 1) * size_of::<u32>()) as u32)
++        Allocator::alloc(core, ((entry_count.max(VTABLE_CAPACITY) + 1) * size_of::<u32>()) as u32)
++    }
++
++    /// Whether a table allocated for `entry_count` entries (and grown in place since) holds `new_entry_count`.
++    pub fn fits(entry_count: usize, new_entry_count: usize) -> bool {
++        new_entry_count <= entry_count.max(VTABLE_CAPACITY)
+     }
+ 
+     pub fn read(core: &ArmCore, ptr_vtable: u32, entry_count: usize, known_classes: &[(String, Vec<JavaMethod>)]) -> Result<Vec<JavaVtableEntry>> {
+@@ -141,20 +150,21 @@ impl JavaVtable {
+ 
+             let name = method.name();
+             let descriptor = method.descriptor();
+-            let inherited_index = methods.iter().position(|candidate| {
+-                candidate
+-                    .method
+-                    .as_ref()
+-                    .is_some_and(|candidate| candidate.name() == name && candidate.descriptor() == descriptor)
+-            });
++            // a method appended at link time can sit in a second, appended slot as well
++            let inherited_indices = methods
++                .iter()
++                .enumerate()
++                .filter(|(_, candidate)| {
++                    candidate
++                        .method
++                        .as_ref()
++                        .is_some_and(|candidate| candidate.name() == name && candidate.descriptor() == descriptor)
++                })
++                .map(|(index, _)| index)
++                .collect::<Vec<_>>();
+             let confirmed_index = abi_classes.iter().find_map(|class| class.vtable_index(&name, &descriptor));
+ 
+             let index = if let Some(index) = confirmed_index {
+-                if inherited_index.is_some_and(|inherited_index| inherited_index != index) {
+-                    return Err(WieError::FatalError(format!(
+-                        "Inherited vtable index does not match LGT Java ABI for {class_name}.{name}{descriptor}"
+-                    )));
+-                }
+                 if methods.len() <= index {
+                     methods.resize(index + 1, JavaVtableEntry { target: 0, method: None });
+                 }
+@@ -168,16 +178,19 @@ impl JavaVtable {
+                     )));
+                 }
+                 index
+-            } else if let Some(index) = inherited_index {
+-                index
++            } else if let Some(index) = inherited_indices.first() {
++                *index
+             } else {
+                 continue;
+             };
+ 
+-            methods[index] = JavaVtableEntry {
++            let entry = JavaVtableEntry {
+                 target: method.target()?,
+                 method: Some(method.clone()),
+             };
++            for index in inherited_indices.into_iter().chain([index]) {
++                methods[index] = entry.clone();
++            }
+         }
+ 
+         Ok(methods)
+diff --git a/wie-lgt/src/runtime/svc_ids.rs b/wie-lgt/src/runtime/svc_ids.rs
+index 6cc71251..69c27e1b 100644
+--- a/wie-lgt/src/runtime/svc_ids.rs
++++ b/wie-lgt/src/runtime/svc_ids.rs
+@@ -226,6 +226,9 @@ pub enum WIPICSvcId {
+     ClipGetVolume = 0x4b8,
+     ClipSetVolume = 0x4b9,
+     Play = 0x4ba,
++    // Pause and Resume sit between Play and Stop, in the order KTF's media table has them.
++    Pause = 0x4bb,
++    Resume = 0x4bc,
+     Stop = 0x4bd,
+     Unk5 = 0x4c0,
+     Vibrator = 0x4c1,
+@@ -344,6 +347,8 @@ impl TryFrom<SvcId> for WIPICSvcId {
+             0x4b8 => Self::ClipGetVolume,
+             0x4b9 => Self::ClipSetVolume,
+             0x4ba => Self::Play,
++            0x4bb => Self::Pause,
++            0x4bc => Self::Resume,
+             0x4bd => Self::Stop,
+             0x4c0 => Self::Unk5,
+             0x4c1 => Self::Vibrator,
+diff --git a/wie-lgt/src/runtime/wipi_c.rs b/wie-lgt/src/runtime/wipi_c.rs
+index c080c4ef..8dc861ab 100644
+--- a/wie-lgt/src/runtime/wipi_c.rs
++++ b/wie-lgt/src/runtime/wipi_c.rs
+@@ -142,6 +142,8 @@ async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm),
+         WIPICSvcId::ClipGetVolume => media::clip_get_volume.into_body(),
+         WIPICSvcId::ClipSetVolume => media::clip_set_volume.into_body(),
+         WIPICSvcId::Play => media::play.into_body(),
++        WIPICSvcId::Pause => media::pause.into_body(),
++        WIPICSvcId::Resume => media::resume.into_body(),
+         WIPICSvcId::Stop => media::stop.into_body(),
+         WIPICSvcId::Unk5 => unk5.into_body(),
+         WIPICSvcId::Vibrator => media::vibrator.into_body(),
+diff --git a/wie-wipi-c/src/api.rs b/wie-wipi-c/src/api.rs
+index 65a65f20..f7d5f2c8 100644
+--- a/wie-wipi-c/src/api.rs
++++ b/wie-wipi-c/src/api.rs
+@@ -5,5 +5,6 @@ pub mod kernel;
+ pub mod media;
+ pub mod misc;
+ pub mod net;
++pub mod record_database;
+ pub mod uic;
+ pub mod util;
+diff --git a/wie-wipi-c/src/api/record_database.rs b/wie-wipi-c/src/api/record_database.rs
+new file mode 100644
+index 00000000..6d2c0842
+--- /dev/null
++++ b/wie-wipi-c/src/api/record_database.rs
+@@ -0,0 +1,268 @@
++//! The WIPI-C record database (`MC_db*`): named databases of fixed-size records addressed by
++//! record id. KTF exposes it as its own WIPI-C table next to the file-style API in `database.rs`.
++//!
++//! Records live in the platform database repository under the database name; the handle returned to
++//! the application is a guest-heap struct carrying the name and the record size given at open time.
++
++use alloc::{borrow::ToOwned, boxed::Box, string::String, vec, vec::Vec};
++use core::mem::size_of;
++
++use bytemuck::{Pod, Zeroable};
++
++use wipi_types::wipic::WIPICWord;
++
++use wie_backend::Database;
++use wie_util::{Result, read_generic, read_null_terminated_string_bytes, write_generic};
++
++use crate::context::WIPICContext;
++
++#[derive(Pod, Zeroable, Copy, Clone)]
++#[repr(C)]
++struct RecordDatabaseHandle {
++    magic: u32,
++    record_size: u32,
++    name: [u8; 32],
++}
++
++// "MCRD"
++const RECORD_DATABASE_HANDLE_MAGIC: u32 = 0x4D435244;
++const MAX_NAME_LEN: usize = 31;
++
++const M_E_NOENT: i32 = -12;
++const M_E_INVALID: i32 = -22;
++const M_E_INVALIDHANDLE: i32 = -25;
++
++/// `MC_dbOpenDataBase(name, recordSize, create, mode)`. 겟앰프드 opens its "/ga/tm" database as
++/// `(name, 328, 1, 1)` (client.bin 0x1092a4) and keeps the returned id while it is positive.
++pub async fn open_record_database(context: &mut dyn WIPICContext, ptr_name: WIPICWord, record_size: i32, create: i32, mode: i32) -> Result<i32> {
++    let Ok(name) = String::from_utf8(read_null_terminated_string_bytes(context, ptr_name)?) else {
++        return Ok(M_E_INVALID);
++    };
++    tracing::debug!("MC_dbOpenDataBase({name:?}, {record_size}, {create}, {mode})");
++    if name.is_empty() || name.len() > MAX_NAME_LEN || record_size <= 0 {
++        return Ok(M_E_INVALID);
++    }
++
++    {
++        let system = context.system();
++        let pid = system.pid().to_owned();
++        if !system.platform().database_repository().exists(&name, &pid).await {
++            if create == 0 {
++                return Ok(M_E_NOENT);
++            }
++            system.platform().database_repository().open(&name, &pid).await;
++        }
++    }
++
++    let mut handle = RecordDatabaseHandle {
++        magic: RECORD_DATABASE_HANDLE_MAGIC,
++        record_size: record_size as u32,
++        name: [0; 32],
++    };
++    handle.name[..name.len()].copy_from_slice(name.as_bytes());
++
++    let ptr_handle = context.alloc_raw(size_of::<RecordDatabaseHandle>() as _)?;
++    write_generic(context, ptr_handle, handle)?;
++
++    Ok(ptr_handle as _)
++}
++
++/// `MC_dbCloseDataBase(dbId)`. Records are written through on insert/update, so closing only frees the handle.
++pub async fn close_record_database(context: &mut dyn WIPICContext, db_id: i32) -> Result<i32> {
++    tracing::debug!("MC_dbCloseDataBase({db_id:#x})");
++
++    if load_handle(context, db_id)?.is_none() {
++        return Ok(M_E_INVALIDHANDLE);
++    }
++    context.free_raw(db_id as _, size_of::<RecordDatabaseHandle>() as _)?;
++
++    Ok(0)
++}
++
++/// `MC_dbInsertRecord(dbId, buf, len)`: stores a new record and returns its id (ids start at 1).
++pub async fn insert_record(context: &mut dyn WIPICContext, db_id: i32, buf_ptr: WIPICWord, buf_len: i32) -> Result<i32> {
++    tracing::debug!("MC_dbInsertRecord({db_id:#x}, {buf_ptr:#x}, {buf_len})");
++
++    let Some(handle) = load_handle(context, db_id)? else {
++        return Ok(M_E_INVALIDHANDLE);
++    };
++    let Some(data) = read_record_data(context, &handle, buf_ptr, buf_len)? else {
++        return Ok(M_E_INVALID);
++    };
++    let mut db = open_database(context, &handle).await;
++
++    Ok(db.add(&data).await as i32)
++}
++
++/// `MC_dbSelectRecord(dbId, recId, buf, len)`: copies the record (up to `len` bytes) into `buf`.
++pub async fn select_record(context: &mut dyn WIPICContext, db_id: i32, rec_id: i32, buf_ptr: WIPICWord, buf_len: i32) -> Result<i32> {
++    tracing::debug!("MC_dbSelectRecord({db_id:#x}, {rec_id}, {buf_ptr:#x}, {buf_len})");
++
++    let Some(handle) = load_handle(context, db_id)? else {
++        return Ok(M_E_INVALIDHANDLE);
++    };
++    if rec_id <= 0 || buf_len < 0 {
++        return Ok(M_E_INVALID);
++    }
++    let db = open_database(context, &handle).await;
++    let Some(data) = db.get(rec_id as u32).await else {
++        return Ok(M_E_INVALID);
++    };
++
++    let len = data.len().min(buf_len as usize);
++    context.write_bytes(buf_ptr, &data[..len])?;
++
++    Ok(0)
++}
++
++/// `MC_dbUpdateRecord(dbId, recId, buf, len)`: replaces an existing record; 0 on success
++/// (겟앰프드 treats any other value as a failed save, client.bin 0x1091a2).
++pub async fn update_record(context: &mut dyn WIPICContext, db_id: i32, rec_id: i32, buf_ptr: WIPICWord, buf_len: i32) -> Result<i32> {
++    tracing::debug!("MC_dbUpdateRecord({db_id:#x}, {rec_id}, {buf_ptr:#x}, {buf_len})");
++
++    let Some(handle) = load_handle(context, db_id)? else {
++        return Ok(M_E_INVALIDHANDLE);
++    };
++    if rec_id <= 0 {
++        return Ok(M_E_INVALID);
++    }
++    let Some(data) = read_record_data(context, &handle, buf_ptr, buf_len)? else {
++        return Ok(M_E_INVALID);
++    };
++    let mut db = open_database(context, &handle).await;
++    if db.get(rec_id as u32).await.is_none() {
++        return Ok(M_E_INVALID);
++    }
++
++    Ok(if db.set(rec_id as u32, &data).await { 0 } else { M_E_INVALID })
++}
++
++/// Slot 8: `(dbId, idBuf, idCount, comparator, filter)` — writes the ids of the records accepted by
++/// `filter(record)` into `idBuf` (at most `idCount` words) and returns how many were written.
++///
++/// 겟앰프드 passes a 20-word buffer, a null comparator and a filter that copies the record and
++/// returns whether one of its fields is positive (client.bin 0x1090a0); an empty result makes it
++/// insert a new record, otherwise it updates the first id. A null filter accepts every record.
++/// Ordering with a comparator has not been seen in a game yet: ids are kept in ascending order.
++pub async fn list_filtered_records(
++    context: &mut dyn WIPICContext,
++    db_id: i32,
++    ids_ptr: WIPICWord,
++    ids_len: i32,
++    comparator: WIPICWord,
++    filter: WIPICWord,
++) -> Result<i32> {
++    tracing::debug!("MC_dbSortRecords({db_id:#x}, {ids_ptr:#x}, {ids_len}, {comparator:#x}, {filter:#x})");
++
++    let Some(handle) = load_handle(context, db_id)? else {
++        return Ok(M_E_INVALIDHANDLE);
++    };
++    if comparator != 0 {
++        tracing::warn!("MC_dbSortRecords: comparator {comparator:#x} not applied");
++    }
++
++    let db = open_database(context, &handle).await;
++    let mut ids = Vec::new();
++    let record_ptr = if filter != 0 { context.alloc_raw(handle.record_size)? } else { 0 };
++    for id in db.get_record_ids().await {
++        if ids.len() >= ids_len.max(0) as usize {
++            break;
++        }
++        if filter != 0 {
++            let Some(data) = db.get(id).await else {
++                continue;
++            };
++            let mut record = vec![0; handle.record_size as usize];
++            let len = data.len().min(record.len());
++            record[..len].copy_from_slice(&data[..len]);
++            context.write_bytes(record_ptr, &record)?;
++            if context.call_function(filter, &[record_ptr]).await? == 0 {
++                continue;
++            }
++        }
++        ids.push(id);
++    }
++    if record_ptr != 0 {
++        context.free_raw(record_ptr, handle.record_size)?;
++    }
++
++    for (index, id) in ids.iter().enumerate() {
++        write_generic(context, ids_ptr + (index * size_of::<u32>()) as u32, *id)?;
++    }
++
++    Ok(ids.len() as i32)
++}
++
++fn load_handle(context: &mut dyn WIPICContext, db_id: i32) -> Result<Option<RecordDatabaseHandle>> {
++    if db_id < 0x10000 {
++        return Ok(None);
++    }
++    let handle: RecordDatabaseHandle = read_generic(context, db_id as _)?;
++
++    Ok((handle.magic == RECORD_DATABASE_HANDLE_MAGIC).then_some(handle))
++}
++
++/// Reads a record from the guest as exactly `record_size` bytes (a shorter buffer is zero-padded).
++fn read_record_data(context: &mut dyn WIPICContext, handle: &RecordDatabaseHandle, buf_ptr: WIPICWord, buf_len: i32) -> Result<Option<Vec<u8>>> {
++    if buf_len < 0 || buf_len as u32 > handle.record_size {
++        return Ok(None);
++    }
++    let mut data = vec![0; handle.record_size as usize];
++    context.read_bytes(buf_ptr, &mut data[..buf_len as usize])?;
++
++    Ok(Some(data))
++}
++
++async fn open_database(context: &mut dyn WIPICContext, handle: &RecordDatabaseHandle) -> Box<dyn Database> {
++    let length = handle.name.iter().position(|&c| c == 0).unwrap_or(handle.name.len());
++    let name = String::from_utf8_lossy(&handle.name[..length]).into_owned();
++
++    let system = context.system();
++    let pid = system.pid().to_owned();
++
++    system.platform().database_repository().open(&name, &pid).await
++}
++
++#[cfg(test)]
++mod tests {
++    use alloc::boxed::Box;
++
++    use test_utils::TestPlatform;
++    use wie_backend::{DefaultTaskRunner, System};
++    use wie_util::{ByteRead, ByteWrite};
++
++    use crate::context::test::TestContext;
++
++    use super::{close_record_database, insert_record, list_filtered_records, open_record_database, select_record, update_record};
++
++    #[futures_test::test]
++    async fn records_round_trip_by_id() {
++        let system = System::new(Box::new(TestPlatform::new()), "test-pid", "test-aid", DefaultTaskRunner);
++        let mut context = TestContext::with_system(system);
++        context.write_bytes(0x1000, b"/ga/tm\0").unwrap();
++
++        assert_eq!(open_record_database(&mut context, 0x1000, 8, 0, 1).await.unwrap(), -12);
++        let db_id = open_record_database(&mut context, 0x1000, 8, 1, 1).await.unwrap();
++        assert!(db_id > 0);
++        assert_eq!(list_filtered_records(&mut context, db_id, 0x3000, 20, 0, 0).await.unwrap(), 0);
++
++        context.write_bytes(0x2000, &[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
++        assert_eq!(insert_record(&mut context, db_id, 0x2000, 4).await.unwrap(), 1);
++        assert_eq!(insert_record(&mut context, db_id, 0x2000, 9).await.unwrap(), -22);
++        assert_eq!(update_record(&mut context, db_id, 1, 0x2004, 4).await.unwrap(), 0);
++        assert_eq!(update_record(&mut context, db_id, 2, 0x2000, 8).await.unwrap(), -22);
++
++        assert_eq!(select_record(&mut context, db_id, 1, 0x2100, 8).await.unwrap(), 0);
++        let mut data = [0; 8];
++        context.read_bytes(0x2100, &mut data).unwrap();
++        assert_eq!(data, [5, 6, 7, 8, 0, 0, 0, 0]);
++
++        assert_eq!(list_filtered_records(&mut context, db_id, 0x3000, 20, 0, 0).await.unwrap(), 1);
++        let mut id = [0; 4];
++        context.read_bytes(0x3000, &mut id).unwrap();
++        assert_eq!(u32::from_le_bytes(id), 1);
++
++        assert_eq!(close_record_database(&mut context, db_id).await.unwrap(), 0);
++        assert!(open_record_database(&mut context, 0x1000, 8, 0, 1).await.unwrap() > 0);
++    }
++}
+diff --git a/wie-wipi-java/src/classes/net/wie.rs b/wie-wipi-java/src/classes/net/wie.rs
+index d18dcef6..5cab6ec7 100644
+--- a/wie-wipi-java/src/classes/net/wie.rs
++++ b/wie-wipi-java/src/classes/net/wie.rs
+@@ -1,9 +1,11 @@
+ mod card_canvas;
++mod shell_card;
+ mod wipi_file_output_stream;
+ mod wipi_midlet;
+ 
+ pub use self::{
+     card_canvas::{CardCanvas, WIPIKeyCode},
++    shell_card::ShellCard,
+     wipi_file_output_stream::WIPIFileOutputStream,
+     wipi_midlet::WIPIMIDlet,
+ };
+diff --git a/wie-wipi-java/src/classes/net/wie/shell_card.rs b/wie-wipi-java/src/classes/net/wie/shell_card.rs
+new file mode 100644
+index 00000000..1bb25f78
+--- /dev/null
++++ b/wie-wipi-java/src/classes/net/wie/shell_card.rs
+@@ -0,0 +1,79 @@
++use alloc::vec;
++
++use jvm::{ClassInstanceRef, Jvm, Result as JvmResult};
++use jvm_class_proto::{JavaFieldProto, JavaMethodProto};
++use jvm_types::{ClassAccessFlags, FieldAccessFlags, MethodAccessFlags};
++
++use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
++
++use crate::classes::org::kwis::msp::{lcdui::Graphics, lwc::Component};
++
++// class net.wie.ShellCard
++// Puts a shown LWC ShellComponent on the display's card stack: paint, key and show notifications
++// go to the component.
++pub struct ShellCard;
++
++impl ShellCard {
++    pub fn as_proto() -> WieJavaClassProto {
++        WieJavaClassProto {
++            name: "net/wie/ShellCard",
++            parent_class: Some("org/kwis/msp/lcdui/Card"),
++            interfaces: vec![],
++            methods: vec![
++                JavaMethodProto::new("<init>", "(Lorg/kwis/msp/lwc/Component;)V", Self::init, MethodAccessFlags::PUBLIC),
++                JavaMethodProto::new("paint", "(Lorg/kwis/msp/lcdui/Graphics;)V", Self::paint, MethodAccessFlags::PROTECTED),
++                JavaMethodProto::new("keyNotify", "(II)Z", Self::key_notify, MethodAccessFlags::PROTECTED),
++                JavaMethodProto::new("showNotify", "(Z)V", Self::show_notify, MethodAccessFlags::PROTECTED),
++            ],
++            fields: vec![JavaFieldProto::new(
++                "component",
++                "Lorg/kwis/msp/lwc/Component;",
++                FieldAccessFlags::PRIVATE,
++            )],
++            access_flags: ClassAccessFlags::PUBLIC,
++        }
++    }
++
++    async fn init(jvm: &Jvm, _: &mut WieJvmContext, mut this: ClassInstanceRef<Self>, component: ClassInstanceRef<Component>) -> JvmResult<()> {
++        tracing::debug!("net.wie.ShellCard::<init>({this:?}, {component:?})");
++
++        let _: () = jvm.invoke_special(&this, "org/kwis/msp/lcdui/Card", "<init>", "()V", ()).await?;
++        jvm.put_field(&mut this, "net/wie/ShellCard", "component", "Lorg/kwis/msp/lwc/Component;", component)
++            .await
++    }
++
++    async fn component(jvm: &Jvm, this: &ClassInstanceRef<Self>) -> JvmResult<ClassInstanceRef<Component>> {
++        jvm.get_field(this, "net/wie/ShellCard", "component", "Lorg/kwis/msp/lwc/Component;")
++            .await
++    }
++
++    async fn paint(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>, g: ClassInstanceRef<Graphics>) -> JvmResult<()> {
++        tracing::debug!("net.wie.ShellCard::paint({this:?}, {g:?})");
++
++        let component = Self::component(jvm, &this).await?;
++        jvm.invoke_virtual(
++            &component,
++            "org/kwis/msp/lwc/Component",
++            "paint",
++            "(Lorg/kwis/msp/lcdui/Graphics;)V",
++            (g,),
++        )
++        .await
++    }
++
++    async fn key_notify(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>, r#type: i32, key: i32) -> JvmResult<bool> {
++        tracing::debug!("net.wie.ShellCard::keyNotify({this:?}, {type}, {key})");
++
++        let component = Self::component(jvm, &this).await?;
++        jvm.invoke_virtual(&component, "org/kwis/msp/lwc/Component", "keyNotify", "(II)Z", (r#type, key))
++            .await
++    }
++
++    async fn show_notify(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>, show: bool) -> JvmResult<()> {
++        tracing::debug!("net.wie.ShellCard::showNotify({this:?}, {show})");
++
++        let component = Self::component(jvm, &this).await?;
++        jvm.invoke_virtual(&component, "org/kwis/msp/lwc/Component", "showNotify", "(Z)V", (show,))
++            .await
++    }
++}
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/lcdui/display.rs b/wie-wipi-java/src/classes/org/kwis/msp/lcdui/display.rs
+index e86dab70..8d166a95 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/lcdui/display.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/lcdui/display.rs
+@@ -10,7 +10,7 @@ use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
+ use wie_midp::classes::javax::microedition::lcdui::Display as MidpDisplay;
+ 
+ use crate::classes::{
+-    net::wie::WIPIKeyCode,
++    net::wie::{CardCanvas, WIPIKeyCode},
+     org::kwis::msp::lcdui::{Card, Jlet, JletEventListener},
+ };
+ 
+@@ -215,7 +215,7 @@ impl Display {
+     }
+ 
+     async fn get_display(jvm: &Jvm, _: &mut WieJvmContext, str: ClassInstanceRef<String>) -> JvmResult<ClassInstanceRef<Self>> {
+-        tracing::warn!("stub org.kwis.msp.lcdui.Display::getDisplay({str:?})");
++        tracing::debug!("org.kwis.msp.lcdui.Display::getDisplay({str:?})");
+ 
+         let jlet = jvm
+             .invoke_static("org/kwis/msp/lcdui/Jlet", "getActiveJlet", "()Lorg/kwis/msp/lcdui/Jlet;", [])
+@@ -398,7 +398,9 @@ impl Display {
+         // so enqueue it on the event loop like the no-timeout overload — it
+         // runs on the next pump instead of after `timeout` ms, which is close
+         // enough for loops that re-schedule themselves each frame.
+-        let midp_display: ClassInstanceRef<MidpDisplay> = jvm.get_field(&this, "org/kwis/msp/lcdui/Display", "midpDisplay", "Ljavax/microedition/lcdui/Display;").await?;
++        let midp_display: ClassInstanceRef<MidpDisplay> = jvm
++            .get_field(&this, "org/kwis/msp/lcdui/Display", "midpDisplay", "Ljavax/microedition/lcdui/Display;")
++            .await?;
+         let _: () = jvm
+             .invoke_virtual(
+                 &midp_display,
+@@ -529,6 +531,12 @@ impl Display {
+         Ok(key_code)
+     }
+ 
++    /// The canvas the card stack is painted on.
++    pub async fn card_canvas(jvm: &Jvm, this: &ClassInstanceRef<Self>) -> JvmResult<ClassInstanceRef<CardCanvas>> {
++        jvm.get_field(this, "org/kwis/msp/lcdui/Display", "cardCanvas", "Lnet/wie/CardCanvas;")
++            .await
++    }
++
+     pub async fn midp_display(jvm: &Jvm, this: &ClassInstanceRef<Self>) -> JvmResult<ClassInstanceRef<MidpDisplay>> {
+         jvm.get_field(this, "org/kwis/msp/lcdui/Display", "midpDisplay", "Ljavax/microedition/lcdui/Display;")
+             .await
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/lwc/annunciator_component.rs b/wie-wipi-java/src/classes/org/kwis/msp/lwc/annunciator_component.rs
+index c89f65ba..29314790 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/lwc/annunciator_component.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/lwc/annunciator_component.rs
+@@ -6,6 +6,8 @@ use jvm_types::{ClassAccessFlags, MethodAccessFlags};
+ 
+ use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
+ 
++use crate::classes::org::kwis::msp::lwc::Component;
++
+ // class org.kwis.msp.lwc.AnnunciatorComponent
+ pub struct AnnunciatorComponent;
+ 
+@@ -25,12 +27,14 @@ impl AnnunciatorComponent {
+         }
+     }
+ 
+-    async fn init(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<AnnunciatorComponent>, a0: bool) -> JvmResult<()> {
++    // No annunciator bar is drawn, so it takes no height: apps lay their cards out below it
++    // (KTF 놈3 sizes its card to the display height minus the annunciator's).
++    async fn init(jvm: &Jvm, _: &mut WieJvmContext, mut this: ClassInstanceRef<AnnunciatorComponent>, a0: bool) -> JvmResult<()> {
+         tracing::warn!("stub org.kwis.msp.lwc.AnnunciatorComponent::<init>({this:?}, {a0})");
+ 
+         let _: () = jvm.invoke_special(&this, "org/kwis/msp/lwc/ShellComponent", "<init>", "()V", ()).await?;
+-
+-        Ok(())
++        let width: i32 = jvm.get_field(&this, "org/kwis/msp/lwc/Component", "w", "I").await?;
++        Component::set_bounds(jvm, &mut this, 0, 0, width, 0).await
+     }
+ 
+     async fn show(_: &Jvm, _: &mut WieJvmContext) -> JvmResult<()> {
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/lwc/component.rs b/wie-wipi-java/src/classes/org/kwis/msp/lwc/component.rs
+index 48cb481c..25d86862 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/lwc/component.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/lwc/component.rs
+@@ -6,6 +6,11 @@ use jvm_types::{ClassAccessFlags, FieldAccessFlags, MethodAccessFlags};
+ 
+ use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
+ 
++use crate::classes::{
++    net::wie::CardCanvas,
++    org::kwis::msp::lcdui::{Display, Graphics},
++};
++
+ // class org.kwis.msp.lwc.Component
+ pub struct Component;
+ 
+@@ -29,8 +34,15 @@ impl Component {
+                 JavaMethodProto::new("getY", "()I", Self::get_y, MethodAccessFlags::PUBLIC),
+                 JavaMethodProto::new("repaint", "()V", Self::repaint, MethodAccessFlags::PUBLIC),
+                 JavaMethodProto::new("repaint", "(IIII)V", Self::repaint_with_area, MethodAccessFlags::PUBLIC),
++                JavaMethodProto::new("paint", "(Lorg/kwis/msp/lcdui/Graphics;)V", Self::paint, MethodAccessFlags::PUBLIC),
++            ],
++            fields: vec![
++                JavaFieldProto::new("focused", "Z", FieldAccessFlags::PRIVATE),
++                JavaFieldProto::new("x", "I", FieldAccessFlags::PRIVATE),
++                JavaFieldProto::new("y", "I", FieldAccessFlags::PRIVATE),
++                JavaFieldProto::new("w", "I", FieldAccessFlags::PRIVATE),
++                JavaFieldProto::new("h", "I", FieldAccessFlags::PRIVATE),
+             ],
+-            fields: vec![JavaFieldProto::new("focused", "Z", FieldAccessFlags::PRIVATE)],
+             access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::ABSTRACT,
+         }
+     }
+@@ -84,43 +96,64 @@ impl Component {
+         jvm.get_field(&this, "org/kwis/msp/lwc/Component", "focused", "Z").await
+     }
+ 
+-    async fn get_height(_: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<i32> {
+-        tracing::warn!("stub org.kwis.msp.lwc.Component::getHeight({this:?})");
++    async fn get_height(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<i32> {
++        tracing::debug!("org.kwis.msp.lwc.Component::getHeight({this:?})");
+ 
+-        Ok(0)
++        jvm.get_field(&this, "org/kwis/msp/lwc/Component", "h", "I").await
+     }
+ 
+-    async fn get_width(_: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<i32> {
+-        tracing::warn!("stub org.kwis.msp.lwc.Component::getWidth({this:?})");
++    async fn get_width(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<i32> {
++        tracing::debug!("org.kwis.msp.lwc.Component::getWidth({this:?})");
+ 
+-        Ok(0)
++        jvm.get_field(&this, "org/kwis/msp/lwc/Component", "w", "I").await
+     }
+ 
+-    async fn get_x(_: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<i32> {
+-        tracing::warn!("stub org.kwis.msp.lwc.Component::getX({this:?})");
++    async fn get_x(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<i32> {
++        tracing::debug!("org.kwis.msp.lwc.Component::getX({this:?})");
+ 
+-        Ok(0)
++        jvm.get_field(&this, "org/kwis/msp/lwc/Component", "x", "I").await
+     }
+ 
+-    async fn get_y(_: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<i32> {
+-        tracing::warn!("stub org.kwis.msp.lwc.Component::getY({this:?})");
++    async fn get_y(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<i32> {
++        tracing::debug!("org.kwis.msp.lwc.Component::getY({this:?})");
+ 
+-        Ok(0)
++        jvm.get_field(&this, "org/kwis/msp/lwc/Component", "y", "I").await
+     }
+ 
+-    // LWC widget painting isn't wired to the framebuffer yet, so repaint has
+-    // nothing to flush — but leaving it unimplemented aborted whole apps with
+-    // "method not found". Accept it as a no-op so the app keeps running (and
+-    // draws through whatever other path it uses).
+-    async fn repaint(_: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<()> {
+-        tracing::warn!("stub org.kwis.msp.lwc.Component::repaint({this:?})");
++    // A shown ShellComponent is painted as a card (net.wie.ShellCard), so repainting a component
++    // repaints the card canvas.
++    async fn repaint(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<()> {
++        tracing::debug!("org.kwis.msp.lwc.Component::repaint({this:?})");
+ 
+-        Ok(())
++        let canvas = Self::card_canvas(jvm).await?;
++        jvm.invoke_virtual(&canvas, "javax/microedition/lcdui/Canvas", "repaint", "()V", ()).await
+     }
+ 
+-    async fn repaint_with_area(_: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>, x: i32, y: i32, w: i32, h: i32) -> JvmResult<()> {
+-        tracing::warn!("stub org.kwis.msp.lwc.Component::repaint({this:?}, {x}, {y}, {w}, {h})");
++    async fn paint(_: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>, g: ClassInstanceRef<Graphics>) -> JvmResult<()> {
++        tracing::debug!("org.kwis.msp.lwc.Component::paint({this:?}, {g:?})");
+ 
+         Ok(())
+     }
++
++    pub async fn set_bounds<T>(jvm: &Jvm, this: &mut ClassInstanceRef<T>, x: i32, y: i32, width: i32, height: i32) -> JvmResult<()> {
++        jvm.put_field(this, "org/kwis/msp/lwc/Component", "x", "I", x).await?;
++        jvm.put_field(this, "org/kwis/msp/lwc/Component", "y", "I", y).await?;
++        jvm.put_field(this, "org/kwis/msp/lwc/Component", "w", "I", width).await?;
++        jvm.put_field(this, "org/kwis/msp/lwc/Component", "h", "I", height).await
++    }
++
++    pub async fn card_canvas(jvm: &Jvm) -> JvmResult<ClassInstanceRef<CardCanvas>> {
++        let display: ClassInstanceRef<Display> = jvm
++            .invoke_static("org/kwis/msp/lcdui/Display", "getDefaultDisplay", "()Lorg/kwis/msp/lcdui/Display;", [])
++            .await?;
++        Display::card_canvas(jvm, &display).await
++    }
++
++    async fn repaint_with_area(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>, x: i32, y: i32, w: i32, h: i32) -> JvmResult<()> {
++        tracing::debug!("org.kwis.msp.lwc.Component::repaint({this:?}, {x}, {y}, {w}, {h})");
++
++        let canvas = Self::card_canvas(jvm).await?;
++        jvm.invoke_virtual(&canvas, "javax/microedition/lcdui/Canvas", "repaint", "(IIII)V", (x, y, w, h))
++            .await
++    }
+ }
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/lwc/shell_component.rs b/wie-wipi-java/src/classes/org/kwis/msp/lwc/shell_component.rs
+index ca790534..949034c6 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/lwc/shell_component.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/lwc/shell_component.rs
+@@ -1,11 +1,14 @@
+ use alloc::vec;
+ 
+ use jvm::{ClassInstanceRef, Jvm, Result as JvmResult};
+-use jvm_class_proto::JavaMethodProto;
+-use jvm_types::{ClassAccessFlags, MethodAccessFlags};
++use jvm_class_proto::{JavaFieldProto, JavaMethodProto};
++use jvm_types::{ClassAccessFlags, FieldAccessFlags, MethodAccessFlags};
+ use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
+ 
+-use crate::classes::org::kwis::msp::lwc::Component;
++use crate::classes::{
++    net::wie::ShellCard,
++    org::kwis::msp::{lcdui::Display, lwc::Component},
++};
+ 
+ // class org.kwis.msp.lwc.ShellComponent
+ pub struct ShellComponent;
+@@ -29,35 +32,37 @@ impl ShellComponent {
+                 JavaMethodProto::new("hide", "()V", Self::hide, MethodAccessFlags::PUBLIC),
+                 JavaMethodProto::new("serviceRepaints", "()V", Self::service_repaints, MethodAccessFlags::PUBLIC),
+             ],
+-            fields: vec![],
++            fields: vec![JavaFieldProto::new("card", "Lnet/wie/ShellCard;", FieldAccessFlags::PRIVATE)],
+             access_flags: ClassAccessFlags::PUBLIC,
+         }
+     }
+ 
+-    async fn init(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<()> {
+-        tracing::debug!("stub org.kwis.msp.lwc.ShellComponent::<init>({this:?})");
++    // a shell created without bounds covers the whole display
++    async fn init(jvm: &Jvm, _: &mut WieJvmContext, mut this: ClassInstanceRef<Self>) -> JvmResult<()> {
++        tracing::debug!("org.kwis.msp.lwc.ShellComponent::<init>({this:?})");
+ 
+         let _: () = jvm.invoke_special(&this, "org/kwis/msp/lwc/Component", "<init>", "()V", ()).await?;
+-
+-        Ok(())
++        let display = Self::display(jvm).await?;
++        let width: i32 = jvm.invoke_virtual(&display, "org/kwis/msp/lcdui/Display", "getWidth", "()I", ()).await?;
++        let height: i32 = jvm.invoke_virtual(&display, "org/kwis/msp/lcdui/Display", "getHeight", "()I", ()).await?;
++        Component::set_bounds(jvm, &mut this, 0, 0, width, height).await
+     }
+ 
+     async fn init_with_size(
+         jvm: &Jvm,
+         _: &mut WieJvmContext,
+-        this: ClassInstanceRef<Self>,
++        mut this: ClassInstanceRef<Self>,
+         x: i32,
+         y: i32,
+         width: i32,
+         height: i32,
+     ) -> JvmResult<()> {
+-        tracing::debug!("stub org.kwis.msp.lwc.ShellComponent::<init>({this:?}, {x}, {y}, {width}, {height})");
++        tracing::debug!("org.kwis.msp.lwc.ShellComponent::<init>({this:?}, {x}, {y}, {width}, {height})");
+ 
+         let _: () = jvm
+             .invoke_special(&this, "org/kwis/msp/lwc/ContainerComponent", "<init>", "()V", ())
+             .await?;
+-
+-        Ok(())
++        Component::set_bounds(jvm, &mut this, x, y, width, height).await
+     }
+ 
+     async fn set_work_component(
+@@ -71,21 +76,65 @@ impl ShellComponent {
+         Ok(())
+     }
+ 
+-    async fn show(_: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<()> {
+-        tracing::warn!("stub org.kwis.msp.lwc.ShellComponent::show({this:?})");
++    async fn display(jvm: &Jvm) -> JvmResult<ClassInstanceRef<Display>> {
++        jvm.invoke_static("org/kwis/msp/lcdui/Display", "getDefaultDisplay", "()Lorg/kwis/msp/lcdui/Display;", [])
++            .await
++    }
++
++    // The shell is painted and receives keys as a card on the default display.
++    async fn show(jvm: &Jvm, _: &mut WieJvmContext, mut this: ClassInstanceRef<Self>) -> JvmResult<()> {
++        tracing::debug!("org.kwis.msp.lwc.ShellComponent::show({this:?})");
+ 
+-        Ok(())
++        let mut card: ClassInstanceRef<ShellCard> = jvm
++            .get_field(&this, "org/kwis/msp/lwc/ShellComponent", "card", "Lnet/wie/ShellCard;")
++            .await?;
++        if card.is_null() {
++            card = jvm
++                .new_class("net/wie/ShellCard", "(Lorg/kwis/msp/lwc/Component;)V", (this.clone(),))
++                .await?
++                .into();
++            jvm.put_field(&mut this, "org/kwis/msp/lwc/ShellComponent", "card", "Lnet/wie/ShellCard;", card.clone())
++                .await?;
++        }
++        let display = Self::display(jvm).await?;
++        jvm.invoke_virtual(
++            &display,
++            "org/kwis/msp/lcdui/Display",
++            "pushCard",
++            "(Lorg/kwis/msp/lcdui/Card;)V",
++            (card,),
++        )
++        .await
+     }
+ 
+-    async fn hide(_: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<()> {
+-        tracing::warn!("stub org.kwis.msp.lwc.ShellComponent::hide({this:?})");
++    async fn hide(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<()> {
++        tracing::debug!("org.kwis.msp.lwc.ShellComponent::hide({this:?})");
++
++        let card: ClassInstanceRef<ShellCard> = jvm
++            .get_field(&this, "org/kwis/msp/lwc/ShellComponent", "card", "Lnet/wie/ShellCard;")
++            .await?;
++        if card.is_null() {
++            return Ok(());
++        }
++        let display = Self::display(jvm).await?;
++        let _: bool = jvm
++            .invoke_virtual(
++                &display,
++                "org/kwis/msp/lcdui/Display",
++                "removeCard",
++                "(Lorg/kwis/msp/lcdui/Card;)Z",
++                (card,),
++            )
++            .await?;
+ 
+         Ok(())
+     }
+ 
+-    async fn service_repaints(_: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<()> {
+-        tracing::warn!("stub org.kwis.msp.lwc.ShellComponent::serviceRepaints({this:?})");
++    async fn service_repaints(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<()> {
++        tracing::debug!("org.kwis.msp.lwc.ShellComponent::serviceRepaints({this:?})");
+ 
+-        Ok(())
++        let canvas = Component::card_canvas(jvm).await?;
++        jvm.invoke_virtual(&canvas, "javax/microedition/lcdui/Canvas", "serviceRepaints", "()V", ())
++            .await
+     }
+ }
+diff --git a/wie-wipi-java/src/lib.rs b/wie-wipi-java/src/lib.rs
+index 9c289a6f..84b162eb 100644
+--- a/wie-wipi-java/src/lib.rs
++++ b/wie-wipi-java/src/lib.rs
+@@ -6,7 +6,7 @@ pub mod classes;
+ 
+ use wie_jvm_support::WieJavaClassProto;
+ 
+-pub fn get_protos() -> [WieJavaClassProto; 55] {
++pub fn get_protos() -> [WieJavaClassProto; 56] {
+     [
+         crate::classes::org::kwis::msf::io::Network::as_proto(),
+         crate::classes::org::kwis::msf::io::SchemeNotFoundException::as_proto(),
+@@ -61,6 +61,7 @@ pub fn get_protos() -> [WieJavaClassProto; 55] {
+         crate::classes::org::kwis::msp::media::Vibrator::as_proto(),
+         crate::classes::org::kwis::msp::media::Volume::as_proto(),
+         crate::classes::net::wie::CardCanvas::as_proto(),
++        crate::classes::net::wie::ShellCard::as_proto(),
+         crate::classes::net::wie::WIPIFileOutputStream::as_proto(),
+         crate::classes::net::wie::WIPIMIDlet::as_proto(),
+     ]
