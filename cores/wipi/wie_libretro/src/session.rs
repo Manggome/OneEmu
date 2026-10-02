@@ -1,7 +1,7 @@
 //! One running game: the wie emulator plus the host state it talks to. Lives on the worker thread.
 
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, atomic::Ordering},
     time::{Duration, Instant as StdInstant, SystemTime, UNIX_EPOCH},
 };
@@ -9,13 +9,15 @@ use std::{
 use wie_backend::{Emulator, Event, Font, Options};
 
 use crate::{
-    archive::{self, Carrier},
+    archive::{self, Carrier, GameSource},
     audio::Mixer,
+    cheat::{self, Cheats, SearchOp},
     clock::parse_date_ms,
     host::{DEFAULT_HEIGHT, DEFAULT_WIDTH, LibretroPlatform, Shared},
     input::{KeyEvent, KeySet, KeyTracker, PadProfile},
     options::{Config, RawOptions},
     quirks::{self, Quirk},
+    storage::SaveDatabaseRepository,
 };
 
 const FONT: &[u8] = include_bytes!("../../assets/neodgm.ttf");
@@ -71,6 +73,7 @@ pub struct Session {
     target_us: u64,
     key_events: Vec<KeyEvent>,
     failed: Option<String>,
+    cheats: Cheats,
 }
 
 impl Session {
@@ -97,7 +100,14 @@ impl Session {
         // (WipiSaves.kt) derives the same key.
         let save_key = save_key(&game, &req.path);
         tracing::info!("saves: {}", save_key);
-        let platform = Box::new(LibretroPlatform::new(shared.clone(), req.save_dir.join(&save_key), font));
+        migrate_cr_folders(&req.save_dir.join(&save_key), &[game.id.as_deref(), game.aid.as_deref()]);
+        seed_dump_data(&game, &req.save_dir.join(&save_key));
+        let platform = Box::new(LibretroPlatform::new(
+            shared.clone(),
+            req.save_dir.join(&save_key),
+            font,
+            quirk.as_ref().map(|q| q.system_properties.clone()).unwrap_or_default(),
+        ));
 
         let title = game.title.clone().unwrap_or_else(|| "WIPI".into());
         let carrier = game.carrier;
@@ -145,6 +155,7 @@ impl Session {
             target_us: 0,
             key_events: Vec::new(),
             failed: None,
+            cheats: Cheats::default(),
         };
         Ok((session, info))
     }
@@ -173,6 +184,10 @@ impl Session {
                 self.failed = Some(e);
                 self.mixer.stop_all();
                 out.error = self.failed.clone();
+            } else if self.cheats.has_locks()
+                && let Some(memory) = self.emulator.guest_memory()
+            {
+                self.cheats.apply(memory);
             }
         }
 
@@ -251,6 +266,34 @@ impl Session {
         Ok(())
     }
 
+    /// One step of the memory search; the number of candidates left, or None when the game has no
+    /// searchable memory (SKT / J2ME run on the host JVM).
+    pub fn cheat_search(&mut self, op: SearchOp, size: u8) -> Option<usize> {
+        let memory = self.emulator.guest_memory()?;
+        Some(self.cheats.search(memory, op, size))
+    }
+
+    /// Up to `max` search candidates as (address, current value), plus the value width in bytes.
+    pub fn cheat_results(&mut self, max: usize) -> (Vec<(u32, u32)>, u8) {
+        let size = self.cheats.search_size();
+        match self.emulator.guest_memory() {
+            Some(memory) => (self.cheats.results(memory, max), size),
+            None => (Vec::new(), size),
+        }
+    }
+
+    pub fn cheat_write(&mut self, address: u32, size: u8, value: u32) -> bool {
+        self.emulator.guest_memory().is_some_and(|m| cheat::write_value(m, address, size, value))
+    }
+
+    pub fn set_cheat(&mut self, index: u32, enabled: bool, code: &str) {
+        self.cheats.set_code(index, enabled, code);
+    }
+
+    pub fn reset_cheats(&mut self) {
+        self.cheats.reset_codes();
+    }
+
     /// Everything the game wrote to stdout (tests / headless runs).
     pub fn stdout(&self) -> Vec<u8> {
         self.shared.stdout.lock().map(|x| x.clone()).unwrap_or_default()
@@ -258,6 +301,42 @@ impl Session {
 
     pub fn exit_requested(&self) -> bool {
         self.shared.exit_requested.load(Ordering::Acquire)
+    }
+}
+
+/// Builds before the LGT app_info fix kept the CR of CRLF descriptors in the PID / AID, so (on Android,
+/// where the name is legal) those games saved into "<id>\r" folders. Move them to the trimmed name.
+fn migrate_cr_folders(save_dir: &Path, ids: &[Option<&str>]) {
+    for id in ids.iter().flatten() {
+        let old = save_dir.join(format!("{id}\r"));
+        let new = save_dir.join(id);
+        if old.is_dir() && !new.exists() {
+            match std::fs::rename(&old, &new) {
+                Ok(()) => tracing::info!("saves: moved {id}\\r to {id}"),
+                Err(e) => tracing::warn!("saves: cannot move {id}\\r: {e}"),
+            }
+        }
+    }
+}
+
+/// Handset dumps can carry an LGT app's own data folder as `wipi-data/<AID>/<name>` (액션퍼즐패밀리4 keeps
+/// its server-issued cert.c2s there; without it the game asks to fetch one from its long-gone server).
+/// LGT apps open those files through the database API, so each one becomes a database on first run; a
+/// database the game has already saved is kept.
+fn seed_dump_data(game: &archive::Game, save_dir: &Path) {
+    let (Carrier::Lgt, GameSource::Archive(files), Some(aid), Some(pid)) = (game.carrier, &game.source, &game.aid, &game.id) else {
+        return;
+    };
+    let repository = SaveDatabaseRepository::new(save_dir.to_path_buf());
+    for (path, data) in files {
+        // Windows-made dumps store the folder separators as backslashes.
+        let mut parts = path.split(['/', '\\']);
+        let (Some("wipi-data"), Some(dir), Some(name), None) = (parts.next(), parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        if dir.eq_ignore_ascii_case(aid) && !name.is_empty() && repository.seed(name, pid, data) {
+            tracing::info!("saves: seeded database {name} from the dump");
+        }
     }
 }
 

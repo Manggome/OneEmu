@@ -125,6 +125,13 @@ public:
     void setCheat(unsigned index, bool enabled, const std::string& code);
     void resetCheats();
 
+    // Cheat finder (cores exporting the oneemu_mem* extension).
+    bool hasMemSearch();
+    int64_t memSearch(int op, int size, uint32_t value);
+    /// Up to [max] (address, value) pairs; [size] gets the value width in bytes.
+    std::vector<std::pair<uint32_t, uint32_t>> memSearchResults(int max, int& size);
+    bool memWrite(uint32_t address, int size, uint32_t value);
+
     std::vector<CoreOption> options();
     void setOption(const std::string& key, const std::string& value);
 

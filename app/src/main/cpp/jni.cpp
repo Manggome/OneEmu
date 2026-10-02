@@ -208,6 +208,26 @@ BRIDGE(void, setCheat)(JNIEnv* env, jobject, jint index, jboolean enabled, jstri
 }
 BRIDGE(void, resetCheats)(JNIEnv*, jobject) { Frontend::get().resetCheats(); }
 
+BRIDGE(jboolean, hasMemSearch)(JNIEnv*, jobject) { return Frontend::get().hasMemSearch(); }
+BRIDGE(jlong, memSearch)(JNIEnv*, jobject, jint op, jint size, jlong value) {
+    return (jlong)Frontend::get().memSearch(op, size, (uint32_t)value);
+}
+// [size, address0, value0, address1, value1, ...], addresses/values as unsigned 32-bit.
+BRIDGE(jlongArray, memSearchResults)(JNIEnv* env, jobject, jint max) {
+    int size = 0;
+    auto results = Frontend::get().memSearchResults(max, size);
+    std::vector<jlong> out;
+    out.reserve(1 + results.size() * 2);
+    out.push_back(size);
+    for (auto& [a, v] : results) { out.push_back((jlong)a); out.push_back((jlong)v); }
+    jlongArray arr = env->NewLongArray((jsize)out.size());
+    env->SetLongArrayRegion(arr, 0, (jsize)out.size(), out.data());
+    return arr;
+}
+BRIDGE(jboolean, memWrite)(JNIEnv*, jobject, jlong address, jint size, jlong value) {
+    return Frontend::get().memWrite((uint32_t)address, size, (uint32_t)value);
+}
+
 // One option per line: key\tdesc\tinfo\tcategory\tcurrent\tdefault\tvisible\tval1=label1|val2=label2...
 BRIDGE(jstring, getOptions)(JNIEnv* env, jobject) {
     std::string out;

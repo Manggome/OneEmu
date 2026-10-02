@@ -3,6 +3,7 @@
 
 mod archive;
 mod audio;
+mod cheat;
 mod clock;
 mod ffi;
 mod host;
@@ -16,13 +17,14 @@ mod worker;
 
 pub use crate::{
     archive::Carrier,
+    cheat::SearchOp,
     input::{KeySet, PadProfile},
     options::RawOptions,
     session::{FrameOutput, LoadRequest, Session},
 };
 
 use std::{
-    ffi::{CStr, CString, c_char, c_uint, c_void},
+    ffi::{CStr, CString, c_char, c_int, c_uint, c_void},
     path::PathBuf,
     ptr,
     sync::{Mutex, OnceLock},
@@ -581,10 +583,62 @@ pub extern "C" fn retro_unserialize(_data: *const c_void, _size: usize) -> bool 
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn retro_cheat_reset() {}
+pub extern "C" fn retro_cheat_reset() {
+    with_worker(|w| w.call(|s| s.reset_cheats()));
+}
+
+/// Codes are `AAAAAAAA:VALUE` memory locks (see cheat.rs), kept fixed every frame.
+#[unsafe(no_mangle)]
+pub extern "C" fn retro_cheat_set(index: c_uint, enabled: bool, code: *const c_char) {
+    let code = if code.is_null() { String::new() } else { unsafe { CStr::from_ptr(code) }.to_string_lossy().into_owned() };
+    with_worker(move |w| w.call(move |s| s.set_cheat(index, enabled, &code)));
+}
+
+fn with_worker<R>(f: impl FnOnce(&Worker) -> Option<R>) -> Option<R> {
+    let guard = CORE.lock().ok()?;
+    f(&guard.as_ref()?.worker)
+}
+
+// OneEmu extension (looked up with dlsym; other frontends just don't call it): step-by-step memory search
+// for the cheat finder. op: 0 = new search for `value`, 1 = now equals `value`, 2 = changed, 3 = unchanged,
+// 4 = increased, 5 = decreased. size: value width in bytes (1, 2, 4). Returns the candidates left, or -1
+// when the game has no searchable memory.
 
 #[unsafe(no_mangle)]
-pub extern "C" fn retro_cheat_set(_index: c_uint, _enabled: bool, _code: *const c_char) {}
+pub extern "C" fn oneemu_memsearch(op: c_int, size: c_int, value: u32) -> i64 {
+    let Some(op) = cheat::SearchOp::from_code(op, value) else {
+        return -1;
+    };
+    with_worker(move |w| w.call(move |s| s.cheat_search(op, size as u8)))
+        .flatten()
+        .map_or(-1, |n| n as i64)
+}
+
+/// Fills up to `max` (address, current value) pairs and returns how many; `size` gets the value width.
+#[unsafe(no_mangle)]
+pub extern "C" fn oneemu_memsearch_results(addresses: *mut u32, values: *mut u32, max: c_int, size: *mut c_int) -> c_int {
+    if addresses.is_null() || values.is_null() || max <= 0 {
+        return 0;
+    }
+    let Some((results, width)) = with_worker(move |w| w.call(move |s| s.cheat_results(max as usize))) else {
+        return 0;
+    };
+    for (i, (a, v)) in results.iter().enumerate() {
+        unsafe {
+            *addresses.add(i) = *a;
+            *values.add(i) = *v;
+        }
+    }
+    if !size.is_null() {
+        unsafe { *size = c_int::from(width) };
+    }
+    results.len() as c_int
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn oneemu_memwrite(address: u32, size: c_int, value: u32) -> bool {
+    with_worker(move |w| w.call(move |s| s.cheat_write(address, size as u8, value))).unwrap_or(false)
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn retro_get_memory_data(_id: c_uint) -> *mut c_void {

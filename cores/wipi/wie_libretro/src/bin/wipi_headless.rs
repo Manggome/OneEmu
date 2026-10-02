@@ -2,6 +2,7 @@
 //!
 //!   wipi_headless <game.zip|jar|jad> [--frames N] [--keys "120:OK,200:5,260:LSK"] [--dump DIR] [--every N]
 //!                 [--option key=value ...] [--system DIR]
+//!                 [--cheat "600:start:4:1500,900:dec,960:write:99999,1200:lock:99999"]
 //!
 //! Runs N frames (default 1800 = 30 s of game time) with scripted key taps (each held 4 frames), dumps
 //! every N-th frame as PPM, and prints timing plus how much of the last frame is non-black.
@@ -9,7 +10,7 @@
 use std::{fs, path::PathBuf, time::Instant};
 
 use wie_backend::KeyCode;
-use wipi_libretro::{FrameOutput, KeySet, LoadRequest, RawOptions, Session};
+use wipi_libretro::{FrameOutput, KeySet, LoadRequest, RawOptions, SearchOp, Session};
 
 fn parse_key(name: &str) -> Option<KeyCode> {
     Some(match name {
@@ -47,6 +48,43 @@ fn write_ppm(path: &PathBuf, pixels: &[u32], w: u32, h: u32) -> std::io::Result<
     fs::write(path, data)
 }
 
+/// `start:SIZE:VALUE`, `equal:VALUE`, `changed`, `unchanged`, `inc`, `dec`, `write:VALUE` (all candidates),
+/// `lock:VALUE` (first candidate, as a cheat code).
+fn run_cheat_step(session: &mut Session, step: &str) {
+    let parts: Vec<&str> = step.split(':').collect();
+    let num = |i: usize| parts.get(i).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+    let (op, size) = match parts[0] {
+        "start" => (Some(SearchOp::Start(num(2))), num(1) as u8),
+        "equal" => (Some(SearchOp::Equal(num(1))), 0),
+        "changed" => (Some(SearchOp::Changed), 0),
+        "unchanged" => (Some(SearchOp::Unchanged), 0),
+        "inc" => (Some(SearchOp::Increased), 0),
+        "dec" => (Some(SearchOp::Decreased), 0),
+        _ => (None, 0),
+    };
+    if let Some(op) = op {
+        let left = session.cheat_search(op, size);
+        let (results, width) = session.cheat_results(5);
+        println!("cheat {step}: {left:?} left, first {results:x?} ({width} bytes)");
+        return;
+    }
+    let (results, width) = session.cheat_results(10_000);
+    match parts[0] {
+        "write" => {
+            let n = results.iter().filter(|(a, _)| session.cheat_write(*a, width, num(1))).count();
+            println!("cheat {step}: wrote {n} addresses");
+        }
+        "lock" => {
+            if let Some((a, _)) = results.first() {
+                let code = format!("{a:08X}:{:0w$X}", num(1), w = width as usize * 2);
+                session.set_cheat(0, true, &code);
+                println!("cheat {step}: locked with code {code}");
+            }
+        }
+        _ => println!("cheat {step}: unknown step"),
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     // Same 16 MiB stack the libretro core's worker gets; wie's runtime recurses deeply.
     std::thread::Builder::new()
@@ -69,10 +107,12 @@ fn run() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let mut game = None;
     let mut frames = 1800u64;
-    let mut keys: Vec<(u64, KeyCode)> = Vec::new();
+    let mut keys: Vec<(u64, KeyCode, u64)> = Vec::new();
     let mut dump: Option<PathBuf> = None;
     let mut every = 60u64;
     let mut options = Vec::new();
+    // (frame, step): memory-search steps, to try the cheat finder headless.
+    let mut cheats: Vec<(u64, String)> = Vec::new();
     let mut system = std::env::temp_dir().join("wipi_headless");
 
     while let Some(a) = args.next() {
@@ -86,11 +126,22 @@ fn run() -> anyhow::Result<()> {
                     options.push((k.to_string(), v.to_string()));
                 }
             }
+            "--cheat" => {
+                for item in args.next().unwrap_or_default().split(',').filter(|s| !s.is_empty()) {
+                    let (f, step) = item.split_once(':').ok_or_else(|| anyhow::anyhow!("bad cheat item {item}"))?;
+                    cheats.push((f.trim().parse()?, step.trim().to_string()));
+                }
+            }
             "--keys" => {
                 for item in args.next().unwrap_or_default().split(',').filter(|s| !s.is_empty()) {
                     let (f, k) = item.split_once(':').ok_or_else(|| anyhow::anyhow!("bad key item {item}"))?;
+                    // "KEY~N" holds the key for N frames instead of the default 4-frame tap.
+                    let (k, hold) = match k.split_once('~') {
+                        Some((k, n)) => (k, n.trim().parse()?),
+                        None => (k, 4u64),
+                    };
                     let key = parse_key(k.trim()).ok_or_else(|| anyhow::anyhow!("unknown key {k}"))?;
-                    keys.push((f.trim().parse()?, key));
+                    keys.push((f.trim().parse()?, key, hold));
                 }
             }
             _ => game = Some(PathBuf::from(a)),
@@ -123,22 +174,34 @@ fn run() -> anyhow::Result<()> {
     let started = Instant::now();
     let mut worst_ms = 0f64;
     let mut ran = 0;
+    let mut audible_frames = 0u64;
+    let mut presented = 0u64;
+    let mut audio_peak = 0i32;
     for frame in 0..frames {
         let mut set = KeySet::default();
-        for (at, key) in &keys {
-            if frame >= *at && frame < at + 4 {
+        for (at, key, hold) in &keys {
+            if frame >= *at && frame < at + hold {
                 set.press(*key);
             }
+        }
+        for (_, step) in cheats.iter().filter(|(at, _)| *at == frame) {
+            run_cheat_step(&mut session, step);
         }
         let t = Instant::now();
         out = session.run_frame(set, out);
         worst_ms = worst_ms.max(t.elapsed().as_secs_f64() * 1000.0);
         ran += 1;
+        let peak = out.audio.iter().map(|s| i32::from(*s).abs()).max().unwrap_or(0);
+        if peak > 64 {
+            audible_frames += 1;
+        }
+        audio_peak = audio_peak.max(peak);
         if let Some(e) = &out.error {
             println!("error at frame {frame}: {e}");
             break;
         }
         if let Some(v) = &out.video {
+            presented += 1;
             last = Some(v.clone());
         }
         if let (Some(d), Some((px, w, h))) = (&dump, &last)
@@ -153,6 +216,9 @@ fn run() -> anyhow::Result<()> {
     }
     let total = started.elapsed().as_secs_f64();
     println!("frames: {ran}, avg {:.2} ms/frame, worst {:.2} ms", total * 1000.0 / ran.max(1) as f64, worst_ms);
+    println!("audio: sound in {audible_frames} of {ran} frames, peak {audio_peak}");
+    // Frames in which the game presented a new picture: the game's own frame rate under this CPU budget.
+    println!("presented: {presented} of {ran} frames ({:.1} fps)", presented as f64 * 60.0 / ran.max(1) as f64);
 
     if let Some((px, w, h)) = &last {
         let lit = px.iter().filter(|p| **p & 0xffffff != 0).count();

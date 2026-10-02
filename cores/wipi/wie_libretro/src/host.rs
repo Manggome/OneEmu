@@ -2,6 +2,7 @@
 //! `retro_run`, audio commands are queued for the mixer, time is the [`VirtualClock`].
 
 use std::{
+    collections::BTreeMap,
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -130,21 +131,27 @@ pub struct LibretroPlatform {
     font: Font,
     filesystem: SaveFilesystem,
     database: SaveDatabaseRepository,
+    system_properties: BTreeMap<String, String>,
 }
 
 impl LibretroPlatform {
-    pub fn new(shared: Arc<Shared>, save_dir: PathBuf, font: Font) -> Self {
+    pub fn new(shared: Arc<Shared>, save_dir: PathBuf, font: Font, system_properties: BTreeMap<String, String>) -> Self {
         Self {
             screen: FrameScreen { shared: shared.clone() },
             filesystem: SaveFilesystem::new(save_dir.clone()),
             database: SaveDatabaseRepository::new(save_dir),
             shared,
             font,
+            system_properties,
         }
     }
 }
 
 impl Platform for LibretroPlatform {
+    fn system_property(&self, name: &str) -> Option<String> {
+        self.system_properties.get(name).cloned()
+    }
+
     fn font(&self) -> &Font {
         &self.font
     }
