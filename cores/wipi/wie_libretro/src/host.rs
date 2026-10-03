@@ -33,6 +33,9 @@ pub struct ScreenState {
     pub dirty: bool,
 }
 
+/// Game output kept (and logged) per session.
+const STDOUT_LIMIT: usize = 1 << 20;
+
 /// State shared between the platform (called from inside wie) and the session driving it.
 pub struct Shared {
     pub clock: VirtualClock,
@@ -177,8 +180,17 @@ impl Platform for LibretroPlatform {
     }
 
     fn write_stdout(&self, buf: &[u8]) {
+        // Bounded: 놈ZERO's own heap check prints the same line forever once it trips (4 GB in five minutes),
+        // which grew this buffer to 11 GB and flooded the log.
         if let Ok(mut out) = self.shared.stdout.lock() {
-            out.extend_from_slice(buf);
+            if out.len() >= STDOUT_LIMIT {
+                return;
+            }
+            let take = buf.len().min(STDOUT_LIMIT - out.len());
+            out.extend_from_slice(&buf[..take]);
+            if out.len() >= STDOUT_LIMIT {
+                tracing::warn!(target: "wipi::stdout", "more than {STDOUT_LIMIT} bytes of output; dropping the rest");
+            }
         }
         tracing::info!(target: "wipi::stdout", "{}", String::from_utf8_lossy(buf));
     }

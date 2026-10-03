@@ -1,0 +1,3880 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 3825cc9c..bb1d4e46 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -6945,6 +6945,7 @@ dependencies = [
+  "jvm",
+  "jvm-bytecode",
+  "jvm-class-proto",
++ "jvm-types",
+  "rustjava-runtime",
+  "spin",
+  "test-utils",
+diff --git a/wie-backend/src/canvas.rs b/wie-backend/src/canvas.rs
+index 3a219a03..94362b0d 100644
+--- a/wie-backend/src/canvas.rs
++++ b/wie-backend/src/canvas.rs
+@@ -52,6 +52,14 @@ pub trait Image: Send {
+     fn get_pixel(&self, x: i32, y: i32) -> Color;
+     fn raw(&self) -> Cow<'_, [u8]>;
+     fn colors(&self) -> Vec<Color>;
++
++    /// Pixels `x..x + out.len()` of row `y`, all inside the image. Images whose pixels live in guest memory
++    /// read the row at once instead of pixel by pixel.
++    fn get_pixels(&self, x: i32, y: i32, out: &mut [Color]) {
++        for (i, color) in out.iter_mut().enumerate() {
++            *color = self.get_pixel(x + i as i32, y);
++        }
++    }
+ }
+ 
+ pub trait ImageBuffer: Send {
+@@ -372,16 +380,22 @@ where
+         }
+ 
+         let bg = self.image_buffer.get_pixel(x, y);
++        self.image_buffer.put_pixel(x, y, Self::blend(color, bg));
++    }
++
++    /// `color` over `bg` (the result is opaque, even for a transparent `color`).
++    fn blend(color: Color, bg: Color) -> Color {
++        if color.a == 255 {
++            return color;
++        }
+         let factor = color.a as f32 / 255.0;
+ 
+-        let computed_color = Color {
++        Color {
+             a: 0xff,
+             r: (color.r as f32 * factor + bg.r as f32 * (1.0 - factor)) as u8,
+             g: (color.g as f32 * factor + bg.g as f32 * (1.0 - factor)) as u8,
+             b: (color.b as f32 * factor + bg.b as f32 * (1.0 - factor)) as u8,
+-        };
+-
+-        self.image_buffer.put_pixel(x, y, computed_color);
++        }
+     }
+ 
+     fn plot(&mut self, x: i32, y: i32, color: Color, clip: &Clip) {
+@@ -566,6 +580,37 @@ where
+ 
+         let x_step = if dx > sx { -1 } else { 1 };
+         let y_step = if dy > sy { -1 } else { 1 };
++        if !self.xor_mode {
++            // Row by row: images in guest memory (Java images) cost a memory access per pixel otherwise. Each
++            // source row is read before its destination row is written, which is what the pixel order below
++            // guarantees when an image is drawn onto itself.
++            let x_start = x_start.max(clip.x as i64 - dx as i64);
++            let x_end = x_end.min(clip.x as i64 + clip.width as i64 - dx as i64);
++            if x_start >= x_end {
++                return;
++            }
++            let length = (x_end - x_start) as usize;
++            let mut row = vec![Color { a: 0, r: 0, g: 0, b: 0 }; length];
++            let mut background = vec![Color { a: 0, r: 0, g: 0, b: 0 }; length];
++            let px = (dx as i64 + x_start) as i32;
++            let mut y = if y_step < 0 { y_end - 1 } else { y_start };
++            while y >= y_start && y < y_end {
++                let py = (dy as i64 + y) as i32;
++                if (py as i64) >= clip.y as i64 && (py as i64) < clip.y as i64 + clip.height as i64 {
++                    src.get_pixels((sx as i64 + x_start) as i32, (sy as i64 + y) as i32, &mut row);
++                    if row.iter().any(|color| color.a != 255) {
++                        self.image_buffer.get_pixels(px, py, &mut background);
++                        for (color, bg) in row.iter_mut().zip(&background) {
++                            *color = Self::blend(*color, *bg);
++                        }
++                    }
++                    self.image_buffer.put_pixels(px, py, length as u32, &row);
++                }
++                y += y_step;
++            }
++            return;
++        }
++
+         let mut y = if y_step < 0 { y_end - 1 } else { y_start };
+         while y >= y_start && y < y_end {
+             let mut x = if x_step < 0 { x_end - 1 } else { x_start };
+@@ -770,7 +815,23 @@ where
+     }
+ 
+     fn fill_rect(&mut self, x: i32, y: i32, w: u32, h: u32, color: Color, clip: Clip) {
+-        // TODO use put_pixels
++        if !self.xor_mode {
++            // one write per row: images in guest memory (Java images) cost a memory access per pixel otherwise
++            let columns = clamp_span(x, w, self.image_buffer.width());
++            let start = (columns.start as i64).max(clip.x as i64);
++            let end = (columns.end as i64).min(clip.x as i64 + clip.width as i64);
++            if start >= end {
++                return;
++            }
++            let row = vec![color; (end - start) as usize];
++            for py in clamp_span(y, h, self.image_buffer.height()) {
++                if (py as i64) >= clip.y as i64 && (py as i64) < clip.y as i64 + clip.height as i64 {
++                    self.image_buffer.put_pixels(start as i32, py, row.len() as u32, &row);
++                }
++            }
++            return;
++        }
++
+         for py in clamp_span(y, h, self.image_buffer.height()) {
+             for px in clamp_span(x, w, self.image_buffer.width()) {
+                 self.plot(px, py, color, &clip);
+@@ -1050,6 +1111,54 @@ mod tests {
+         assert_eq!((actual.a, actual.r, actual.g, actual.b), (expected.a, expected.r, expected.g, expected.b));
+     }
+ 
++    #[test]
++    fn fill_rect_rows_match_plotting_each_pixel() {
++        let color = Color {
++            a: 0x40,
++            r: 0x80,
++            g: 0x10,
++            b: 0xff,
++        };
++        for (x, y, w, h, clip) in [
++            (-3, -2, 8, 5, full_clip(6)),
++            (
++                2,
++                1,
++                9,
++                9,
++                Clip {
++                    x: 1,
++                    y: 3,
++                    width: 3,
++                    height: 2,
++                },
++            ),
++            (4, 4, 0, 3, full_clip(6)),
++            (
++                0,
++                0,
++                6,
++                6,
++                Clip {
++                    x: 7,
++                    y: 0,
++                    width: 3,
++                    height: 6,
++                },
++            ),
++        ] {
++            let mut rows = ImageBufferCanvas::new(VecImageBuffer::<ArgbPixel>::new(6, 6));
++            let mut pixels = ImageBufferCanvas::new(VecImageBuffer::<ArgbPixel>::new(6, 6));
++            rows.fill_rect(x, y, w, h, color, clip);
++            for py in y..y + h as i32 {
++                for px in x..x + w as i32 {
++                    pixels.put_pixel(px, py, color, clip);
++                }
++            }
++            assert_eq!(rows.image().raw(), pixels.image().raw(), "({x}, {y}, {w}, {h})");
++        }
++    }
++
+     #[derive(Clone)]
+     struct SharedImageBuffer {
+         width: u32,
+diff --git a/wie-backend/src/executor.rs b/wie-backend/src/executor.rs
+index 604d40bf..d66d2711 100644
+--- a/wie-backend/src/executor.rs
++++ b/wie-backend/src/executor.rs
+@@ -159,6 +159,23 @@ impl Executor {
+         self.inner.lock().current_task_id.unwrap() as _
+     }
+ 
++    /// Drops every task. Tasks keep clones of what they run on (the system, and through it this executor), so
++    /// an emulator that is dropped with tasks still pending never frees them otherwise.
++    pub fn clear(&self) {
++        loop {
++            let tasks = {
++                let mut inner = self.inner.lock();
++                inner.sleeping_tasks.clear();
++                core::mem::take(&mut inner.tasks)
++            };
++            if tasks.is_empty() {
++                break;
++            }
++            // Outside the lock: dropping a task can reach the executor again.
++            drop(tasks);
++        }
++    }
++
+     fn step(&mut self, now: Instant) -> Result<()> {
+         self.inner.lock().last_now = now;
+ 
+@@ -292,6 +309,24 @@ mod tests {
+         assert!(completed.load(Ordering::Relaxed));
+     }
+ 
++    #[test]
++    fn clear_frees_tasks_that_hold_the_executor() {
++        let mut executor = Executor::new();
++        let marker = Arc::new(());
++        let held = marker.clone();
++        let task_executor = executor.clone();
++        executor.spawn(move || async move {
++            let _keep = (held, task_executor);
++            poll_fn(|_| Poll::<()>::Pending).await;
++        });
++        executor.tick(advancing_clock(0)).unwrap();
++        assert_eq!(Arc::strong_count(&marker), 2);
++
++        executor.clear();
++        assert_eq!(Arc::strong_count(&marker), 1);
++        assert_eq!(Arc::strong_count(&executor.inner), 1);
++    }
++
+     #[test]
+     fn test_failed_task_preserves_others() {
+         let mut executor = Executor::new();
+diff --git a/wie-backend/src/lib.rs b/wie-backend/src/lib.rs
+index 0a720a84..7997deeb 100644
+--- a/wie-backend/src/lib.rs
++++ b/wie-backend/src/lib.rs
+@@ -20,7 +20,7 @@ pub use self::{
+     executor::{AsyncCallable, AsyncCallableResult},
+     platform::{Filesystem, Platform},
+     screen::Screen,
+-    system::{Event, FilesystemOverlay, KeyCode, System},
++    system::{Event, FilesystemOverlay, InputMethod, InputMode, InputOutput, KeyCode, NativeLcd, System},
+     task::YieldFuture,
+     task_runner::{DefaultTaskRunner, TaskRunner},
+     time::Instant,
+diff --git a/wie-backend/src/system.rs b/wie-backend/src/system.rs
+index fe68f60b..d769aaa3 100644
+--- a/wie-backend/src/system.rs
++++ b/wie-backend/src/system.rs
+@@ -1,6 +1,7 @@
+ mod audio;
+ mod event_queue;
+ mod file_system;
++mod input_method;
+ 
+ use alloc::{borrow::ToOwned, boxed::Box, collections::BTreeMap, string::String, sync::Arc};
+ 
+@@ -10,6 +11,7 @@ use wie_util::Result;
+ 
+ use crate::{
+     AsyncCallable,
++    canvas::Image,
+     executor::Executor,
+     platform::Platform,
+     task::{SleepFuture, YieldFuture},
+@@ -21,20 +23,36 @@ use self::{audio::Audio, event_queue::EventQueue};
+ pub use self::{
+     event_queue::{Event, KeyCode},
+     file_system::FilesystemOverlay,
++    input_method::{InputMethod, InputMode, InputOutput},
+ };
+ 
++/// The native (WIPI-C) screen framebuffer, when the runtime keeps one. On handsets it is the LCD itself: a Java
++/// paint lands on whatever native code drew there, so the Java display starts from these pixels.
++pub trait NativeLcd: Send + Sync {
++    /// The native screen if its pixels changed since the last call; the first call only records them.
++    fn changed_image(&self) -> Option<Box<dyn Image>>;
++}
++
++/// Handle to the platform services; clones share them. Cloned for every platform call (WIPI-C contexts, SVC
++/// handlers, up to hundreds of thousands of times a second), so it is a single reference count.
+ #[derive(Clone)]
+ pub struct System {
++    inner: Arc<SystemInner>,
++}
++
++struct SystemInner {
+     pid: String,
+     aid: String,
+     executor: Executor,
+     platform: Arc<Box<dyn Platform>>,
+     filesystem: FilesystemOverlay,
+-    event_queue: Arc<RwLock<EventQueue>>,
+-    audio: Arc<RwLock<Audio>>,
++    event_queue: RwLock<EventQueue>,
++    audio: RwLock<Audio>,
++    input_method: RwLock<InputMethod>,
+     task_runner: Arc<dyn TaskRunner>,
+-    random_state: Arc<RwLock<u32>>,
+-    timer_generations: Arc<RwLock<BTreeMap<u32, u64>>>,
++    random_state: RwLock<u32>,
++    timer_generations: RwLock<BTreeMap<u32, u64>>,
++    native_lcd: RwLock<Option<Arc<dyn NativeLcd>>>,
+ }
+ 
+ impl System {
+@@ -46,38 +64,52 @@ impl System {
+         let platform = Arc::new(platform);
+ 
+         Self {
+-            pid: pid.to_owned(),
+-            aid: aid.to_owned(), // TODO create metadata dictionary or something
+-            executor: Executor::new(),
+-            filesystem: FilesystemOverlay::new(platform.clone(), aid),
+-            platform,
+-            event_queue: Arc::new(RwLock::new(EventQueue::new())),
+-            audio: Arc::new(RwLock::new(Audio::new(audio_sink))),
+-            task_runner: Arc::new(task_runner),
+-            random_state: Arc::new(RwLock::new(1)),
+-            timer_generations: Arc::new(RwLock::new(BTreeMap::new())),
++            inner: Arc::new(SystemInner {
++                pid: pid.to_owned(),
++                aid: aid.to_owned(), // TODO create metadata dictionary or something
++                executor: Executor::new(),
++                filesystem: FilesystemOverlay::new(platform.clone(), aid),
++                platform,
++                event_queue: RwLock::new(EventQueue::new()),
++                audio: RwLock::new(Audio::new(audio_sink)),
++                input_method: RwLock::new(InputMethod::default()),
++                task_runner: Arc::new(task_runner),
++                random_state: RwLock::new(1),
++                timer_generations: RwLock::new(BTreeMap::new()),
++                native_lcd: RwLock::new(None),
++            }),
+         }
+     }
+ 
++    /// Drops every pending task. Call when the emulator is dropped: tasks hold clones of this system (and of
++    /// the cores and VMs they run on), so those reference cycles are never freed otherwise.
++    pub fn shutdown(&self) {
++        self.inner.executor.clear();
++        // the native LCD reads guest memory through a context holding this System
++        let native_lcd = self.inner.native_lcd.write().take();
++        drop(native_lcd);
++    }
++
+     pub fn tick(&mut self) -> Result<()> {
+-        let platform = self.platform.clone();
+-        self.executor.tick(move || platform.now())
++        let platform = self.inner.platform.clone();
++        // executor handles share their state
++        self.inner.executor.clone().tick(move || platform.now())
+     }
+ 
+     pub fn spawn<C>(&self, callable: C)
+     where
+         C: AsyncCallable<Result<()>> + 'static + Send,
+     {
+-        let runner_clone = self.task_runner.clone();
+-        self.executor.spawn(async move || runner_clone.run(Box::pin(callable.call())).await);
++        let runner_clone = self.inner.task_runner.clone();
++        self.inner.executor.spawn(async move || runner_clone.run(Box::pin(callable.call())).await);
+     }
+ 
+     pub fn sleep(&self, timeout: u64) -> SleepFuture {
+-        SleepFuture::new(timeout, &self.executor)
++        SleepFuture::new(timeout, &self.inner.executor)
+     }
+ 
+     pub fn current_task_id(&self) -> u64 {
+-        self.executor.current_task_id()
++        self.inner.executor.current_task_id()
+     }
+ 
+     pub fn yield_now(&self) -> YieldFuture {
+@@ -88,29 +120,29 @@ impl System {
+     /// backend first and fall back to the in-memory virtual layer loaded
+     /// from archives; writes always hit the platform backend.
+     pub fn filesystem(&self) -> &FilesystemOverlay {
+-        &self.filesystem
++        &self.inner.filesystem
+     }
+ 
+     pub fn pid(&self) -> &str {
+-        &self.pid
++        &self.inner.pid
+     }
+ 
+     pub fn aid(&self) -> &str {
+-        &self.aid
++        &self.inner.aid
+     }
+ 
+     pub fn random_state(&self) -> u32 {
+-        *self.random_state.read()
++        *self.inner.random_state.read()
+     }
+ 
+     pub fn set_random_state(&self, random_state: u32) {
+-        *self.random_state.write() = random_state;
++        *self.inner.random_state.write() = random_state;
+     }
+ 
+     /// Invalidates whatever is pending on the guest timer `handle` and returns the generation a newly armed
+     /// callback must carry to stay current.
+     pub fn next_timer_generation(&self, handle: u32) -> u64 {
+-        let mut generations = self.timer_generations.write();
++        let mut generations = self.inner.timer_generations.write();
+         let generation = generations.entry(handle).or_insert(0);
+         *generation += 1;
+ 
+@@ -118,18 +150,30 @@ impl System {
+     }
+ 
+     pub fn timer_generation(&self, handle: u32) -> u64 {
+-        self.timer_generations.read().get(&handle).copied().unwrap_or(0)
++        self.inner.timer_generations.read().get(&handle).copied().unwrap_or(0)
+     }
+ 
+     pub fn platform(&self) -> &dyn Platform {
+-        self.platform.as_ref().as_ref()
++        self.inner.platform.as_ref().as_ref()
++    }
++
++    pub fn set_native_lcd(&self, lcd: Arc<dyn NativeLcd>) {
++        *self.inner.native_lcd.write() = Some(lcd);
++    }
++
++    pub fn native_lcd(&self) -> Option<Arc<dyn NativeLcd>> {
++        self.inner.native_lcd.read().clone()
+     }
+ 
+     pub fn audio(&self) -> RwLockWriteGuard<'_, Audio> {
+-        self.audio.as_ref().write()
++        self.inner.audio.write()
++    }
++
++    pub fn input_method(&self) -> RwLockWriteGuard<'_, InputMethod> {
++        self.inner.input_method.write()
+     }
+ 
+     pub fn event_queue(&self) -> RwLockWriteGuard<'_, EventQueue> {
+-        self.event_queue.write()
++        self.inner.event_queue.write()
+     }
+ }
+diff --git a/wie-backend/src/system/input_method.rs b/wie-backend/src/system/input_method.rs
+new file mode 100644
+index 00000000..2bf33910
+--- /dev/null
++++ b/wie-backend/src/system/input_method.rs
+@@ -0,0 +1,429 @@
++//! The handset's text input method: keypad presses in, committed and composing text out.
++//!
++//! Latin letters use multi-tap on the ITU-T E.161 keypad; Hangul uses the 천지인 keypad
++//! (1 = ㅣ, 2 = ㆍ, 3 = ㅡ build vowels; 4-9 and 0 cycle consonant groups). A key that
++//! does not enter text finishes the composition, which is also how a separate letter on
++//! the same key is entered.
++
++use alloc::{string::String, vec::Vec};
++
++#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
++pub enum InputMode {
++    #[default]
++    Upper,
++    Lower,
++    Digits,
++    Hangul,
++}
++
++#[derive(Debug, Default, Eq, PartialEq)]
++pub struct InputOutput {
++    /// Text the input method has finished with.
++    pub committed: String,
++    /// Text still being composed; the next key can change it.
++    pub composing: String,
++}
++
++#[derive(Default)]
++pub struct InputMethod {
++    mode: InputMode,
++    multi_tap: Option<(char, usize)>,
++    hangul: Vec<Token>,
++}
++
++impl InputMethod {
++    pub fn mode(&self) -> InputMode {
++        self.mode
++    }
++
++    /// Switches the mode. Text still being composed is dropped; callers finish it first.
++    pub fn set_mode(&mut self, mode: InputMode) {
++        self.mode = mode;
++        self.multi_tap = None;
++        self.hangul.clear();
++    }
++
++    /// Feeds one key press. `key` is a keypad character (`'0'..='9'`, `'*'`, `'#'`) or `None`
++    /// for any other key, which finishes the composition.
++    pub fn press(&mut self, key: Option<char>) -> InputOutput {
++        let mut output = InputOutput::default();
++
++        match self.mode {
++            InputMode::Upper | InputMode::Lower => self.press_multi_tap(key, &mut output),
++            InputMode::Digits => {
++                if let Some(key) = key {
++                    output.committed.push(key);
++                }
++            }
++            InputMode::Hangul => self.press_hangul(key, &mut output),
++        }
++
++        output
++    }
++
++    fn press_multi_tap(&mut self, key: Option<char>, output: &mut InputOutput) {
++        let letters = key.map(multi_tap_letters).unwrap_or("");
++        match self.multi_tap {
++            Some((pending, index)) if Some(pending) == key && !letters.is_empty() => {
++                self.multi_tap = Some((pending, (index + 1) % letters.chars().count()));
++            }
++            pending => {
++                if let Some((pending, index)) = pending {
++                    output.committed.push(multi_tap_char(pending, index, self.mode));
++                }
++                self.multi_tap = key.filter(|_| !letters.is_empty()).map(|key| (key, 0));
++            }
++        }
++
++        if let Some((pending, index)) = self.multi_tap {
++            output.composing.push(multi_tap_char(pending, index, self.mode));
++        }
++    }
++
++    fn press_hangul(&mut self, key: Option<char>, output: &mut InputOutput) {
++        match key.and_then(hangul_key) {
++            Some(HangulKey::Stroke(stroke)) => {
++                let extended = match self.hangul.last() {
++                    Some(Token::Vowel(strokes)) => {
++                        let mut strokes = strokes.clone();
++                        strokes.push(stroke);
++                        vowel(&strokes).map(|_| strokes)
++                    }
++                    _ => None,
++                };
++                match extended {
++                    Some(strokes) => *self.hangul.last_mut().unwrap() = Token::Vowel(strokes),
++                    None => self.hangul.push(Token::Vowel(String::from(stroke))),
++                }
++            }
++            Some(HangulKey::Consonant(group)) => match self.hangul.last_mut() {
++                Some(Token::Consonant(last, index)) if *last == group => *index = (*index + 1) % group.chars().count(),
++                _ => self.hangul.push(Token::Consonant(group, 0)),
++            },
++            None => {
++                output.committed.push_str(&render(&self.hangul).text);
++                self.hangul.clear();
++                return;
++            }
++        }
++
++        let rendered = render(&self.hangul);
++        if let Some(last) = rendered.syllables.last() {
++            output.committed.push_str(&rendered.text[..last.text_start]);
++            self.hangul.drain(..last.first_token);
++            output.composing.push_str(&rendered.text[last.text_start..]);
++        }
++    }
++}
++
++fn multi_tap_letters(key: char) -> &'static str {
++    match key {
++        '1' => ".,?!1",
++        '2' => "abc2",
++        '3' => "def3",
++        '4' => "ghi4",
++        '5' => "jkl5",
++        '6' => "mno6",
++        '7' => "pqrs7",
++        '8' => "tuv8",
++        '9' => "wxyz9",
++        '0' => " 0",
++        _ => "",
++    }
++}
++
++fn multi_tap_char(key: char, index: usize, mode: InputMode) -> char {
++    let letter = multi_tap_letters(key).chars().nth(index).unwrap_or(key);
++    if mode == InputMode::Upper { letter.to_ascii_uppercase() } else { letter }
++}
++
++const IOTA: char = 'ㅣ';
++const DOT: char = 'ㆍ';
++const BAR: char = 'ㅡ';
++
++enum HangulKey {
++    Stroke(char),
++    Consonant(&'static str),
++}
++
++fn hangul_key(key: char) -> Option<HangulKey> {
++    Some(match key {
++        '1' => HangulKey::Stroke(IOTA),
++        '2' => HangulKey::Stroke(DOT),
++        '3' => HangulKey::Stroke(BAR),
++        '4' => HangulKey::Consonant("ㄱㅋㄲ"),
++        '5' => HangulKey::Consonant("ㄴㄹ"),
++        '6' => HangulKey::Consonant("ㄷㅌㄸ"),
++        '7' => HangulKey::Consonant("ㅂㅍㅃ"),
++        '8' => HangulKey::Consonant("ㅅㅎㅆ"),
++        '9' => HangulKey::Consonant("ㅈㅊㅉ"),
++        '0' => HangulKey::Consonant("ㅇㅁ"),
++        _ => return None,
++    })
++}
++
++enum Token {
++    /// A consonant key group and the position reached by pressing it repeatedly.
++    Consonant(&'static str, usize),
++    /// Vowel strokes in the order they were pressed.
++    Vowel(String),
++}
++
++impl Token {
++    fn consonant(&self) -> Option<char> {
++        match self {
++            Token::Consonant(group, index) => group.chars().nth(*index),
++            Token::Vowel(_) => None,
++        }
++    }
++}
++
++enum Vowel {
++    Complete(char),
++    /// ㆍ or ㆍㆍ: a stroke sequence that becomes a vowel once ㅣ or ㅡ follows.
++    Partial,
++}
++
++fn vowel(strokes: &str) -> Option<Vowel> {
++    Some(Vowel::Complete(match strokes {
++        "ㆍ" | "ㆍㆍ" => return Some(Vowel::Partial),
++        "ㅣ" => 'ㅣ',
++        "ㅡ" => 'ㅡ',
++        "ㅣㆍ" => 'ㅏ',
++        "ㅣㆍㆍ" => 'ㅑ',
++        "ㆍㅣ" => 'ㅓ',
++        "ㆍㆍㅣ" => 'ㅕ',
++        "ㆍㅡ" => 'ㅗ',
++        "ㆍㆍㅡ" => 'ㅛ',
++        "ㅡㆍ" => 'ㅜ',
++        "ㅡㆍㆍ" => 'ㅠ',
++        "ㅣㆍㅣ" => 'ㅐ',
++        "ㅣㆍㆍㅣ" => 'ㅒ',
++        "ㆍㅣㅣ" => 'ㅔ',
++        "ㆍㆍㅣㅣ" => 'ㅖ',
++        "ㆍㅡㅣ" => 'ㅚ',
++        "ㆍㅡㅣㆍ" => 'ㅘ',
++        "ㆍㅡㅣㆍㅣ" => 'ㅙ',
++        "ㅡㆍㅣ" => 'ㅟ',
++        "ㅡㆍㆍㅣ" => 'ㅝ',
++        "ㅡㆍㆍㅣㅣ" => 'ㅞ',
++        "ㅡㅣ" => 'ㅢ',
++        _ => return None,
++    }))
++}
++
++const INITIALS: &str = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
++const MEDIALS: &str = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ";
++const FINALS: &str = "ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ";
++
++fn position(table: &str, jamo: char) -> Option<u32> {
++    table.chars().position(|x| x == jamo).map(|x| x as u32)
++}
++
++fn double_final(first: char, second: char) -> Option<char> {
++    Some(match (first, second) {
++        ('ㄱ', 'ㅅ') => 'ㄳ',
++        ('ㄴ', 'ㅈ') => 'ㄵ',
++        ('ㄴ', 'ㅎ') => 'ㄶ',
++        ('ㄹ', 'ㄱ') => 'ㄺ',
++        ('ㄹ', 'ㅁ') => 'ㄻ',
++        ('ㄹ', 'ㅂ') => 'ㄼ',
++        ('ㄹ', 'ㅅ') => 'ㄽ',
++        ('ㄹ', 'ㅌ') => 'ㄾ',
++        ('ㄹ', 'ㅍ') => 'ㄿ',
++        ('ㄹ', 'ㅎ') => 'ㅀ',
++        ('ㅂ', 'ㅅ') => 'ㅄ',
++        _ => return None,
++    })
++}
++
++/// One syllable block being assembled from tokens (indices into the token list).
++#[derive(Default)]
++struct Block {
++    initial: Option<usize>,
++    medial: Option<usize>,
++    finals: Vec<usize>,
++}
++
++impl Block {
++    fn is_empty(&self) -> bool {
++        self.initial.is_none() && self.medial.is_none()
++    }
++
++    fn first_token(&self) -> usize {
++        self.initial.or(self.medial).unwrap()
++    }
++}
++
++struct Syllable {
++    first_token: usize,
++    text_start: usize,
++}
++
++struct Rendered {
++    text: String,
++    syllables: Vec<Syllable>,
++}
++
++fn render(tokens: &[Token]) -> Rendered {
++    let mut blocks: Vec<Block> = Vec::new();
++    let mut block = Block::default();
++
++    for (index, token) in tokens.iter().enumerate() {
++        match token {
++            Token::Consonant(..) => {
++                let consonant = token.consonant().unwrap();
++                let medial = block.medial.map(|x| match &tokens[x] {
++                    Token::Vowel(strokes) => vowel(strokes),
++                    Token::Consonant(..) => None,
++                });
++                let joins = match (block.initial, medial, block.finals.as_slice()) {
++                    (Some(_), Some(Some(Vowel::Complete(_))), []) => position(FINALS, consonant).is_some(),
++                    (Some(_), Some(Some(Vowel::Complete(_))), [first]) => double_final(tokens[*first].consonant().unwrap(), consonant).is_some(),
++                    _ => false,
++                };
++                if joins {
++                    block.finals.push(index);
++                } else {
++                    if !block.is_empty() {
++                        blocks.push(core::mem::take(&mut block));
++                    }
++                    block.initial = Some(index);
++                }
++            }
++            Token::Vowel(_) => {
++                if block.medial.is_none() && block.finals.is_empty() {
++                    block.medial = Some(index);
++                } else {
++                    // A vowel after a final consonant takes it as its initial.
++                    let initial = block.finals.pop();
++                    if !block.is_empty() {
++                        blocks.push(core::mem::take(&mut block));
++                    }
++                    block.initial = initial;
++                    block.medial = Some(index);
++                }
++            }
++        }
++    }
++    if !block.is_empty() {
++        blocks.push(block);
++    }
++
++    let mut text = String::new();
++    let syllables = blocks
++        .iter()
++        .map(|block| {
++            let text_start = text.len();
++            render_block(tokens, block, &mut text);
++            Syllable {
++                first_token: block.first_token(),
++                text_start,
++            }
++        })
++        .collect();
++
++    Rendered { text, syllables }
++}
++
++fn render_block(tokens: &[Token], block: &Block, text: &mut String) {
++    let initial = block.initial.and_then(|x| tokens[x].consonant());
++    let strokes = block.medial.map(|x| match &tokens[x] {
++        Token::Vowel(strokes) => strokes.as_str(),
++        Token::Consonant(..) => "",
++    });
++    let medial = strokes.and_then(vowel);
++    let finals: Vec<char> = block.finals.iter().filter_map(|x| tokens[*x].consonant()).collect();
++
++    if let (Some(initial), Some(Vowel::Complete(medial))) = (initial, &medial) {
++        let final_jamo = match finals.as_slice() {
++            [] => None,
++            [single] => Some(*single),
++            [first, second] => double_final(*first, *second),
++            _ => None,
++        };
++        let code = 0xac00
++            + (position(INITIALS, initial).unwrap() * 21 + position(MEDIALS, *medial).unwrap()) * 28
++            + final_jamo.and_then(|x| position(FINALS, x)).map(|x| x + 1).unwrap_or(0);
++        text.push(char::from_u32(code).unwrap());
++        return;
++    }
++
++    if let Some(initial) = initial {
++        text.push(initial);
++    }
++    match medial {
++        Some(Vowel::Complete(medial)) => text.push(medial),
++        Some(Vowel::Partial) => text.push_str(strokes.unwrap()),
++        None => {}
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use alloc::string::String;
++
++    use super::{InputMethod, InputMode};
++
++    fn type_keys(input: &mut InputMethod, keys: &str) -> (String, String) {
++        let mut committed = String::new();
++        let mut composing = String::new();
++        for key in keys.chars() {
++            let output = input.press(if key == '>' { None } else { Some(key) });
++            committed.push_str(&output.committed);
++            composing = output.composing;
++        }
++
++        (committed, composing)
++    }
++
++    fn hangul(keys: &str) -> (String, String) {
++        let mut input = InputMethod::default();
++        input.set_mode(InputMode::Hangul);
++
++        type_keys(&mut input, keys)
++    }
++
++    #[test]
++    fn multi_tap_cycles_one_key_and_commits_on_another() {
++        let mut input = InputMethod::default();
++        input.set_mode(InputMode::Lower);
++
++        assert_eq!(type_keys(&mut input, "4433"), ("h".into(), "e".into()));
++        assert_eq!(type_keys(&mut input, "555>555"), ("el".into(), "l".into()));
++
++        input.set_mode(InputMode::Upper);
++        assert_eq!(type_keys(&mut input, "22>"), ("B".into(), "".into()));
++    }
++
++    #[test]
++    fn digits_commit_at_once() {
++        let mut input = InputMethod::default();
++        input.set_mode(InputMode::Digits);
++
++        assert_eq!(type_keys(&mut input, "12#"), ("12#".into(), "".into()));
++    }
++
++    #[test]
++    fn hangul_builds_syllables_from_strokes_and_consonant_groups() {
++        // 한 = ㅎ(88) ㅏ(12) ㄴ(5); 글 = ㄱ(4) ㅡ(3) ㄹ(55)
++        assert_eq!(hangul("88125"), ("".into(), "한".into()));
++        assert_eq!(hangul("881254355"), ("한".into(), "글".into()));
++        // A vowel after a final consonant takes it: 가 + ㄱ + ㅣ → 가기
++        assert_eq!(hangul("4124"), ("".into(), "각".into()));
++        assert_eq!(hangul("41241"), ("가".into(), "기".into()));
++        // Double finals and compound vowels: 닭 (ㄷ ㅏ ㄹ ㄱ), 왜 (ㅇ ㅗ ㅏ ㅣ)
++        assert_eq!(hangul("612554"), ("".into(), "닭".into()));
++        assert_eq!(hangul("023121"), ("".into(), "왜".into()));
++        // A key outside the keypad separates two consonants from the same key: 각개 vs 갘
++        assert_eq!(hangul("4124>4121"), ("각".into(), "개".into()));
++        assert_eq!(hangul("41244"), ("".into(), "갘".into()));
++    }
++
++    #[test]
++    fn hangul_shows_unfinished_vowels() {
++        assert_eq!(hangul("42"), ("".into(), "ㄱㆍ".into()));
++        assert_eq!(hangul("421"), ("".into(), "거".into()));
++        assert_eq!(hangul("4>"), ("ㄱ".into(), "".into()));
++    }
++}
+diff --git a/wie-core-arm/src/allocator/bucket.rs b/wie-core-arm/src/allocator/bucket.rs
+index 79b8fa59..8486f00d 100644
+--- a/wie-core-arm/src/allocator/bucket.rs
++++ b/wie-core-arm/src/allocator/bucket.rs
+@@ -46,6 +46,15 @@ const fn total_size() -> usize {
+ 
+ pub struct BucketAllocator;
+ 
++/// Per bucket, the first header byte that may still have a free slot: every byte before it is full. Searches
++/// start there instead of reading the whole header (128 KiB for the 4-byte bucket) on each allocation; the
++/// slot chosen is the same first free one.
++#[derive(Default)]
++struct FirstFree([u32; BUCKETS.len()]);
++
++/// Header bytes read per step while searching for a free slot.
++const SEARCH_CHUNK: usize = 256;
++
+ impl BucketAllocator {
+     pub fn init(core: &mut ArmCore, base_address: u32, base_size: u32) -> Result<()> {
+         // header contains bitset of allocation, 1 is unallocated, 0 is allocated
+@@ -64,6 +73,7 @@ impl BucketAllocator {
+ 
+             core.write_bytes(header_address, &vec![0xff; header_len])?;
+         }
++        core.with_extension(|first: &mut FirstFree| *first = FirstFree::default());
+ 
+         Ok(())
+     }
+@@ -74,22 +84,24 @@ impl BucketAllocator {
+         let header_address = base_address + region_offset(bucket_index) as u32;
+         let header_len = header_length(bucket_index);
+ 
+-        let mut header = vec![0u8; header_len];
+-        core.read_bytes(header_address, &mut header)?;
+-
+-        for (i, item) in header.iter_mut().enumerate() {
+-            if *item == 0 {
+-                continue;
++        let mut start = core.with_extension(|first: &mut FirstFree| first.0[bucket_index]) as usize;
++        let mut chunk = [0u8; SEARCH_CHUNK];
++        while start < header_len {
++            let len = SEARCH_CHUNK.min(header_len - start);
++            core.read_bytes(header_address + start as u32, &mut chunk[..len])?;
++            if let Some(offset) = chunk[..len].iter().position(|&item| item != 0) {
++                let i = start + offset;
++                let item = chunk[offset];
++                let bit = item.trailing_zeros();
++                let item = item & !(1 << bit);
++                core.write_bytes(header_address + i as u32, &[item])?;
++                core.with_extension(|first: &mut FirstFree| first.0[bucket_index] = if item == 0 { i + 1 } else { i } as u32);
++
++                return Ok(header_address + header_len as u32 + (i as u32 * 8 + bit) * slot_size as u32);
+             }
+-
+-            let bit = item.trailing_zeros();
+-            *item &= !(1 << bit);
+-            let address = header_address + header_len as u32 + (i as u32 * 8 + bit) * slot_size as u32;
+-
+-            core.write_bytes(header_address + i as u32, &[*item])?;
+-
+-            return Ok(address);
++            start += len;
+         }
++        core.with_extension(|first: &mut FirstFree| first.0[bucket_index] = header_len as u32);
+ 
+         Err(WieError::AllocationFailure)
+     }
+@@ -100,24 +112,22 @@ impl BucketAllocator {
+         let header_address = base_address + region_offset(bucket_index) as u32;
+         let header_len = header_length(bucket_index);
+ 
+-        let mut header = vec![0u8; header_len];
+-        core.read_bytes(header_address, &mut header)?;
+-
+         let offset = address.wrapping_sub(header_address + header_len as u32) / slot_size as u32;
+         let index = offset / 8;
+         let bit = offset % 8;
+ 
+-        if index as usize >= header.len() {
++        if index as usize >= header_len {
+             // freeing a pointer that does not belong to this bucket region;
+             // report it as an error instead of panicking on the bad index
+             return Err(WieError::InvalidMemoryAccess(address));
+         }
+ 
+-        debug_assert!(header[index as usize] & (1 << bit) == 0);
+-
+-        header[index as usize] |= 1 << bit;
+-
+-        core.write_bytes(header_address + index, &[header[index as usize]])?;
++        let mut item = [0u8; 1];
++        core.read_bytes(header_address + index, &mut item)?;
++        debug_assert!(item[0] & (1 << bit) == 0);
++        item[0] |= 1 << bit;
++        core.write_bytes(header_address + index, &item)?;
++        core.with_extension(|first: &mut FirstFree| first.0[bucket_index] = first.0[bucket_index].min(index));
+ 
+         Ok(())
+     }
+diff --git a/wie-core-arm/src/core.rs b/wie-core-arm/src/core.rs
+index 2054736b..c7ef29d2 100644
+--- a/wie-core-arm/src/core.rs
++++ b/wie-core-arm/src/core.rs
+@@ -1,5 +1,6 @@
+ use alloc::{borrow::ToOwned, boxed::Box, collections::BTreeMap, format, string::String, sync::Arc, vec, vec::Vec};
+ use core::{
++    any::{Any, TypeId},
+     mem::size_of,
+     sync::atomic::{AtomicBool, Ordering},
+ };
+@@ -61,15 +62,22 @@ struct ProfileState {
+     callback: ProfileCallback,
+ }
+ 
++type SyncSvcHandler = Arc<dyn Fn(&mut ArmCore) -> Result<bool> + Send + Sync>;
++
+ pub(crate) struct ArmCoreInner {
+     pub(crate) engine: Box<dyn ArmEngine>,
+     instructions_remaining: u32,
+     last_thread_id: ThreadId,
+     svc_handlers: BTreeMap<u32, Arc<Box<dyn RegisteredFunction>>>,
++    sync_svc_handlers: BTreeMap<u32, SyncSvcHandler>,
+     next_stub_address: u32,
+     /// Stub address per (category, id). A stub only encodes those two, so equal requests share one.
+     svc_stubs: BTreeMap<(u32, u32), u32>,
+     profile: Option<ProfileState>,
++    /// Per-core state of the layers above (caches keyed by guest addresses), one value per type.
++    extensions: BTreeMap<TypeId, Box<dyn Any + Send>>,
++    /// Run by [`ArmCore::shutdown`]: layers above release state that refers back to the core.
++    shutdown_hooks: Vec<Box<dyn FnOnce() + Send>>,
+ }
+ 
+ impl Drop for ArmCoreInner {
+@@ -125,9 +133,12 @@ impl ArmCore {
+             instructions_remaining: INSTRUCTIONS_PER_YIELD,
+             last_thread_id: 0,
+             svc_handlers: BTreeMap::new(),
++            sync_svc_handlers: BTreeMap::new(),
+             next_stub_address: FUNCTIONS_BASE,
+             svc_stubs: BTreeMap::new(),
+             profile,
++            extensions: BTreeMap::new(),
++            shutdown_hooks: Vec::new(),
+         };
+ 
+         let result = Self {
+@@ -142,6 +153,15 @@ impl ArmCore {
+         Ok(result)
+     }
+ 
++    /// Runs `f` on this core's value of type `T`, created with `T::default()` on first use. Lets runtimes keep
++    /// caches that live exactly as long as the guest memory they describe. The core is locked meanwhile: `f`
++    /// must not touch the core.
++    pub fn with_extension<T: Any + Send + Default, R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
++        let mut inner = self.inner.lock();
++        let value = inner.extensions.entry(TypeId::of::<T>()).or_insert_with(|| Box::new(T::default()));
++        f(value.downcast_mut::<T>().unwrap())
++    }
++
+     pub(crate) fn debug_inner(&self) -> Option<Arc<DebugInner>> {
+         let inner = self.inner.lock();
+ 
+@@ -177,6 +197,35 @@ impl ArmCore {
+         self.inner.lock().engine.is_preparing()
+     }
+ 
++    /// Releases the thread states, SVC handlers and extensions. They hold clones of this core (and of the
++    /// system and VM above it), so a dropped emulator would otherwise keep its whole guest memory alive. Call
++    /// once the emulator is done; guest code can't call into the host afterwards.
++    pub fn shutdown(&self) {
++        // Thread states free their stacks through the core: take them out first, drop them unlocked.
++        let threads = core::mem::take(&mut *self.threads.lock());
++        drop(threads);
++
++        let (svc_handlers, extensions, hooks) = {
++            let mut inner = self.inner.lock();
++            (
++                core::mem::take(&mut inner.svc_handlers),
++                core::mem::take(&mut inner.extensions),
++                core::mem::take(&mut inner.shutdown_hooks),
++            )
++        };
++        for hook in hooks {
++            hook();
++        }
++        drop(svc_handlers);
++        drop(extensions);
++    }
++
++    /// Registers `hook` to run on [`ArmCore::shutdown`], e.g. to clear a table whose entries hold clones of the
++    /// core or of a VM that holds the core.
++    pub fn on_shutdown(&self, hook: impl FnOnce() + Send + 'static) {
++        self.inner.lock().shutdown_hooks.push(Box::new(hook));
++    }
++
+     pub fn run_in_thread<F, Fut>(&self, entry: F) -> Result<ArmCoreThreadWrapper>
+     where
+         F: FnOnce() -> Fut,
+@@ -347,17 +396,21 @@ impl ArmCore {
+                 EngineStopReason::End => break,
+                 EngineStopReason::Yield => continue,
+                 EngineStopReason::Svc { category, .. } => {
+-                    let function = {
++                    let (sync_function, function) = {
+                         let inner = self.inner.lock();
+-                        inner
++                        let function = inner
+                             .svc_handlers
+                             .get(&category)
+                             .cloned()
+-                            .ok_or_else(|| WieError::FatalError(format!("Unknown SVC handler category: {category}")))?
++                            .ok_or_else(|| WieError::FatalError(format!("Unknown SVC handler category: {category}")))?;
++                        (inner.sync_svc_handlers.get(&category).cloned(), function)
+                     };
+ 
+-                    let mut self1 = self.clone();
+-                    let result = function.call(&mut self1).await;
++                    let result = match sync_function.map(|sync_function| sync_function(self)) {
++                        Some(Ok(true)) => Ok(()),
++                        Some(Err(error)) => Err(error),
++                        _ => function.call(&mut self.clone()).await,
++                    };
+                     if let Some((debug, thread_id)) = svc_step {
+                         debug.end_svc_step(thread_id, result.is_ok());
+                     }
+@@ -389,6 +442,26 @@ impl ArmCore {
+         Ok(())
+     }
+ 
++    /// Handles calls of SVC `category` that never wait without the async dispatch of
++    /// [`Self::register_svc_handler`] (boxed futures, context clones): games call some platform functions in
++    /// pixel loops. `handler` runs first and returns false to leave the call to the registered async handler;
++    /// when it returns true it has written the results and the next pc like a [`ResultWriter`] does.
++    pub fn register_sync_svc_handler<C>(&mut self, category: u32, handler: fn(&mut ArmCore, &C) -> Result<bool>, context: C) -> Result<()>
++    where
++        C: Send + Sync + 'static,
++    {
++        let mut inner = self.inner.lock();
++
++        if !inner.svc_handlers.contains_key(&category) {
++            return Err(WieError::FatalError(format!("Unknown SVC handler category: {category}")));
++        }
++        inner
++            .sync_svc_handlers
++            .insert(category, Arc::new(move |core: &mut ArmCore| handler(core, &context)));
++
++        Ok(())
++    }
++
+     pub fn make_svc_stub(&mut self, category: u32, id: impl Into<u32>) -> Result<u32> {
+         let mut inner = self.inner.lock();
+         let id = id.into();
+@@ -555,6 +628,33 @@ impl ArmCore {
+         Ok(result)
+     }
+ 
++    /// The first `params.len()` (at most 20) parameter words as [`Self::read_param`] reads them: r0-r3, then
++    /// the stack. One lock and one stack read instead of one per word; platform calls read a dozen words.
++    pub fn read_params(&self, params: &mut [u32]) -> Result<()> {
++        let sp = {
++            let inner = self.inner.lock();
++            for (param, register) in params
++                .iter_mut()
++                .zip([ArmRegister::R0, ArmRegister::R1, ArmRegister::R2, ArmRegister::R3])
++            {
++                *param = inner.engine.reg_read(register);
++            }
++            inner.engine.reg_read(ArmRegister::SP)
++        };
++        if params.len() > 4 {
++            let mut stack = [0u8; 64];
++            let stack = &mut stack[..(params.len() - 4) * 4];
++            if self.read_bytes(sp, stack)? != stack.len() {
++                return Err(WieError::InvalidMemoryAccess(sp));
++            }
++            for (param, word) in params[4..].iter_mut().zip(stack.chunks_exact(4)) {
++                *param = u32::from_le_bytes(word.try_into().unwrap());
++            }
++        }
++
++        Ok(())
++    }
++
+     pub(crate) fn dump_regs_inner(engine: &dyn ArmEngine) -> String {
+         [
+             format!(
+@@ -778,6 +878,27 @@ mod tests {
+ 
+     use super::*;
+ 
++    #[test]
++    fn shutdown_runs_hooks_and_releases_core_clones() {
++        let core = ArmCore::new(Options {
++            enable_gdbserver: false,
++            aot: None,
++            profile: None,
++        })
++        .unwrap();
++        let ran = Arc::new(AtomicBool::new(false));
++        let (held, observed) = (core.clone(), ran.clone());
++        core.on_shutdown(move || {
++            drop(held);
++            observed.store(true, Ordering::Relaxed);
++        });
++        assert_eq!(Arc::strong_count(&core.inner), 2);
++
++        core.shutdown();
++        assert!(ran.load(Ordering::Relaxed));
++        assert_eq!(Arc::strong_count(&core.inner), 1);
++    }
++
+     #[test]
+     fn interpreter_executes_without_preparation() {
+         let mut core = ArmCore::new(Options {
+diff --git a/wie-core-arm/src/engine/dynarmic.rs b/wie-core-arm/src/engine/dynarmic.rs
+index 1118c83b..f9198a4d 100644
+--- a/wie-core-arm/src/engine/dynarmic.rs
++++ b/wie-core-arm/src/engine/dynarmic.rs
+@@ -1,10 +1,16 @@
+ //! ARM32 JIT engine on dynarmic (native targets only, behind the `dynarmic` feature).
+ //!
+-//! Guest memory is kept in 64 KiB host pages that never move once mapped; dynarmic reaches them through a
++//! Guest memory is kept in 64 KiB host pages that never move once mapped (each mapping is one zeroed host
++//! allocation, so the OS commits only the pages a game touches); dynarmic reaches them through a
+ //! 4 KiB-granular page table, so loads and stores run in generated code without calling back. Translated
+ //! code is dropped when the host writes into a page that has been translated, and on CP15 cache maintenance.
+ 
+-use alloc::{boxed::Box, format, vec, vec::Vec};
++use alloc::{
++    alloc::{Layout, alloc_zeroed, dealloc, handle_alloc_error},
++    boxed::Box,
++    format, vec,
++    vec::Vec,
++};
+ use core::ffi::c_void;
+ 
+ use wie_arm_jit_types::{CompiledArtifact, PreparationFuture};
+@@ -46,7 +52,11 @@ unsafe extern "C" {
+ 
+ pub struct DynarmicEngine {
+     handle: *mut c_void,
+-    pages: Vec<Option<Box<[u8; PAGE_SIZE]>>>,
++    /// Host page per 64 KiB guest page, null when unmapped. They point into `chunks`.
++    pages: Vec<*mut u8>,
++    /// Zeroed host allocations backing `pages`, freed on drop. A mapping is one allocation instead of one per
++    /// page: the 256 MiB guest heap as 4096 separate 64 KiB blocks was committed and zero-filled up front.
++    chunks: Vec<(*mut u8, Layout)>,
+     // Both are read by generated code through raw pointers, so they must not move: boxed slices, never resized.
+     page_table: Box<[*mut u8]>,
+     code_pages: Box<[u8]>,
+@@ -63,14 +73,23 @@ impl DynarmicEngine {
+ 
+         Self {
+             handle,
+-            pages: (0..0x10000).map(|_| None).collect(),
++            pages: vec![core::ptr::null_mut(); 0x10000],
++            chunks: Vec::new(),
+             page_table,
+             code_pages,
+         }
+     }
+ 
+     fn page(&self, address: u32) -> Option<&[u8; PAGE_SIZE]> {
+-        self.pages[(address >> 16) as usize].as_deref()
++        let page = self.pages[(address >> 16) as usize];
++        // SAFETY: a non-null entry points at PAGE_SIZE bytes of a live chunk
++        (!page.is_null()).then(|| unsafe { &*(page as *const [u8; PAGE_SIZE]) })
++    }
++
++    fn page_mut(&mut self, address: u32) -> Option<&mut [u8; PAGE_SIZE]> {
++        let page = self.pages[(address >> 16) as usize];
++        // SAFETY: as in `page`; `&mut self` makes the access exclusive
++        (!page.is_null()).then(|| unsafe { &mut *(page as *mut [u8; PAGE_SIZE]) })
+     }
+ 
+     /// Drops translated code overlapping a host write, if any of it was ever translated.
+@@ -119,6 +138,9 @@ impl DynarmicEngine {
+ impl Drop for DynarmicEngine {
+     fn drop(&mut self) {
+         unsafe { wie_dyn_free(self.handle) };
++        for (chunk, layout) in self.chunks.drain(..) {
++            unsafe { dealloc(chunk, layout) };
++        }
+     }
+ }
+ 
+@@ -188,16 +210,29 @@ impl ArmEngine for DynarmicEngine {
+         let page_start = address & !PAGE_MASK;
+         let page_end = (u64::from(address) + size as u64 + u64::from(PAGE_MASK)) & !u64::from(PAGE_MASK);
+ 
+-        for page in (u64::from(page_start)..page_end).step_by(PAGE_SIZE) {
+-            let index = (page >> 16) as usize;
+-            if self.pages[index].is_none() {
+-                let mut bytes = Box::new([0u8; PAGE_SIZE]);
+-                let base = bytes.as_mut_ptr();
++        let (first, end) = ((page_start >> 16) as usize, (page_end >> 16) as usize);
++        let mut index = first;
++        while index < end {
++            if !self.pages[index].is_null() {
++                index += 1;
++                continue;
++            }
++            // one allocation for each run of unmapped pages
++            let run = (index..end).take_while(|&i| self.pages[i].is_null()).count();
++            let layout = Layout::from_size_align(run * PAGE_SIZE, PAGE_SIZE).unwrap();
++            let chunk = unsafe { alloc_zeroed(layout) };
++            if chunk.is_null() {
++                handle_alloc_error(layout);
++            }
++            self.chunks.push((chunk, layout));
++            for offset in 0..run {
++                let base = unsafe { chunk.add(offset * PAGE_SIZE) };
++                self.pages[index + offset] = base;
+                 for sub in 0..JIT_PAGES_PER_PAGE {
+-                    self.page_table[index * JIT_PAGES_PER_PAGE + sub] = unsafe { base.add(sub << JIT_PAGE_BITS) };
++                    self.page_table[(index + offset) * JIT_PAGES_PER_PAGE + sub] = unsafe { base.add(sub << JIT_PAGE_BITS) };
+                 }
+-                self.pages[index] = Some(bytes);
+             }
++            index += run;
+         }
+     }
+ 
+@@ -206,9 +241,7 @@ impl ArmEngine for DynarmicEngine {
+         let mut index = 0;
+         while index < data.len() {
+             let offset = (current & PAGE_MASK) as usize;
+-            let bytes = self.pages[(current >> 16) as usize]
+-                .as_deref_mut()
+-                .ok_or(WieError::InvalidMemoryAccess(current))?;
++            let bytes = self.page_mut(current).ok_or(WieError::InvalidMemoryAccess(current))?;
+             let available = (PAGE_SIZE - offset).min(data.len() - index);
+             bytes[offset..offset + available].copy_from_slice(&data[index..index + available]);
+             index += available;
+@@ -240,7 +273,7 @@ impl ArmEngine for DynarmicEngine {
+ 
+         (page_start..page_end.max(page_start + 1))
+             .step_by(PAGE_SIZE)
+-            .all(|page| self.pages[((page >> 16) & 0xffff) as usize].is_some())
++            .all(|page| !self.pages[((page >> 16) & 0xffff) as usize].is_null())
+     }
+ 
+     fn record_image(&mut self, address: u32, size: usize) {
+diff --git a/wie-j2me/src/emulator.rs b/wie-j2me/src/emulator.rs
+index 5c7fc9c2..955f7205 100644
+--- a/wie-j2me/src/emulator.rs
++++ b/wie-j2me/src/emulator.rs
+@@ -163,6 +163,13 @@ impl J2MEEmulator {
+     }
+ }
+ 
++impl Drop for J2MEEmulator {
++    fn drop(&mut self) {
++        // Pending tasks hold clones of the system (and the VM): break that cycle so both are freed.
++        self.system.shutdown();
++    }
++}
++
+ impl Emulator for J2MEEmulator {
+     fn is_preparing(&self) -> bool {
+         false
+diff --git a/wie-jvm-support/Cargo.toml b/wie-jvm-support/Cargo.toml
+index 714710c3..8d3857a9 100644
+--- a/wie-jvm-support/Cargo.toml
++++ b/wie-jvm-support/Cargo.toml
+@@ -15,6 +15,7 @@ tracing = { workspace = true }
+ jvm = { workspace = true }
+ jvm-bytecode = { workspace = true }
+ jvm-class-proto = { workspace = true }
++jvm-types = { workspace = true }
+ rustjava-runtime = { workspace = true }
+ 
+ wie-backend = { workspace = true }
+diff --git a/wie-jvm-support/src/gc.rs b/wie-jvm-support/src/gc.rs
+new file mode 100644
+index 00000000..e5675b0e
+--- /dev/null
++++ b/wie-jvm-support/src/gc.rs
+@@ -0,0 +1,77 @@
++use jvm::{ClassInstanceRef, Jvm, Result as JvmResult};
++use jvm_class_proto::{JavaFieldProto, JavaMethodProto};
++use jvm_types::{FieldAccessFlags, MethodAccessFlags};
++use rustjava_runtime::{RuntimeClassProto, RuntimeContext};
++
++use wie_backend::Platform;
++
++/// Class holding the collection schedule in two static fields: every platform has it, and the schedule then
++/// lives exactly as long as the JVM it belongs to.
++const SCHEDULE_CLASS: &str = "java/lang/System";
++/// Low 32 bits of the platform time of the last scheduled collection (0 = none yet).
++const LAST_COLLECTION: &str = "wieLastGarbageCollection";
++/// Milliseconds until the next scheduled collection, from the last one's cost (0 = the minimum).
++const COLLECTION_INTERVAL: &str = "wieGarbageCollectionInterval";
++
++const MIN_INTERVAL_MS: i32 = 1000;
++/// Longest wait between collections, however long the last one took.
++const MAX_INTERVAL_MS: i32 = 8000;
++/// Game time between collections per millisecond the last collection took: keeps collecting at about 4% of
++/// game time on large heaps.
++const COST_FACTOR: i32 = 25;
++
++/// Collects garbage at a safe point (no host code holds unrooted objects) unless the last collection ran
++/// recently: [`MIN_INTERVAL_MS`] of game time, or longer when it was slow. A full collection walks every
++/// reachable object; once per paint it dominated frame time in paint-heavy games, once per resource access
++/// it stalled KTF games that load many resources in a row (메이플스토리 도적편: ~180 ms frames while
++/// loading), and even once a second it took ~40% of the CPU of LGT 슈퍼액션히어로 at full speed.
++pub async fn collect_garbage_periodically(jvm: &Jvm, platform: &dyn Platform) -> JvmResult<()> {
++    collect_on_schedule(jvm, &|| platform.now().raw()).await
++}
++
++async fn collect_on_schedule(jvm: &Jvm, now: &(dyn Fn() -> u64 + Sync)) -> JvmResult<()> {
++    let started = now() as i32;
++    let last: i32 = jvm.get_static_field(SCHEDULE_CLASS, LAST_COLLECTION, "I").await?;
++    let interval: i32 = jvm.get_static_field(SCHEDULE_CLASS, COLLECTION_INTERVAL, "I").await?;
++    if last != 0 && (0..interval.max(MIN_INTERVAL_MS)).contains(&started.wrapping_sub(last)) {
++        return Ok(());
++    }
++    jvm.put_static_field(SCHEDULE_CLASS, LAST_COLLECTION, "I", if started == 0 { 1 } else { started })
++        .await?;
++    jvm.collect_garbage()?;
++
++    let cost = (now() as i32).wrapping_sub(started).max(0);
++    let interval = cost.saturating_mul(COST_FACTOR).clamp(MIN_INTERVAL_MS, MAX_INTERVAL_MS);
++    jvm.put_static_field(SCHEDULE_CLASS, COLLECTION_INTERVAL, "I", interval).await?;
++
++    Ok(())
++}
++
++/// `System.gc()` and `Runtime.gc()` collect on the same schedule. Games call them at will (놈3: several
++/// times a second on some screens, ~150 ms each on its heap); collecting is only a hint in Java, and the
++/// guest heap is far larger than the handsets' so the delay costs nothing but memory held a little longer.
++pub(crate) fn schedule_explicit_collections(class: &str, proto: &mut RuntimeClassProto) {
++    async fn system_gc(jvm: &Jvm, context: &mut RuntimeContext) -> JvmResult<()> {
++        collect_on_schedule(jvm, &|| context.now()).await
++    }
++
++    async fn runtime_gc(jvm: &Jvm, context: &mut RuntimeContext, _: ClassInstanceRef<()>) -> JvmResult<()> {
++        collect_on_schedule(jvm, &|| context.now()).await
++    }
++
++    let gc: fn(MethodAccessFlags) -> JavaMethodProto<RuntimeContext> = match class {
++        "java/lang/System" => {
++            for name in [LAST_COLLECTION, COLLECTION_INTERVAL] {
++                proto
++                    .fields
++                    .push(JavaFieldProto::new(name, "I", FieldAccessFlags::PRIVATE | FieldAccessFlags::STATIC));
++            }
++            |flags| JavaMethodProto::new("gc", "()V", system_gc, flags)
++        }
++        "java/lang/Runtime" => |flags| JavaMethodProto::new("gc", "()V", runtime_gc, flags),
++        _ => return,
++    };
++    if let Some(method) = proto.methods.iter_mut().find(|method| method.name == "gc" && method.descriptor == "()V") {
++        *method = gc(method.access_flags);
++    }
++}
+diff --git a/wie-jvm-support/src/lib.rs b/wie-jvm-support/src/lib.rs
+index 82a269f7..6067318f 100644
+--- a/wie-jvm-support/src/lib.rs
++++ b/wie-jvm-support/src/lib.rs
+@@ -2,6 +2,7 @@
+ extern crate alloc;
+ 
+ mod context;
++mod gc;
+ mod jvm_implementation;
+ pub mod native;
+ mod runtime;
+@@ -20,6 +21,7 @@ use wie_backend::System;
+ use wie_util::{Result, WieError};
+ 
+ pub use context::{WieJavaClassProto, WieJvmContext};
++pub use gc::collect_garbage_periodically;
+ pub use jvm_implementation::{JvmImplementation, RustJavaJvmImplementation};
+ use runtime::JvmRuntime;
+ 
+diff --git a/wie-jvm-support/src/runtime.rs b/wie-jvm-support/src/runtime.rs
+index e34d57c1..d7375bd2 100644
+--- a/wie-jvm-support/src/runtime.rs
++++ b/wie-jvm-support/src/runtime.rs
+@@ -13,7 +13,7 @@ use rustjava_runtime::{
+ use wie_backend::{AsyncCallable, System};
+ use wie_util::WieError;
+ 
+-use crate::{JvmImplementation, JvmSupport, WIE_RUSTJAR, WieJavaClassProto, WieJvmContext};
++use crate::{JvmImplementation, JvmSupport, WIE_RUSTJAR, WieJavaClassProto, WieJvmContext, gc::schedule_explicit_collections};
+ 
+ mod file;
+ 
+@@ -243,7 +243,10 @@ where
+         let class = class.replace('.', "/");
+ 
+         if classpath == RT_RUSTJAR {
+-            let proto = get_runtime_class_proto(&class);
++            let proto = get_runtime_class_proto(&class).map(|mut proto| {
++                schedule_explicit_collections(&class, &mut proto);
++                proto
++            });
+             if let Some(proto) = proto {
+                 return Ok(Some(
+                     self.implementation
+diff --git a/wie-ktf/src/emulator.rs b/wie-ktf/src/emulator.rs
+index fa4c4b63..1298f340 100644
+--- a/wie-ktf/src/emulator.rs
++++ b/wie-ktf/src/emulator.rs
+@@ -54,6 +54,9 @@ impl TaskRunner for KtfTaskRunner {
+     }
+ }
+ 
++/// Low memory that reads as zeros (see `KtfEmulator::load`).
++const NULL_PAGE_SIZE: u32 = 0x10000;
++
+ pub struct KtfEmulator {
+     core: ArmCore,
+     system: System,
+@@ -133,6 +136,11 @@ impl KtfEmulator {
+         }
+ 
+         Allocator::init(&mut core)?;
++        // Handsets read through null pointers without faulting, and shipped games rely on it: 메이플스토리 도적편
++        // reads field 0x8c of an emptied inventory slot when # is pressed in the inventory (client.bin 0x119078)
++        // and then skips the slot. Map the lowest page as zeroed memory, as LGT games already have it below their
++        // image at 0x1000.
++        core.map(0, NULL_PAGE_SIZE)?;
+ 
+         let mut core_clone = core.clone();
+         let mut system_clone = system.clone();
+@@ -202,6 +210,15 @@ impl KtfEmulator {
+     }
+ }
+ 
++impl Drop for KtfEmulator {
++    fn drop(&mut self) {
++        // Pending tasks and the core's handlers hold clones of the core and the system: break those cycles
++        // so the guest memory is freed with the emulator.
++        self.system.shutdown();
++        self.core.shutdown();
++    }
++}
++
+ impl Emulator for KtfEmulator {
+     fn is_preparing(&self) -> bool {
+         self.core.is_preparing()
+diff --git a/wie-ktf/src/runtime/java/jvm_support.rs b/wie-ktf/src/runtime/java/jvm_support.rs
+index 11f00d59..0e5630ab 100644
+--- a/wie-ktf/src/runtime/java/jvm_support.rs
++++ b/wie-ktf/src/runtime/java/jvm_support.rs
+@@ -5,6 +5,7 @@ mod class_instance;
+ mod classes;
+ mod field;
+ mod jvm_implementation;
++mod lookups;
+ mod method;
+ mod name;
+ mod value;
+diff --git a/wie-ktf/src/runtime/java/jvm_support/class_definition.rs b/wie-ktf/src/runtime/java/jvm_support/class_definition.rs
+index 3540e745..923aee54 100644
+--- a/wie-ktf/src/runtime/java/jvm_support/class_definition.rs
++++ b/wie-ktf/src/runtime/java/jvm_support/class_definition.rs
+@@ -23,7 +23,13 @@ use wie_util::{
+ use crate::runtime::java::JavaSvcFunctions;
+ 
+ use super::{
+-    KtfJvmWord, Result, class_instance::JavaClassInstance, field::JavaField, method::JavaMethod, name::JavaFullName, value::JavaValueCodec,
++    KtfJvmWord, Result,
++    class_instance::JavaClassInstance,
++    field::JavaField,
++    lookups::{FieldLookups, MethodLookups},
++    method::JavaMethod,
++    name::JavaFullName,
++    value::JavaValueCodec,
+     vtable::JavaVtable,
+ };
+ 
+@@ -244,8 +250,9 @@ impl JavaClassDefinition {
+         }
+     }
+ 
+-    // Member lookups run on every Java API call, so they walk the guest tables in place instead of
+-    // collecting them and materializing each candidate's name.
++    // Member lookups run on every Java API call: results are cached per class and table (see
++    // [`MethodLookups`]), and a miss walks the guest table in place instead of collecting it and
++    // materializing each candidate's name.
+     pub fn method(&self, name: &str, descriptor: &str, is_static: bool) -> Result<Option<JavaMethod>> {
+         let raw: RawJavaClass = read_generic(&self.core, self.ptr_raw)?;
+         let class_descriptor: RawJavaClassDescriptor = read_generic(&self.core, raw.ptr_descriptor)?;
+@@ -253,7 +260,25 @@ impl JavaClassDefinition {
+             return Ok(None);
+         }
+ 
+-        let mut cursor = class_descriptor.ptr_methods;
++        let key = (self.ptr_raw, class_descriptor.ptr_methods, is_static);
++        let found = match self
++            .core
++            .with_extension(|lookups: &mut MethodLookups| lookups.0.get(key, name, descriptor))
++        {
++            Some(found) => found,
++            None => {
++                let found = self.find_method(class_descriptor.ptr_methods, name, descriptor, is_static)?;
++                self.core
++                    .with_extension(|lookups: &mut MethodLookups| lookups.0.insert(key, name, descriptor, found));
++                found
++            }
++        };
++
++        Ok(found.map(|ptr_method| JavaMethod::from_raw(ptr_method, &self.core)))
++    }
++
++    fn find_method(&self, ptr_methods: u32, name: &str, descriptor: &str, is_static: bool) -> Result<Option<u32>> {
++        let mut cursor = ptr_methods;
+         loop {
+             let ptr_method: u32 = read_generic(&self.core, cursor)?;
+             if ptr_method == 0 {
+@@ -264,7 +289,7 @@ impl JavaClassDefinition {
+                 && MethodAccessFlags::from_bits_truncate(method.access_flags).contains(MethodAccessFlags::STATIC) == is_static
+                 && JavaFullName::matches(&self.core, method.ptr_name, name, descriptor)?
+             {
+-                return Ok(Some(JavaMethod::from_raw(ptr_method, &self.core)));
++                return Ok(Some(ptr_method));
+             }
+             cursor += 4;
+         }
+@@ -273,11 +298,34 @@ impl JavaClassDefinition {
+     pub fn field(&self, name: &str, descriptor: &str, is_static: bool) -> Result<Option<JavaField>> {
+         let raw: RawJavaClass = read_generic(&self.core, self.ptr_raw)?;
+         let class_descriptor: RawJavaClassDescriptor = read_generic(&self.core, raw.ptr_descriptor)?;
+-        if class_descriptor.ptr_fields_or_element_type == 0 || read_generic::<u8, _>(&self.core, class_descriptor.ptr_name)? == b'[' {
++        if class_descriptor.ptr_fields_or_element_type == 0 {
+             return Ok(None);
+         }
+ 
+-        let mut cursor = class_descriptor.ptr_fields_or_element_type;
++        let key = (self.ptr_raw, class_descriptor.ptr_fields_or_element_type, is_static);
++        let found = match self
++            .core
++            .with_extension(|lookups: &mut FieldLookups| lookups.0.get(key, name, descriptor))
++        {
++            Some(found) => found,
++            None => {
++                // array classes keep their element type where other classes keep the field table
++                let found = if read_generic::<u8, _>(&self.core, class_descriptor.ptr_name)? == b'[' {
++                    None
++                } else {
++                    self.find_field(class_descriptor.ptr_fields_or_element_type, name, descriptor, is_static)?
++                };
++                self.core
++                    .with_extension(|lookups: &mut FieldLookups| lookups.0.insert(key, name, descriptor, found));
++                found
++            }
++        };
++
++        Ok(found.map(|ptr_field| JavaField::from_raw(ptr_field, &self.core)))
++    }
++
++    fn find_field(&self, ptr_fields: u32, name: &str, descriptor: &str, is_static: bool) -> Result<Option<u32>> {
++        let mut cursor = ptr_fields;
+         loop {
+             let ptr_field: u32 = read_generic(&self.core, cursor)?;
+             if ptr_field == 0 {
+@@ -287,7 +335,7 @@ impl JavaClassDefinition {
+             if FieldAccessFlags::from_bits_truncate(field.access_flags as _).contains(FieldAccessFlags::STATIC) == is_static
+                 && JavaFullName::matches(&self.core, field.ptr_name, name, descriptor)?
+             {
+-                return Ok(Some(JavaField::from_raw(ptr_field, &self.core)));
++                return Ok(Some(ptr_field));
+             }
+             cursor += 4;
+         }
+diff --git a/wie-ktf/src/runtime/java/jvm_support/jvm_implementation.rs b/wie-ktf/src/runtime/java/jvm_support/jvm_implementation.rs
+index 4ef401ed..a93befc9 100644
+--- a/wie-ktf/src/runtime/java/jvm_support/jvm_implementation.rs
++++ b/wie-ktf/src/runtime/java/jvm_support/jvm_implementation.rs
+@@ -25,6 +25,9 @@ impl KtfJvmImplementation {
+     pub fn new(core: &mut ArmCore) -> Self {
+         let java_functions = Arc::new(Mutex::new(BTreeMap::new()));
+         register_java_svc_handler(core, &java_functions).unwrap();
++        // The proxies in the table hold the JVM, whose class loader holds this table.
++        let table = java_functions.clone();
++        core.on_shutdown(move || table.lock().clear());
+ 
+         Self {
+             core: core.clone(),
+diff --git a/wie-ktf/src/runtime/java/jvm_support/lookups.rs b/wie-ktf/src/runtime/java/jvm_support/lookups.rs
+new file mode 100644
+index 00000000..26ac7bfc
+--- /dev/null
++++ b/wie-ktf/src/runtime/java/jvm_support/lookups.rs
+@@ -0,0 +1,32 @@
++use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
++
++/// Fields or methods found by name in one class's member table: per (class, table address, is_static), the
++/// names looked up so far and what they resolved to (`None` = not declared there). Host code looks members
++/// up by name on nearly every call (`Graphics` reads its fields on every draw) and the JVM resolves every
++/// invocation the same way, which otherwise scans the guest table and compares names in guest memory.
++///
++/// KTF member tables and the member records' names and owners are written once (by the compiler in
++/// client.bin, or when the platform defines a class) and classes are never freed, so a result stays valid;
++/// the table address in the key covers a class whose table were ever replaced.
++#[derive(Default)]
++pub struct MemberLookups(BTreeMap<(u32, u32, bool), Vec<(Box<str>, Box<str>, Option<u32>)>>);
++
++impl MemberLookups {
++    pub fn get(&self, key: (u32, u32, bool), name: &str, descriptor: &str) -> Option<Option<u32>> {
++        self.0
++            .get(&key)?
++            .iter()
++            .find(|(cached_name, cached_descriptor, _)| **cached_name == *name && **cached_descriptor == *descriptor)
++            .map(|(_, _, found)| *found)
++    }
++
++    pub fn insert(&mut self, key: (u32, u32, bool), name: &str, descriptor: &str, found: Option<u32>) {
++        self.0.entry(key).or_default().push((name.into(), descriptor.into(), found));
++    }
++}
++
++#[derive(Default)]
++pub struct FieldLookups(pub MemberLookups);
++
++#[derive(Default)]
++pub struct MethodLookups(pub MemberLookups);
+diff --git a/wie-ktf/src/runtime/java/jvm_support/method.rs b/wie-ktf/src/runtime/java/jvm_support/method.rs
+index b32dd416..2b5fc035 100644
+--- a/wie-ktf/src/runtime/java/jvm_support/method.rs
++++ b/wie-ktf/src/runtime/java/jvm_support/method.rs
+@@ -421,7 +421,20 @@ where
+         let mut context = self.context.clone();
+         let (_, lr) = core.read_pc_lr()?;
+ 
++        // Objects the body touches (get_field results, values returned by the calls it makes) are kept alive in the
++        // JVM's top frame. Called from native code there is no frame for this call, so they went into the frame of
++        // the Java method whose native code is running: for a game loop that never returns (놈3's thread) that
++        // frame grew by every Graphics call, ~0.7 MB of host memory per second of play and ever longer garbage
++        // collections. Give the body a frame of its own when nothing it returns needs to stay rooted; a returned
++        // reference lives on in native registers only, so for those the caller's frame still keeps it alive.
++        let own_frame = !matches!(self.return_type, JavaType::Class(_) | JavaType::Array(_));
++        if own_frame {
++            self.jvm.push_native_frame();
++        }
+         let result = self.proto.body.call(&self.jvm, &mut context, args.into_boxed_slice()).await;
++        if own_frame {
++            self.jvm.pop_frame();
++        }
+         if let Err(JavaError::JavaException(x)) = result {
+             // if we executed this from rust code, we should propagate this down
+             if lr == RUN_FUNCTION_LR {
+diff --git a/wie-ktf/src/runtime/wipi_c.rs b/wie-ktf/src/runtime/wipi_c.rs
+index 4f3a85b6..af5a5b34 100644
+--- a/wie-ktf/src/runtime/wipi_c.rs
++++ b/wie-ktf/src/runtime/wipi_c.rs
+@@ -1,10 +1,11 @@
+-use alloc::boxed::Box;
++use alloc::{boxed::Box, sync::Arc};
+ 
+ use jvm::Jvm;
+-use wie_backend::System;
+-use wie_core_arm::{ArmCore, EmulatedFunction, EmulatedFunctionParam, ResultWriter, SvcId};
++use spin::Mutex;
++use wie_backend::{NativeLcd, System, canvas::Image};
++use wie_core_arm::{ArmCore, ResultWriter, SvcId};
+ use wie_util::{Result, WieError};
+-use wie_wipi_c::{MAX_METHOD_ARGS, WIPICMethodBody, WIPICResult};
++use wie_wipi_c::{MAX_METHOD_ARGS, WIPICResult};
+ 
+ use crate::runtime::SVC_CATEGORY_WIPIC;
+ use crate::runtime::svc_ids::{WIPICKernelMethodId, WIPICTableId};
+@@ -28,24 +29,10 @@ impl ResultWriter<WIPICMethodResult> for WIPICMethodResult {
+     }
+ }
+ 
+-struct CMethodProxy {
+-    context: KtfWIPICContext,
+-    body: WIPICMethodBody,
+-}
+-
+-#[async_trait::async_trait]
+-impl EmulatedFunction<(), WIPICMethodResult, ()> for CMethodProxy {
+-    async fn call(&self, core: &mut ArmCore, _: &mut ()) -> Result<WIPICMethodResult> {
+-        // As many words as the widest method takes (MC_knlSprintk with its variadic arguments).
+-        let args = (0..MAX_METHOD_ARGS).map(|index| u32::get(core, index)).collect();
+-
+-        let result = self.body.call(&mut self.context.clone(), args).await?;
+-
+-        Ok(WIPICMethodResult { result })
+-    }
+-}
+-
+-async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm), id: SvcId) -> Result<()> {
++// Games call some WIPI-C functions hundreds of thousands of times a second (frame buffer getters in pixel
++// loops), so the dispatch clones the platform handles once per call and reads the arguments in one go.
++async fn handle_wipic_svc(core: &mut ArmCore, platform: &mut Arc<(System, Jvm)>, id: SvcId) -> Result<()> {
++    let (system, jvm) = &**platform;
+     let table_id = WIPICTableId::try_from(id.0 >> 16)?;
+     let function_id = id.0 as u16;
+     let (_, lr) = core.read_pc_lr()?;
+@@ -58,23 +45,42 @@ async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm),
+     let body = method_table::get_method_body(table_id, function_id)
+         .ok_or_else(|| WieError::FatalError(alloc::format!("Unknown KTF WIPIC SVC id {:#x}", id.0)))?;
+ 
+-    EmulatedFunction::call(
+-        &CMethodProxy {
+-            context: KtfWIPICContext::new(core.clone(), system.clone(), jvm.clone()),
+-            body,
+-        },
+-        core,
+-        &mut (),
+-    )
+-    .await
+-    .map_err(|error| match error {
++    // As many words as the widest method takes (MC_knlSprintk with its variadic arguments).
++    let mut args = [0; MAX_METHOD_ARGS];
++    core.read_params(&mut args)?;
++    let mut context = KtfWIPICContext::new(core.clone(), system.clone(), jvm.clone());
++    let result = body.call(&mut context, args.into()).await.map_err(|error| match error {
+         // name the guest call site, so the caller can be disassembled
+         WieError::Unimplemented(message) => WieError::Unimplemented(alloc::format!("{message} (called from {lr:#x})")),
+         error => error,
+-    })?
+-    .write(core, lr)
++    })?;
++
++    WIPICMethodResult { result }.write(core, lr)
++}
++
++/// The WIPI-C screen framebuffer as the LCD the Java display paints on (see [`NativeLcd`]).
++struct KtfNativeLcd {
++    context: KtfWIPICContext,
++    last_hash: Mutex<Option<u64>>,
++}
++
++impl NativeLcd for KtfNativeLcd {
++    fn changed_image(&self) -> Option<Box<dyn Image>> {
++        let mut last_hash = self.last_hash.lock();
++        match wie_wipi_c::api::graphics::screen_image_if_changed(&mut self.context.clone(), &mut last_hash) {
++            Ok(image) => image,
++            Err(error) => {
++                tracing::warn!("Cannot read the WIPI-C screen framebuffer: {error}");
++                None
++            }
++        }
++    }
+ }
+ 
+ pub fn register_wipic_svc_handler(core: &mut ArmCore, system: &System, jvm: &Jvm) -> Result<()> {
+-    core.register_svc_handler(SVC_CATEGORY_WIPIC, handle_wipic_svc, &(system.clone(), jvm.clone()))
++    system.set_native_lcd(Arc::new(KtfNativeLcd {
++        context: KtfWIPICContext::new(core.clone(), system.clone(), jvm.clone()),
++        last_hash: Mutex::new(None),
++    }));
++    core.register_svc_handler(SVC_CATEGORY_WIPIC, handle_wipic_svc, &Arc::new((system.clone(), jvm.clone())))
+ }
+diff --git a/wie-ktf/src/runtime/wipi_c/context.rs b/wie-ktf/src/runtime/wipi_c/context.rs
+index eb3831fb..73d4a8f2 100644
+--- a/wie-ktf/src/runtime/wipi_c/context.rs
++++ b/wie-ktf/src/runtime/wipi_c/context.rs
+@@ -130,7 +130,7 @@ impl WIPICContext for KtfWIPICContext {
+             }
+             None => None,
+         };
+-        match Display::collect_garbage_periodically(&self.jvm, self.system.platform().now()).await {
++        match Display::collect_garbage_periodically(&self.jvm, self.system.platform()).await {
+             Ok(_) => {}
+             Err(err) => return Err(JvmSupport::to_wie_err(&self.jvm, err).await),
+         }
+@@ -165,7 +165,7 @@ impl WIPICContext for KtfWIPICContext {
+             }
+         };
+         drop(stream);
+-        match Display::collect_garbage_periodically(&self.jvm, self.system.platform().now()).await {
++        match Display::collect_garbage_periodically(&self.jvm, self.system.platform()).await {
+             Ok(_) => {}
+             Err(err) => return Err(JvmSupport::to_wie_err(&self.jvm, err).await),
+         }
+diff --git a/wie-ktf/src/runtime/wipi_c/method_table.rs b/wie-ktf/src/runtime/wipi_c/method_table.rs
+index bedbc5c5..b66d1749 100644
+--- a/wie-ktf/src/runtime/wipi_c/method_table.rs
++++ b/wie-ktf/src/runtime/wipi_c/method_table.rs
+@@ -6,7 +6,7 @@ use wipi_types::{
+ };
+ 
+ use wie_core_arm::ArmCore;
+-use wie_util::{Result, WieError};
++use wie_util::{Result, WieError, read_null_terminated_string_bytes};
+ use wie_wipi_c::{
+     MethodImpl, WIPICContext, WIPICMethodBody,
+     api::{database, graphics, im, kernel, media, misc, net, record_database, uic, util},
+@@ -23,6 +23,27 @@ fn gen_stub(id: WIPICWord, name: &'static str) -> WIPICMethodBody {
+     body.into_body()
+ }
+ 
++/// A network call on a phone without a data connection: the WIPI-C error code (M_E_ERROR) instead of stopping
++/// the game. Games reach these from ranking/shop menus and show their own "network error" screen.
++fn gen_net_error(id: WIPICWord, name: &'static str) -> WIPICMethodBody {
++    let body = move |_: &mut dyn WIPICContext| async move {
++        tracing::warn!("no network: {id}: {name}");
++        Ok::<i32, WieError>(-1)
++    };
++
++    body.into_body()
++}
++
++/// Interface 11, slot 0: place a voice call to the NUL-terminated number in the first argument. 영웅서기 4's
++/// Help -> 게임 문의 -> "전화를 거시겠습니까?" -> 예 calls it with "025598700" (client.bin 0x12cff4) and goes on
++/// when it fails; an emulator cannot place calls, so report failure instead of stopping the game.
++async fn phone_call(context: &mut dyn WIPICContext, ptr_number: WIPICWord) -> Result<i32> {
++    let number = read_null_terminated_string_bytes(context, ptr_number)?;
++    tracing::warn!("cannot place a call to {:?}", alloc::string::String::from_utf8_lossy(&number));
++
++    Ok(-1) // M_E_ERROR
++}
++
+ pub fn get_kernel_interface(core: &mut ArmCore) -> Result<WIPICKnlInterface> {
+     let table_id = WIPICTableId::Kernel;
+ 
+@@ -298,38 +319,42 @@ pub fn get_media_method_table() -> Vec<WIPICMethodBody> {
+ }
+ 
+ pub fn get_net_method_table() -> Vec<WIPICMethodBody> {
+-    vec![
++    let mut methods = vec![
+         net::connect.into_body(),
+         net::close.into_body(),
+-        gen_stub(2, "MC_netSocket"),
+-        gen_stub(3, "MC_netSocketConnect"),
+-        gen_stub(4, "MC_netSocketWrite"),
+-        gen_stub(5, "MC_netSocketRead"),
++        gen_net_error(2, "MC_netSocket"),
++        gen_net_error(3, "MC_netSocketConnect"),
++        gen_net_error(4, "MC_netSocketWrite"),
++        gen_net_error(5, "MC_netSocketRead"),
+         net::socket_close.into_body(),
+-        gen_stub(7, "MC_netSocketBind"),
+-        gen_stub(8, "MC_netGetMaxPacketLength"),
+-        gen_stub(9, "MC_netSocketSendTo"),
+-        gen_stub(10, "MC_netSocketRcvFrom"),
+-        gen_stub(11, "MC_netGetHostAddr"),
+-        gen_stub(12, "MC_netSocketAccept"),
+-        gen_stub(13, "MC_netSetReadCB"),
+-        gen_stub(14, "MC_netSetWriteCB"),
+-        gen_stub(15, "MC_netHttpOpen"),
+-        gen_stub(16, "MC_netHttpConnect"),
+-        gen_stub(17, "MC_netHttpSetRequestMethod"),
+-        gen_stub(18, "MC_netHttpGetRequestMethod"),
+-        gen_stub(19, "MC_netHttpSetRequestProperty"),
+-        gen_stub(20, "MC_netHttpGetRequestProperty"),
+-        gen_stub(21, "MC_netHttpSetProxy"),
+-        gen_stub(22, "MC_netHttpGetProxy"),
+-        gen_stub(23, "MC_netHttpGetResponseCode"),
+-        gen_stub(24, "MC_netHttpGetResponseMessage"),
+-        gen_stub(25, "MC_netHttpGetHeaderField"),
+-        gen_stub(26, "MC_netHttpGetLength"),
+-        gen_stub(27, "MC_netHttpGetType"),
+-        gen_stub(28, "MC_netHttpGetEncoding"),
+-        gen_stub(29, "MC_netHttpClose"),
+-    ]
++        gen_net_error(7, "MC_netSocketBind"),
++        gen_net_error(8, "MC_netGetMaxPacketLength"),
++        gen_net_error(9, "MC_netSocketSendTo"),
++        gen_net_error(10, "MC_netSocketRcvFrom"),
++        gen_net_error(11, "MC_netGetHostAddr"),
++        gen_net_error(12, "MC_netSocketAccept"),
++        net::set_read_cb.into_body(),
++        gen_net_error(14, "MC_netSetWriteCB"),
++        gen_net_error(15, "MC_netHttpOpen"),
++        gen_net_error(16, "MC_netHttpConnect"),
++        gen_net_error(17, "MC_netHttpSetRequestMethod"),
++        gen_net_error(18, "MC_netHttpGetRequestMethod"),
++        gen_net_error(19, "MC_netHttpSetRequestProperty"),
++        gen_net_error(20, "MC_netHttpGetRequestProperty"),
++        gen_net_error(21, "MC_netHttpSetProxy"),
++        gen_net_error(22, "MC_netHttpGetProxy"),
++        gen_net_error(23, "MC_netHttpGetResponseCode"),
++        gen_net_error(24, "MC_netHttpGetResponseMessage"),
++        gen_net_error(25, "MC_netHttpGetHeaderField"),
++        gen_net_error(26, "MC_netHttpGetLength"),
++        gen_net_error(27, "MC_netHttpGetType"),
++        gen_net_error(28, "MC_netHttpGetEncoding"),
++        gen_net_error(29, "MC_netHttpClose"),
++    ];
++    // The handset table is longer than the calls named above: 질주쾌감스케쳐 2 calls slot 33 with one argument
++    // after a failed MC_netConnect (client.bin 0x10936a) and jumped into whatever followed a 30-entry table.
++    methods.extend((methods.len() as WIPICWord..64).map(|id| gen_net_error(id, "MC_netUnknown")));
++    methods
+ }
+ 
+ fn gen_unk_stub(id: u32, index: u32) -> WIPICMethodBody {
+@@ -545,7 +570,9 @@ pub fn get_method_body(table_id: WIPICTableId, function_id: u16) -> Option<WIPIC
+         WIPICTableId::Media => get_media_method_table().into_iter().nth(function_id as usize),
+         WIPICTableId::Net => get_net_method_table().into_iter().nth(function_id as usize),
+         WIPICTableId::Interface11 => {
+-            if function_id < 64 {
++            if function_id == 0 {
++                Some(phone_call.into_body())
++            } else if function_id < 64 {
+                 Some(gen_stub(11, "stub"))
+             } else {
+                 None
+diff --git a/wie-lgt/data/lgt_java_abi.toml b/wie-lgt/data/lgt_java_abi.toml
+index 3c68fa9b..138e0b93 100644
+--- a/wie-lgt/data/lgt_java_abi.toml
++++ b/wie-lgt/data/lgt_java_abi.toml
+@@ -146,6 +146,12 @@ vtable = [
+ # (start, run, interrupt, isAlive, setPriority, getPriority, join, getName; toString folds into
+ # Object's slot), which also names the slot-13 call LGT 메이플스토리2007 makes: isAlive().
+ name = "java/lang/Thread"
++# Generated Thread subclasses use five (학교가는길 r and bf) or seven (슈퍼액션히어로 1 h) instance-field words,
++# words 0-1 non-references and 2-4 references in all three, while the platform Thread has nine words: its later
++# fields were written past the end of their objects, zeroing the length of the next char[] (학교가는길 stopped
++# when the collector could not free it). Keep only the first two words (the long id, never a reference) inline
++# so every compiler-laid-out word from 2 on belongs to the subclass; the rest are detached.
++instance_field_words = 2
+ vtable = [
+     { name = "start", descriptor = "()V", index = 10 },
+     { name = "run", descriptor = "()V", index = 11 },
+diff --git a/wie-lgt/src/emulator.rs b/wie-lgt/src/emulator.rs
+index 7dfe7099..0a607da9 100644
+--- a/wie-lgt/src/emulator.rs
++++ b/wie-lgt/src/emulator.rs
+@@ -189,6 +189,15 @@ impl LgtEmulator {
+     }
+ }
+ 
++impl Drop for LgtEmulator {
++    fn drop(&mut self) {
++        // Pending tasks and the core's handlers hold clones of the core and the system: break those cycles
++        // so the guest memory is freed with the emulator.
++        self.system.shutdown();
++        self.core.shutdown();
++    }
++}
++
+ impl Emulator for LgtEmulator {
+     fn is_preparing(&self) -> bool {
+         self.core.is_preparing()
+diff --git a/wie-lgt/src/runtime/java/exception.rs b/wie-lgt/src/runtime/java/exception.rs
+index 044c7509..b5bbc70f 100644
+--- a/wie-lgt/src/runtime/java/exception.rs
++++ b/wie-lgt/src/runtime/java/exception.rs
+@@ -1,7 +1,10 @@
++use alloc::{boxed::Box, collections::BTreeMap};
+ use core::mem::{offset_of, size_of};
+ 
+ use bytemuck::{Pod, Zeroable};
+ 
++use jvm::{ClassInstance, ClassInstanceRef, GlobalRef, Jvm};
++
+ use wie_core_arm::{Allocator, ArmCore, ArmCoreContext, RUN_FUNCTION_LR};
+ use wie_util::{Result, read_generic, write_generic};
+ 
+@@ -40,9 +43,31 @@ pub fn new_thread_context(core: &mut ArmCore) -> Result<u32> {
+ }
+ 
+ pub fn free_thread_context(core: &mut ArmCore, ptr_thread_context: u32) -> Result<()> {
++    let root = core.with_extension(|roots: &mut HostExceptionRoots| roots.0.remove(&ptr_thread_context));
++    drop(root);
+     Allocator::free(core, ptr_thread_context, size_of::<JavaThreadContext>() as u32)
+ }
+ 
++/// The last exception a platform method threw to guest code, per thread context.
++#[derive(Default)]
++struct HostExceptionRoots(BTreeMap<u32, GlobalRef<()>>);
++
++/// Keeps an exception a platform method throws to guest code alive while guest code handles it. Guest code reaches it
++/// only through the pending-exception word in guest memory and its own registers, which the collector does not scan,
++/// and the JVM frame the method created it in is gone by then. It stays rooted until the next one on the same thread.
++pub fn keep_host_exception(core: &ArmCore, jvm: &Jvm, exception: &Box<dyn ClassInstance>) -> Result<()> {
++    let ptr_thread_context = current_thread_context(core)?;
++    let root = jvm.new_global_ref(&ClassInstanceRef::<()>::from(exception.clone()));
++    // the previous root is dropped outside the core's lock: dropping it takes the JVM's
++    let previous = core.with_extension(|roots: &mut HostExceptionRoots| match root {
++        Some(root) => roots.0.insert(ptr_thread_context, root),
++        None => roots.0.remove(&ptr_thread_context),
++    });
++    drop(previous);
++
++    Ok(())
++}
++
+ pub fn set_current_thread_context(core: &mut ArmCore, ptr_thread_context: u32) -> Result<()> {
+     write_generic(
+         core,
+diff --git a/wie-lgt/src/runtime/java/interface.rs b/wie-lgt/src/runtime/java/interface.rs
+index 1bde91e5..709c2c25 100644
+--- a/wie-lgt/src/runtime/java/interface.rs
++++ b/wie-lgt/src/runtime/java/interface.rs
+@@ -44,6 +44,7 @@ pub fn get_java_interface_method(core: &mut ArmCore, function_index: u32) -> Res
+         0x22 => core.make_svc_stub(SVC_CATEGORY_JAVA_SYSTEM, JavaSystemSvcId::RaiseNullPointerException)?,
+         0x23 => core.make_svc_stub(SVC_CATEGORY_JAVA_SYSTEM, JavaSystemSvcId::RaiseArrayIndexException)?,
+         0x25 => core.make_svc_stub(SVC_CATEGORY_JAVA_SYSTEM, JavaSystemSvcId::RaiseArithmeticException)?,
++        0x26 => core.make_svc_stub(SVC_CATEGORY_JAVA_SYSTEM, JavaSystemSvcId::RaiseClassCastException)?,
+         0x54 => core.make_svc_stub(SVC_CATEGORY_JAVA_SYSTEM, JavaSystemSvcId::Unk54)?,
+         0x55 => core.make_svc_stub(SVC_CATEGORY_JAVA_SYSTEM, JavaSystemSvcId::Unk55)?,
+         0x56 => core.make_svc_stub(SVC_CATEGORY_JAVA_SYSTEM, JavaSystemSvcId::MonitorEnter)?,
+@@ -114,6 +115,7 @@ async fn handle_java_system_svc(core: &mut ArmCore, (jvm, ptr_jar_path): &mut (J
+                 .await?
+                 .write(core, lr),
+             JavaSystemSvcId::RaiseArithmeticException => EmulatedFunction::call(&java_raise_arithmetic_exception, core, jvm).await?.write(core, lr),
++            JavaSystemSvcId::RaiseClassCastException => EmulatedFunction::call(&java_raise_class_cast_exception, core, jvm).await?.write(core, lr),
+             JavaSystemSvcId::Unk1 => EmulatedFunction::call(&java_unk1, core, &mut ()).await?.write(core, lr),
+             JavaSystemSvcId::Unk2 => EmulatedFunction::call(&java_unk2, core, &mut ()).await?.write(core, lr),
+             JavaSystemSvcId::Unk3 => EmulatedFunction::call(&java_unk3, core, &mut ()).await?.write(core, lr),
+@@ -218,9 +220,21 @@ async fn java_pending_exception(core: &mut ArmCore, _: &mut ()) -> Result<u32> {
+     exception::pending(core)
+ }
+ 
+-async fn java_is_class_assignable(core: &mut ArmCore, jvm: &Jvm, ptr_class: u32, ptr_class_name: u32, _ptr_fields: u32) -> Result<u32> {
+-    let class_name = String::from_utf8(read_null_terminated_string_bytes(core, ptr_class_name)?)
+-        .map_err(|error| WieError::FatalError(format!("Invalid LGT class name: {error}")))?;
++async fn java_is_class_assignable(core: &mut ArmCore, jvm: &Jvm, ptr_class: u32, ptr_target: u32, _ptr_fields: u32) -> Result<u32> {
++    // The target is a class name, except for array types: there generated code passes what GetArrayType
++    // returned, a java.lang.Class object (레전드오브마스터 casts to char[] with `GetArrayType(1, 0, 5)` at
++    // binary.mod 0xe302c; reading that object as a name failed the cast and threw ClassCastException).
++    let class_name = if LgtJvmSupport::is_live_instance(core, ptr_target)
++        && let class_object = LgtJvmSupport::class_instance_from_raw(core, ptr_target)
++        && class_object.class_definition().name() == "java/lang/Class"
++    {
++        JavaLangClass::name(jvm, &class_object)
++            .await
++            .map_err(|JavaError::JavaException(instance)| WieError::JavaException(LgtJvmSupport::class_instance_raw(&*instance)))?
++    } else {
++        String::from_utf8(read_null_terminated_string_bytes(core, ptr_target)?)
++            .map_err(|error| WieError::FatalError(format!("Invalid LGT class name: {error}")))?
++    };
+     let source_class_name = LgtJvmSupport::class_from_raw(core, ptr_class).name().into_owned();
+ 
+     Ok(u32::from(jvm.is_type_assignable(
+@@ -249,6 +263,15 @@ async fn java_raise_arithmetic_exception(core: &mut ArmCore, jvm: &mut Jvm) -> R
+     Err(WieError::JavaException(LgtJvmSupport::class_instance_raw(&*exception)))
+ }
+ 
++/// Generated `checkcast` code calls this after IsClassAssignable said no (레전드오브마스터 binary.mod 0xe3054).
++async fn java_raise_class_cast_exception(core: &mut ArmCore, jvm: &mut Jvm) -> Result<()> {
++    if let Ok((_, lr)) = core.read_pc_lr() {
++        tracing::debug!("ClassCastException raised by guest code at lr {lr:#x}");
++    }
++    let JavaError::JavaException(exception) = jvm.exception("java/lang/ClassCastException", "").await;
++    Err(WieError::JavaException(LgtJvmSupport::class_instance_raw(&*exception)))
++}
++
+ async fn java_store_reference_array_unchecked(core: &mut ArmCore, _: &mut (), ptr_array: u32, index: u32, ptr_value: u32) -> Result<()> {
+     let ptr_fields: u32 = read_generic(core, ptr_array + 2 * size_of::<u32>() as u32)?;
+     write_generic(core, ptr_fields + (index + 1) * size_of::<u32>() as u32, ptr_value)
+diff --git a/wie-lgt/src/runtime/java/jvm_support.rs b/wie-lgt/src/runtime/java/jvm_support.rs
+index ff7f7a80..9d9fa8f4 100644
+--- a/wie-lgt/src/runtime/java/jvm_support.rs
++++ b/wie-lgt/src/runtime/java/jvm_support.rs
+@@ -5,6 +5,7 @@ mod class_instance;
+ mod field;
+ mod jvm_implementation;
+ mod method;
++mod names;
+ pub(crate) use self::method::JavaMethod;
+ mod value;
+ mod vtable;
+@@ -75,6 +76,11 @@ impl LgtJvmSupport {
+         JavaValueCodec::new(core).object_from_raw(ptr_instance)
+     }
+ 
++    /// Whether `ptr` is a live object (allocated, with an intact dispatch-table chain) rather than other data.
++    pub fn is_live_instance(core: &ArmCore, ptr: u32) -> bool {
++        JavaClassInstance::is_live_instance(core, ptr)
++    }
++
+     pub fn class_instance_raw(instance: &dyn ClassInstance) -> u32 {
+         if let Some(instance) = instance.as_any().downcast_ref::<JavaClassInstance>() {
+             instance.ptr_raw
+diff --git a/wie-lgt/src/runtime/java/jvm_support/class_definition.rs b/wie-lgt/src/runtime/java/jvm_support/class_definition.rs
+index 1f0372f4..b9f86cd5 100644
+--- a/wie-lgt/src/runtime/java/jvm_support/class_definition.rs
++++ b/wie-lgt/src/runtime/java/jvm_support/class_definition.rs
+@@ -27,6 +27,7 @@ use crate::runtime::{
+ 
+ use super::{
+     JavaClassInstance, JavaField, JavaMethod, JavaReferenceField, JavaStaticReferenceField, LgtJvmWord,
++    names::{FieldLookups, MethodLookups, guest_name, member_key},
+     value::JavaValueCodec,
+     vtable::{JavaVtable, JavaVtableEntry},
+ };
+@@ -912,9 +913,7 @@ impl EmulatedFunction<(), u32, ()> for JavaClassGetterProxy {
+ #[async_trait::async_trait]
+ impl ClassDefinition for JavaClassDefinition {
+     fn name(&self) -> Cow<'_, str> {
+-        String::from_utf8(read_null_terminated_string_bytes(&self.core, self.descriptor().unwrap().ptr_name).unwrap())
+-            .unwrap()
+-            .into()
++        String::from(&*guest_name(&self.core, self.descriptor().unwrap().ptr_name).unwrap()).into()
+     }
+ 
+     fn super_class_name(&self) -> Option<String> {
+@@ -925,7 +924,7 @@ impl ClassDefinition for JavaClassDefinition {
+ 
+         let super_class: RawJavaClass = read_generic(&self.core, descriptor.ptr_super_class).unwrap();
+         let super_descriptor: RawJavaClassDescriptor = read_generic(&self.core, super_class.ptr_descriptor).unwrap();
+-        Some(String::from_utf8(read_null_terminated_string_bytes(&self.core, super_descriptor.ptr_name).unwrap()).unwrap())
++        Some(String::from(&*guest_name(&self.core, super_descriptor.ptr_name).unwrap()))
+     }
+ 
+     fn interface_names(&self) -> Vec<String> {
+@@ -938,7 +937,7 @@ impl ClassDefinition for JavaClassDefinition {
+         (0..count as usize)
+             .map(|index| {
+                 let ptr_name = read_generic(&self.core, ptr_names + ((index + 1) * size_of::<u32>()) as u32).unwrap();
+-                String::from_utf8(read_null_terminated_string_bytes(&self.core, ptr_name).unwrap()).unwrap()
++                String::from(&*guest_name(&self.core, ptr_name).unwrap())
+             })
+             .collect()
+     }
+@@ -959,23 +958,60 @@ impl ClassDefinition for JavaClassDefinition {
+     }
+ 
+     fn method(&self, name: &str, descriptor: &str, is_static: bool) -> Option<Box<dyn Method>> {
+-        self.methods()
+-            .unwrap()
+-            .into_iter()
+-            .find(|method| {
+-                method.name() == name && method.descriptor() == descriptor && method.access_flags().contains(MethodAccessFlags::STATIC) == is_static
+-            })
+-            .map(|method| Box::new(method) as Box<_>)
++        let key = (
++            self.ptr_raw,
++            self.descriptor().unwrap().ptr_methods,
++            member_key(name, descriptor),
++            is_static,
++        );
++        let found = match self.core.with_extension(|lookups: &mut MethodLookups| lookups.0.0.get(&key).copied()) {
++            Some(found) => found,
++            None => {
++                // compares the cached names without building a String per candidate
++                let found = self
++                    .methods()
++                    .unwrap()
++                    .into_iter()
++                    .find(|method| {
++                        let raw = method.raw().unwrap();
++                        *guest_name(&self.core, raw.ptr_name).unwrap() == *name
++                            && *guest_name(&self.core, raw.ptr_descriptor).unwrap() == *descriptor
++                            && MethodAccessFlags::from_bits_truncate(raw.access_flags).contains(MethodAccessFlags::STATIC) == is_static
++                    })
++                    .map(|method| method.ptr_raw);
++                self.core.with_extension(|lookups: &mut MethodLookups| lookups.0.0.insert(key, found));
++                found
++            }
++        };
++        found.map(|ptr_method| Box::new(JavaMethod::from_raw(ptr_method, &self.core)) as Box<_>)
+     }
+ 
+     fn field(&self, name: &str, descriptor: &str, is_static: bool) -> Option<Box<dyn Field>> {
+-        self.fields()
+-            .unwrap()
+-            .into_iter()
+-            .find(|field| {
+-                field.name() == name && field.descriptor() == descriptor && field.access_flags().contains(FieldAccessFlags::STATIC) == is_static
+-            })
+-            .map(|field| Box::new(field) as Box<_>)
++        let key = (
++            self.ptr_raw,
++            self.descriptor().unwrap().ptr_fields,
++            member_key(name, descriptor),
++            is_static,
++        );
++        let found = match self.core.with_extension(|lookups: &mut FieldLookups| lookups.0.0.get(&key).copied()) {
++            Some(found) => found,
++            None => {
++                let found = self
++                    .fields()
++                    .unwrap()
++                    .into_iter()
++                    .find(|field| {
++                        let raw = field.raw().unwrap();
++                        *guest_name(&self.core, raw.ptr_name).unwrap() == *name
++                            && *guest_name(&self.core, raw.ptr_descriptor).unwrap() == *descriptor
++                            && FieldAccessFlags::from_bits_truncate(raw.flags as _).contains(FieldAccessFlags::STATIC) == is_static
++                    })
++                    .map(|field| field.ptr_raw);
++                self.core.with_extension(|lookups: &mut FieldLookups| lookups.0.0.insert(key, found));
++                found
++            }
++        };
++        found.map(|ptr_field| Box::new(JavaField::from_raw(ptr_field, &self.core)) as Box<_>)
+     }
+ 
+     fn fields(&self) -> Vec<Box<dyn Field>> {
+@@ -997,13 +1033,15 @@ impl ClassDefinition for JavaClassDefinition {
+ 
+         // LGT AOT static storage is untyped, so conservatively retain words that
+         // point to allocated instances with an intact object-header chain.
+-        for word_index in 0..descriptor.static_field_word_count {
+-            let ptr_instance: u32 = read_generic(
+-                &self.core,
+-                self.ptr_static_fields().unwrap() + word_index * size_of::<LgtJvmWord>() as u32,
+-            )
+-            .unwrap();
+-            if JavaClassInstance::is_live_instance(&self.core, ptr_instance) {
++        // (one read for the whole block: the collector asks for every object of the class)
++        let mut words = vec![0u8; descriptor.static_field_word_count as usize * size_of::<LgtJvmWord>()];
++        if !words.is_empty() {
++            self.core.read_bytes(self.ptr_static_fields().unwrap(), &mut words).unwrap();
++        }
++        for (word_index, word) in words.chunks_exact(size_of::<LgtJvmWord>()).enumerate() {
++            let word_index = word_index as u32;
++            let ptr_instance = u32::from_le_bytes(word.try_into().unwrap());
++            if ptr_instance != 0 && JavaClassInstance::is_live_instance(&self.core, ptr_instance) {
+                 fields.push(Box::new(JavaStaticReferenceField {
+                     ptr_class: self.ptr_raw,
+                     word_index,
+diff --git a/wie-lgt/src/runtime/java/jvm_support/field.rs b/wie-lgt/src/runtime/java/jvm_support/field.rs
+index 0829e3b0..c80b5e36 100644
+--- a/wie-lgt/src/runtime/java/jvm_support/field.rs
++++ b/wie-lgt/src/runtime/java/jvm_support/field.rs
+@@ -6,7 +6,9 @@ use jvm_types::FieldAccessFlags;
+ use wipi_types::lgt::java::LgtJavaClassField as RawJavaField;
+ 
+ use wie_core_arm::{Allocator, ArmCore};
+-use wie_util::{Result, read_generic, read_null_terminated_string_bytes, write_generic, write_null_terminated_string_bytes};
++use wie_util::{Result, read_generic, write_generic, write_null_terminated_string_bytes};
++
++use super::names::guest_name;
+ 
+ /// `unk2` bit of a runtime-only instance field that the platform layout has no word for. Its word
+ /// index addresses the object's detached storage instead of the instance-field words.
+@@ -70,15 +72,11 @@ impl JavaField {
+ 
+ impl Field for JavaField {
+     fn name(&self) -> Cow<'_, str> {
+-        String::from_utf8(read_null_terminated_string_bytes(&self.core, self.raw().unwrap().ptr_name).unwrap())
+-            .unwrap()
+-            .into()
++        String::from(&*guest_name(&self.core, self.raw().unwrap().ptr_name).unwrap()).into()
+     }
+ 
+     fn descriptor(&self) -> Cow<'_, str> {
+-        String::from_utf8(read_null_terminated_string_bytes(&self.core, self.raw().unwrap().ptr_descriptor).unwrap())
+-            .unwrap()
+-            .into()
++        String::from(&*guest_name(&self.core, self.raw().unwrap().ptr_descriptor).unwrap()).into()
+     }
+ 
+     fn access_flags(&self) -> FieldAccessFlags {
+diff --git a/wie-lgt/src/runtime/java/jvm_support/jvm_implementation.rs b/wie-lgt/src/runtime/java/jvm_support/jvm_implementation.rs
+index 47d6c263..1ca351d8 100644
+--- a/wie-lgt/src/runtime/java/jvm_support/jvm_implementation.rs
++++ b/wie-lgt/src/runtime/java/jvm_support/jvm_implementation.rs
+@@ -24,6 +24,9 @@ impl LgtJvmImplementation {
+         let functions = Arc::new(Mutex::new(BTreeMap::new()));
+         exception::init(core)?;
+         register_java_svc_handler(core, &functions)?;
++        // The proxies in the table hold the JVM, whose class loader holds this table.
++        let table = functions.clone();
++        core.on_shutdown(move || table.lock().clear());
+ 
+         Ok(Self {
+             core: core.clone(),
+diff --git a/wie-lgt/src/runtime/java/jvm_support/method.rs b/wie-lgt/src/runtime/java/jvm_support/method.rs
+index dde034b4..7e412e7a 100644
+--- a/wie-lgt/src/runtime/java/jvm_support/method.rs
++++ b/wie-lgt/src/runtime/java/jvm_support/method.rs
+@@ -10,18 +10,18 @@ use wie_core_arm::{
+     Allocator, ArmCore, EmulatedFunction, EmulatedFunctionParam, RegisteredFunction, RegisteredFunctionHolder, ResultWriter, RunFunctionResult,
+ };
+ use wie_jvm_support::native::{NativeJavaValueCodec, decode_method_arguments, encode_method_arguments, method_argument_word_count};
+-use wie_util::{Result, WieError, read_generic, read_null_terminated_string_bytes, write_generic, write_null_terminated_string_bytes};
++use wie_util::{Result, WieError, read_generic, write_generic, write_null_terminated_string_bytes};
+ 
+ use crate::runtime::{
+     SVC_CATEGORY_JAVA,
+     java::{JavaSvcFunctions, exception},
+ };
+ 
+-use super::value::JavaValueCodec;
++use super::{names::guest_name, value::JavaValueCodec};
+ 
+ #[derive(Clone)]
+ pub struct JavaMethod {
+-    ptr_raw: u32,
++    pub(super) ptr_raw: u32,
+     core: ArmCore,
+ }
+ 
+@@ -98,7 +98,7 @@ impl JavaMethod {
+         Ok(Self::from_raw(ptr_raw, core))
+     }
+ 
+-    fn raw(&self) -> Result<RawJavaMethod> {
++    pub(super) fn raw(&self) -> Result<RawJavaMethod> {
+         read_generic(&self.core, self.ptr_raw)
+     }
+ 
+@@ -144,15 +144,11 @@ impl JavaMethod {
+ #[async_trait::async_trait]
+ impl Method for JavaMethod {
+     fn name(&self) -> Cow<'_, str> {
+-        String::from_utf8(read_null_terminated_string_bytes(&self.core, self.raw().unwrap().ptr_name).unwrap())
+-            .unwrap()
+-            .into()
++        String::from(&*guest_name(&self.core, self.raw().unwrap().ptr_name).unwrap()).into()
+     }
+ 
+     fn descriptor(&self) -> Cow<'_, str> {
+-        String::from_utf8(read_null_terminated_string_bytes(&self.core, self.raw().unwrap().ptr_descriptor).unwrap())
+-            .unwrap()
+-            .into()
++        String::from(&*guest_name(&self.core, self.raw().unwrap().ptr_descriptor).unwrap()).into()
+     }
+ 
+     async fn run(&self, jvm: &Jvm, args: Box<[JavaValue]>) -> JvmResult<JavaValue> {
+@@ -233,10 +229,27 @@ where
+ 
+         let codec = JavaValueCodec::new(core);
+         let args = decode_method_arguments(&codec, &self.parameter_types, &raw_args);
++
++        // Objects the body touches (get_field results, values returned by the calls it makes) are kept alive in the
++        // JVM's top frame. Called from native code there is no frame for this call, so they went into the frame of
++        // the Java method whose native code is running: for a game loop that never returns (슈퍼액션히어로 1's
++        // thread) that frame grew with every Graphics call, ~0.1 MB of host memory per second of play. Give the body
++        // a frame of its own when it returns no reference; a returned reference lives on in native registers only,
++        // so for those the caller's frame still keeps it alive.
++        let own_frame = !matches!(self.return_type, JavaType::Class(_) | JavaType::Array(_));
++        if own_frame {
++            self.jvm.push_native_frame();
++        }
+         let result = self.proto.body.call(&self.jvm, &mut self.context.clone(), args.into_boxed_slice()).await;
++        if own_frame {
++            self.jvm.pop_frame();
++        }
+         let result = match result {
+             Ok(value) => value,
+-            Err(JavaError::JavaException(instance)) => return Err(WieError::JavaException(codec.object_to_raw(&*instance))),
++            Err(JavaError::JavaException(instance)) => {
++                exception::keep_host_exception(core, &self.jvm, &instance)?;
++                return Err(WieError::JavaException(codec.object_to_raw(&*instance)));
++            }
+         };
+ 
+         let result = if matches!(self.return_type, JavaType::Double | JavaType::Long) {
+diff --git a/wie-lgt/src/runtime/java/jvm_support/names.rs b/wie-lgt/src/runtime/java/jvm_support/names.rs
+new file mode 100644
+index 00000000..5401cf28
+--- /dev/null
++++ b/wie-lgt/src/runtime/java/jvm_support/names.rs
+@@ -0,0 +1,44 @@
++use alloc::{collections::BTreeMap, string::String, sync::Arc};
++
++use wie_core_arm::ArmCore;
++use wie_util::{Result, WieError, read_null_terminated_string_bytes};
++
++/// Class, field and method names and descriptors by guest address. They are read for every lookup by name
++/// and for every object the garbage collector visits, but they are written once (by the compiler or when
++/// the platform defines a class) and never freed, so each address is decoded only once per core.
++#[derive(Default)]
++struct GuestNames(BTreeMap<u32, Arc<str>>);
++
++/// Field or method found by name in one class's table, keyed by (class, table address, [`member_key`],
++/// is_static); `None` = not declared there. Tables are rebuilt at a new address when a class gains members,
++/// so a key with the table address stays valid. Host code looks members up by name for nearly every call
++/// (`Graphics` reads its fields on every draw), which otherwise scans the table and decodes every name.
++#[derive(Default)]
++pub struct MemberLookups(pub BTreeMap<(u32, u32, u64, bool), Option<u32>>);
++
++#[derive(Default)]
++pub struct FieldLookups(pub MemberLookups);
++
++#[derive(Default)]
++pub struct MethodLookups(pub MemberLookups);
++
++/// 64-bit FNV-1a of `name` and `descriptor`.
++pub fn member_key(name: &str, descriptor: &str) -> u64 {
++    let mut hash = 0xcbf2_9ce4_8422_2325u64;
++    for byte in name.bytes().chain(core::iter::once(0)).chain(descriptor.bytes()) {
++        hash = (hash ^ byte as u64).wrapping_mul(0x0100_0000_01b3);
++    }
++    hash
++}
++
++pub fn guest_name(core: &ArmCore, address: u32) -> Result<Arc<str>> {
++    if let Some(name) = core.with_extension(|names: &mut GuestNames| names.0.get(&address).cloned()) {
++        return Ok(name);
++    }
++    let bytes = read_null_terminated_string_bytes(core, address)?;
++    let name: Arc<str> = String::from_utf8(bytes)
++        .map_err(|_| WieError::FatalError(alloc::format!("invalid name at {address:#x}")))?
++        .into();
++    core.with_extension(|names: &mut GuestNames| names.0.insert(address, name.clone()));
++    Ok(name)
++}
+diff --git a/wie-lgt/src/runtime/stdlib.rs b/wie-lgt/src/runtime/stdlib.rs
+index b88929b2..34877f61 100644
+--- a/wie-lgt/src/runtime/stdlib.rs
++++ b/wie-lgt/src/runtime/stdlib.rs
+@@ -1,9 +1,10 @@
+-use alloc::{format, string::String};
++use alloc::format;
+ use chrono::{DateTime, Datelike, FixedOffset, TimeZone, Timelike};
+ use core::cmp::min;
++use futures::FutureExt;
+ 
+ use wie_backend::System;
+-use wie_core_arm::{Allocator, ArmCore, EmulatedFunction, ResultWriter, SvcId};
++use wie_core_arm::{Allocator, ArmCore, EmulatedFunction, EmulatedFunctionParam, ResultWriter, SvcId};
+ use wie_util::{
+     ByteRead, ByteWrite, Result, WieError, read_generic, read_null_terminated_string_bytes, write_generic, write_null_terminated_string_bytes,
+ };
+@@ -12,6 +13,16 @@ use wie_wipi_c::api::kernel;
+ use crate::runtime::{SVC_CATEGORY_STDLIB, svc_ids::StdlibSvcId};
+ 
+ pub fn register_stdlib_svc_handler(core: &mut ArmCore, system: &System) -> Result<()> {
++    /// No import here waits, so every call runs to completion at once, without the async dispatch (games call
++    /// memcpy and strlen thousands of times per frame).
++    fn handle_stdlib_svc_sync(core: &mut ArmCore, system: &System) -> Result<bool> {
++        let id = SvcId::get(core, 0);
++        match handle_stdlib_svc(core, &mut system.clone(), id).now_or_never() {
++            Some(result) => result.map(|()| true),
++            None => Err(WieError::FatalError(format!("lgt stdlib import {:#x} waited", id.0))),
++        }
++    }
++
+     async fn handle_stdlib_svc(core: &mut ArmCore, system: &mut System, id: SvcId) -> Result<()> {
+         let (_, lr) = core.read_pc_lr()?;
+ 
+@@ -45,7 +56,8 @@ pub fn register_stdlib_svc_handler(core: &mut ArmCore, system: &System) -> Resul
+         }
+     }
+ 
+-    core.register_svc_handler(SVC_CATEGORY_STDLIB, handle_stdlib_svc, system)
++    core.register_svc_handler(SVC_CATEGORY_STDLIB, handle_stdlib_svc, system)?;
++    core.register_sync_svc_handler(SVC_CATEGORY_STDLIB, handle_stdlib_svc_sync, system.clone())
+ }
+ 
+ async fn srand(_core: &mut ArmCore, system: &mut System, seed: u32) -> Result<()> {
+@@ -214,9 +226,33 @@ async fn atoi(core: &mut ArmCore, _: &mut (), ptr_str: u32) -> Result<u32> {
+     tracing::debug!("atoi({ptr_str:#x})");
+ 
+     let string = read_null_terminated_string_bytes(core, ptr_str)?;
+-    let string = String::from_utf8(string).unwrap();
+ 
+-    Ok(string.parse().unwrap_or(0))
++    Ok(c_atoi(&string) as u32)
++}
++
++/// C `atoi`: optional whitespace and sign, then the leading digits (0 if none). Games pass it EUC-KR text
++/// too (테일즈위버 루시안칼츠편 (LGT) crashed when it was parsed as UTF-8).
++fn c_atoi(string: &[u8]) -> i32 {
++    let mut bytes = string
++        .iter()
++        .skip_while(|x| matches!(x, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r'))
++        .peekable();
++    let negative = match bytes.peek() {
++        Some(b'-') => {
++            bytes.next();
++            true
++        }
++        Some(b'+') => {
++            bytes.next();
++            false
++        }
++        _ => false,
++    };
++    let value = bytes
++        .take_while(|x| x.is_ascii_digit())
++        .fold(0i32, |value, digit| value.wrapping_mul(10).wrapping_add((digit - b'0') as i32));
++
++    if negative { value.wrapping_neg() } else { value }
+ }
+ 
+ async fn time(core: &mut ArmCore, system: &mut System, ptr_time: u32) -> Result<u32> {
+@@ -360,7 +396,17 @@ mod tests {
+     use wie_core_arm::ArmCore;
+     use wie_util::{ByteRead, ByteWrite, Result};
+ 
+-    use super::{memcpy, memset, rand, srand, strcpy, strlen};
++    use super::{c_atoi, memcpy, memset, rand, srand, strcpy, strlen};
++
++    #[test]
++    fn atoi_reads_leading_digits_of_any_bytes() {
++        assert_eq!(c_atoi(b"123"), 123);
++        assert_eq!(c_atoi(b"  -42xyz"), -42);
++        assert_eq!(c_atoi(b"+7"), 7);
++        assert_eq!(c_atoi(&[176, 197, 177, 226]), 0);
++        assert_eq!(c_atoi(b"12\xb0\xc5"), 12);
++        assert_eq!(c_atoi(b""), 0);
++    }
+ 
+     #[test]
+     fn memory_and_string_imports_preserve_guest_bytes_across_chunks() -> Result<()> {
+diff --git a/wie-lgt/src/runtime/svc_ids.rs b/wie-lgt/src/runtime/svc_ids.rs
+index 69c27e1b..15bd79ba 100644
+--- a/wie-lgt/src/runtime/svc_ids.rs
++++ b/wie-lgt/src/runtime/svc_ids.rs
+@@ -63,6 +63,7 @@ pub enum JavaSystemSvcId {
+     MonitorExit = 34,
+     StoreLongArray = 35,
+     LoadLongArray = 36,
++    RaiseClassCastException = 37,
+ }
+ 
+ impl TryFrom<SvcId> for JavaSystemSvcId {
+@@ -107,6 +108,7 @@ impl TryFrom<SvcId> for JavaSystemSvcId {
+             34 => Self::MonitorExit,
+             35 => Self::StoreLongArray,
+             36 => Self::LoadLongArray,
++            37 => Self::RaiseClassCastException,
+             _ => {
+                 return Err(wie_util::WieError::FatalError(alloc::format!(
+                     "Unknown LGT Java system SVC id {}",
+@@ -197,11 +199,17 @@ pub enum WIPICSvcId {
+     SetCurrentMode = 0x12e,
+     GetCurrentMode = 0x12f,
+     HandleInput = 0x130,
+-    TimeNow = 0x320,
+-    TimeComponent = 0x321,
+-    TimeConvert = 0x322,
+-    TimeToTm = 0x323,
+-    DateTimeToTm = 0x338,
++    // MC_uic* in KTF's table order from 0x320: 리얼사커매니저2009 calls 0x320(), 0x321("TextComponent"), 0x322(context,
++    // class), configures the control through 0x329 (x, y, w, h, 3) and reads it back through 0x342 / 0x343.
++    UicCreateApplicationContext = 0x320,
++    UicGetClass = 0x321,
++    UicCreate = 0x322,
++    UicDestroy = 0x323,
++    UicGetTextSize = 0x342,
++    UicGetText = 0x343,
++    UicGetTime = 0x338,
++    /// Another MC_uic* call (0x324..0x34f); there are no controls to act on.
++    UicOther = 0x34f,
+     OpenDatabase = 0x190,
+     ReadRecordSingle = 0x191,
+     WriteRecordSingle = 0x192,
+@@ -212,13 +220,22 @@ pub enum WIPICSvcId {
+     ListRecord = 0x197,
+     UpdateRecord = 0x198,
+     SelectRecord = 0x199,
++    ListDirectory = 0x19a,
+     ListDatabases = 0x19c,
+     TellRecordSingle = 0x19f,
+     Unk8 = 0x1a0,
++    // The network group in KTF's table order from 0x258.
+     Connect = 0x258,
+     Close = 0x259,
+     SocketClose = 0x25e,
+     SetReadCb = 0x265,
++    Socket = 0x25a,
++    /// The socket call the LGT titles that open sockets all import (most of them instead of 0x25a): 테일즈위버 calls it
++    /// with (2, 1) after MC_netConnect and connects the result through 0x25b; 검은방2 calls 0x25a and then this.
++    SocketLgt = 0x7d0,
++    SocketConnect = 0x25b,
++    /// Any other call of the network group. Without a data connection they fail.
++    NetUnavailable = 0x2bb,
+     ClipCreate = 0x4b0,
+     ClipFree = 0x4b1,
+     ClipPutData = 0x4b3,
+@@ -318,11 +335,14 @@ impl TryFrom<SvcId> for WIPICSvcId {
+             0x12e => Self::SetCurrentMode,
+             0x12f => Self::GetCurrentMode,
+             0x130 => Self::HandleInput,
+-            0x320 => Self::TimeNow,
+-            0x321 => Self::TimeComponent,
+-            0x322 => Self::TimeConvert,
+-            0x323 => Self::TimeToTm,
+-            0x338 => Self::DateTimeToTm,
++            0x320 => Self::UicCreateApplicationContext,
++            0x321 => Self::UicGetClass,
++            0x322 => Self::UicCreate,
++            0x323 => Self::UicDestroy,
++            0x342 => Self::UicGetTextSize,
++            0x343 => Self::UicGetText,
++            0x338 => Self::UicGetTime,
++            0x324..=0x34f => Self::UicOther,
+             0x190 => Self::OpenDatabase,
+             0x191 => Self::ReadRecordSingle,
+             0x192 => Self::WriteRecordSingle,
+@@ -333,6 +353,7 @@ impl TryFrom<SvcId> for WIPICSvcId {
+             0x197 => Self::ListRecord,
+             0x198 => Self::UpdateRecord,
+             0x199 => Self::SelectRecord,
++            0x19a => Self::ListDirectory,
+             0x19c => Self::ListDatabases,
+             0x19f => Self::TellRecordSingle,
+             0x1a0 => Self::Unk8,
+@@ -340,6 +361,10 @@ impl TryFrom<SvcId> for WIPICSvcId {
+             0x259 => Self::Close,
+             0x25e => Self::SocketClose,
+             0x265 => Self::SetReadCb,
++            0x25a => Self::Socket,
++            0x7d0 => Self::SocketLgt,
++            0x25b => Self::SocketConnect,
++            0x258..=0x2bb => Self::NetUnavailable,
+             0x4b0 => Self::ClipCreate,
+             0x4b1 => Self::ClipFree,
+             0x4b3 => Self::ClipPutData,
+diff --git a/wie-lgt/src/runtime/wipi_c.rs b/wie-lgt/src/runtime/wipi_c.rs
+index 8dc861ab..0b0af2dd 100644
+--- a/wie-lgt/src/runtime/wipi_c.rs
++++ b/wie-lgt/src/runtime/wipi_c.rs
+@@ -1,27 +1,28 @@
+-use alloc::{boxed::Box, string::ToString, vec};
++use alloc::{string::ToString, sync::Arc, vec};
++use core::future::Future;
++
++use futures::FutureExt;
+ 
+ mod context;
+ pub(super) mod graphics;
+ 
+ use jvm::{Jvm, Result as JvmResult, runtime::JavaLangString};
+ use wipi_types::lgt::CletFunctions;
+-use wipi_types::wipic::WIPICIndirectPtr;
++use wipi_types::wipic::{WIPICIndirectPtr, WIPICWord};
+ 
+ use wie_backend::System;
+ use wie_core_arm::{ArmCore, EmulatedFunction, EmulatedFunctionParam, ResultWriter, SvcId};
+ use wie_jvm_support::JvmSupport;
+-use wie_util::{Result, read_generic, write_generic, write_null_terminated_string_bytes};
++use wie_util::{Result, WieError, read_generic, write_generic, write_null_terminated_string_bytes};
+ use wie_wipi_c::{
+     MAX_METHOD_ARGS, MethodImpl, WIPICContext, WIPICMethodBody, WIPICResult,
+-    api::{database, graphics as shared_graphics, im, kernel, media, misc, net, util},
++    api::{database, graphics as shared_graphics, im, kernel, media, misc, net, uic, util},
+ };
+ 
+ use context::LgtWIPICContext;
+ 
+ use crate::runtime::{SVC_CATEGORY_WIPIC, svc_ids::WIPICSvcId};
+ 
+-const TIME_VALUE_PTR: u32 = 0x7fff1004;
+-
+ struct WIPICMethodResult {
+     result: WIPICResult,
+ }
+@@ -35,13 +36,10 @@ impl ResultWriter<WIPICMethodResult> for WIPICMethodResult {
+     }
+ }
+ 
+-struct CMethodProxy {
+-    context: LgtWIPICContext,
+-    body: WIPICMethodBody,
+-}
+-
+-async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm), id: SvcId) -> Result<()> {
+-    let wipic_context = LgtWIPICContext::new(core.clone(), system.clone(), jvm.clone());
++// Games call some WIPI-C functions hundreds of thousands of times a second (frame buffer getters in pixel
++// loops), so the dispatch clones the platform handles once per call and reads the arguments in one go.
++async fn handle_wipic_svc(core: &mut ArmCore, platform: &mut Arc<(System, Jvm)>, id: SvcId) -> Result<()> {
++    let (system, jvm) = &**platform;
+     let (_, lr) = core.read_pc_lr()?;
+     let method = match WIPICSvcId::try_from(id)? {
+         WIPICSvcId::CletRegister => {
+@@ -113,11 +111,14 @@ async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm),
+         WIPICSvcId::SetCurrentMode => im::set_current_mode.into_body(),
+         WIPICSvcId::GetCurrentMode => im::get_current_mode.into_body(),
+         WIPICSvcId::HandleInput => im::handle_input.into_body(),
+-        WIPICSvcId::TimeNow => time_now.into_body(),
+-        WIPICSvcId::TimeComponent => time_component.into_body(),
+-        WIPICSvcId::TimeConvert => time_convert.into_body(),
+-        WIPICSvcId::TimeToTm => time_to_tm.into_body(),
+-        WIPICSvcId::DateTimeToTm => time_to_tm.into_body(),
++        WIPICSvcId::UicCreateApplicationContext => uic::create_application_context.into_body(),
++        WIPICSvcId::UicGetClass => uic::get_class.into_body(),
++        WIPICSvcId::UicCreate => uic::create.into_body(),
++        WIPICSvcId::UicDestroy => uic::destroy.into_body(),
++        WIPICSvcId::UicGetTextSize => uic::get_text_size.into_body(),
++        WIPICSvcId::UicGetText => uic::get_text.into_body(),
++        WIPICSvcId::UicGetTime => uic_get_time.into_body(),
++        WIPICSvcId::UicOther => uic_without_control(id.0),
+         WIPICSvcId::OpenDatabase => database::open_database.into_body(),
+         WIPICSvcId::ReadRecordSingle => database::stream_read.into_body(),
+         WIPICSvcId::WriteRecordSingle => database::stream_write.into_body(),
+@@ -128,6 +129,7 @@ async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm),
+         WIPICSvcId::ListRecord => database::list_record.into_body(),
+         WIPICSvcId::UpdateRecord => database::update_record.into_body(),
+         WIPICSvcId::SelectRecord => database::select_record.into_body(),
++        WIPICSvcId::ListDirectory => database::list_directory.into_body(),
+         WIPICSvcId::ListDatabases => database::list_databases.into_body(),
+         WIPICSvcId::TellRecordSingle => database::tell_record_single.into_body(),
+         WIPICSvcId::Unk8 => database::exists_database.into_body(),
+@@ -135,6 +137,9 @@ async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm),
+         WIPICSvcId::Close => net::close.into_body(),
+         WIPICSvcId::SocketClose => net::socket_close.into_body(),
+         WIPICSvcId::SetReadCb => net::set_read_cb.into_body(),
++        WIPICSvcId::Socket | WIPICSvcId::SocketLgt => net::socket.into_body(),
++        WIPICSvcId::SocketConnect => net::socket_connect.into_body(),
++        WIPICSvcId::NetUnavailable => net_unavailable(id.0),
+         WIPICSvcId::ClipCreate => media::clip_create.into_body(),
+         WIPICSvcId::ClipFree => media::clip_free.into_body(),
+         WIPICSvcId::ClipPutData => media::clip_put_data.into_body(),
+@@ -163,32 +168,79 @@ async fn handle_wipic_svc(core: &mut ArmCore, (system, jvm): &mut (System, Jvm),
+         WIPICSvcId::InetAddrInt => util::inet_addr_int.into_body(),
+     };
+ 
+-    EmulatedFunction::call(
+-        &CMethodProxy {
+-            context: wipic_context,
+-            body: method,
+-        },
+-        core,
+-        &mut (),
+-    )
+-    .await?
+-    .write(core, lr)
++    // As many words as the widest method takes (MC_knlSprintk with its variadic arguments).
++    let mut args = [0; MAX_METHOD_ARGS];
++    core.read_params(&mut args)?;
++    let mut context = LgtWIPICContext::new(core.clone(), system.clone(), jvm.clone());
++    let result = method.call(&mut context, args.into()).await?;
++
++    WIPICMethodResult { result }.write(core, lr)
+ }
+ 
+-#[async_trait::async_trait]
+-impl EmulatedFunction<(), WIPICMethodResult, ()> for CMethodProxy {
+-    async fn call(&self, core: &mut ArmCore, _: &mut ()) -> Result<WIPICMethodResult> {
+-        // As many words as the widest method takes (MC_knlSprintk with its variadic arguments).
+-        let args = (0..MAX_METHOD_ARGS).map(|index| u32::get(core, index)).collect();
++/// Runs the WIPI-C functions that never wait (no `.await` in their bodies) without the async dispatch, on
++/// the same bodies: games call the frame buffer getters in pixel loops (하이브리드 1: ~70k calls per frame,
++/// more than the frame's CPU budget through the async dispatch). Returns false for the other functions.
++fn handle_wipic_svc_sync(core: &mut ArmCore, platform: &Arc<(System, Jvm)>) -> Result<bool> {
++    fn ready<T>(call: impl Future<Output = Result<T>>) -> Result<T> {
++        call.now_or_never()
++            .unwrap_or_else(|| Err(WieError::FatalError("WIPI-C function waited in the synchronous dispatch".into())))
++    }
++
++    let Ok(id) = WIPICSvcId::try_from(SvcId::get(core, 0)) else {
++        return Ok(false);
++    };
++    if !matches!(
++        id,
++        WIPICSvcId::GetFramebufferPointer
++            | WIPICSvcId::GetFramebufferWidth
++            | WIPICSvcId::GetFramebufferHeight
++            | WIPICSvcId::GetFramebufferBpl
++            | WIPICSvcId::GetFramebufferBpp
++            | WIPICSvcId::GetImageFramebuffer
++            | WIPICSvcId::InitContext
++            | WIPICSvcId::SetContext
++            | WIPICSvcId::GetContext
++            | WIPICSvcId::GetPixelFromRgb
++            | WIPICSvcId::GetRgbFromPixel
++    ) {
++        return Ok(false);
++    }
+ 
+-        let result = self.body.call(&mut self.context.clone(), args).await?;
++    let (_, lr) = core.read_pc_lr()?;
++    let mut args = [0; 4];
++    core.read_params(&mut args)?;
++    let [a0, a1, a2, a3] = args;
++    let (system, jvm) = &**platform;
++    let mut context = LgtWIPICContext::new(core.clone(), system.clone(), jvm.clone());
++    let context = &mut context as &mut dyn WIPICContext;
++
++    let result = match id {
++        WIPICSvcId::GetFramebufferPointer => Some(ready(graphics::get_framebuffer_pointer(context, WIPICIndirectPtr(a0)))?),
++        WIPICSvcId::GetFramebufferWidth => Some(ready(graphics::get_framebuffer_width(context, WIPICIndirectPtr(a0)))? as u32),
++        WIPICSvcId::GetFramebufferHeight => Some(ready(graphics::get_framebuffer_height(context, WIPICIndirectPtr(a0)))? as u32),
++        WIPICSvcId::GetFramebufferBpl => Some(ready(graphics::get_framebuffer_bpl(context, WIPICIndirectPtr(a0)))? as u32),
++        WIPICSvcId::GetFramebufferBpp => Some(ready(graphics::get_framebuffer_bpp(context, WIPICIndirectPtr(a0)))? as u32),
++        WIPICSvcId::GetImageFramebuffer => Some(ready(graphics::get_image_framebuffer(context, WIPICIndirectPtr(a0)))?.0),
++        WIPICSvcId::InitContext => ready(graphics::init_context(context, a0)).map(|()| None)?,
++        WIPICSvcId::SetContext => ready(graphics::set_context(context, a0, a1, a2)).map(|()| None)?,
++        WIPICSvcId::GetContext => Some(ready(graphics::get_context(context, a0, a1, a2))?),
++        WIPICSvcId::GetPixelFromRgb => Some(ready(shared_graphics::get_pixel_from_rgb(context, a0 as i32, a1 as i32, a2 as i32))?),
++        WIPICSvcId::GetRgbFromPixel => Some(ready(shared_graphics::get_rgb_from_pixel(context, a0 as i32, a1, a2, a3))? as u32),
++        _ => unreachable!(),
++    };
+ 
+-        Ok(WIPICMethodResult { result })
++    if let Some(result) = result {
++        core.write_return_value(&[result])?;
+     }
++    core.set_next_pc(lr)?;
++
++    Ok(true)
+ }
+ 
+ pub fn register_wipic_svc_handler(core: &mut ArmCore, system: &System, jvm: &Jvm) -> Result<()> {
+-    core.register_svc_handler(SVC_CATEGORY_WIPIC, handle_wipic_svc, &(system.clone(), jvm.clone()))
++    let platform = Arc::new((system.clone(), jvm.clone()));
++    core.register_svc_handler(SVC_CATEGORY_WIPIC, handle_wipic_svc, &platform)?;
++    core.register_sync_svc_handler(SVC_CATEGORY_WIPIC, handle_wipic_svc_sync, platform)
+ }
+ 
+ async fn clet_register(core: &mut ArmCore, (system, jvm): &mut (System, Jvm), function_table: u32, a1: u32) -> Result<()> {
+@@ -263,58 +315,46 @@ async fn unk5(_context: &mut dyn WIPICContext, a0: u32, a1: u32, a2: u32, a3: u3
+     Ok(0)
+ }
+ 
+-async fn time_now(context: &mut dyn WIPICContext, component_class: u32) -> Result<u32> {
+-    let epoch_seconds = context.system().platform().now().raw() / 1000;
+-    tracing::debug!("LGT_timeNow({component_class:#x}) -> {epoch_seconds}");
+-
+-    write_time_value(context, epoch_seconds as u32)
+-}
+-
+-async fn time_component(_context: &mut dyn WIPICContext, name: u32) -> Result<u32> {
+-    tracing::debug!("LGT_timeComponent({name:#x})");
++/// A network call on a handset without a data connection: the WIPI-C error code (M_E_ERROR), so games show their own
++/// network error and go on offline. MC_netConnect (answered through its callback) and the socket calls have their own
++/// bodies.
++fn net_unavailable(id: u32) -> WIPICMethodBody {
++    let body = move |_: &mut dyn WIPICContext| async move {
++        tracing::warn!("no network: LGT WIPI-C {id:#x}");
++        Ok::<i32, WieError>(-1) // M_E_ERROR
++    };
+ 
+-    Ok(name)
++    body.into_body()
+ }
+ 
+-async fn time_convert(context: &mut dyn WIPICContext, date_time: u32, component: u32) -> Result<u32> {
+-    tracing::debug!("LGT_timeConvert({date_time:#x}, {component:#x})");
++/// An MC_uic* call on a control. MC_uicCreate never makes one, so there is none to act on: 슈퍼액션히어로 3 passes a
++/// global that is never set (0x328 with (0, 502, -99, ..) when its name box changes input mode, 0x32b with (0, 0/1)).
++fn uic_without_control(id: u32) -> WIPICMethodBody {
++    let body = move |_: &mut dyn WIPICContext, control: WIPICWord| async move {
++        tracing::warn!("no UI control: LGT WIPI-C {id:#x}({control:#x})");
++        Ok::<i32, WieError>(-1) // M_E_ERROR
++    };
+ 
+-    let timestamp = read_time_value(context, date_time)?;
+-    write_time_value(context, timestamp)
++    body.into_body()
+ }
+ 
+-async fn time_to_tm(context: &mut dyn WIPICContext, time_value: u32, out_ptr: u32) -> Result<i32> {
+-    tracing::debug!("LGT_timeToTm({time_value:#x}, {out_ptr:#x})");
++/// `0x338(control, tm)`: writes the current time as a C `struct tm`, as the platform answered before the block was known
++/// to be MC_uic* (MC_uicGetTime is its slot in KTF's order).
++async fn uic_get_time(context: &mut dyn WIPICContext, control: WIPICWord, out_ptr: WIPICWord) -> Result<i32> {
++    tracing::debug!("MC_uicGetTime({control:#x}, {out_ptr:#x})");
+ 
+-    let timestamp = read_time_value(context, time_value)?;
++    if out_ptr == 0 {
++        return Ok(-1); // M_E_ERROR
++    }
++    let timestamp = context.system().platform().now().raw() / 1000;
+     let (year, month, day, hour, minute, second) = unix_seconds_to_utc(timestamp as i64);
+-    write_generic(context, out_ptr, second)?;
+-    write_generic(context, out_ptr + 4, minute)?;
+-    write_generic(context, out_ptr + 8, hour)?;
+-    write_generic(context, out_ptr + 12, day)?;
+-    write_generic(context, out_ptr + 16, month - 1)?;
+-    write_generic(context, out_ptr + 20, year - 1900)?;
++    for (index, value) in [second, minute, hour, day, month - 1, year - 1900].into_iter().enumerate() {
++        write_generic(context, out_ptr + index as u32 * 4, value)?;
++    }
+ 
+     Ok(0)
+ }
+ 
+-fn write_time_value(context: &mut dyn WIPICContext, timestamp: u32) -> Result<u32> {
+-    let time_value_ptr: u32 = read_generic(context, TIME_VALUE_PTR)?;
+-    let memory = if time_value_ptr != 0 {
+-        WIPICIndirectPtr(time_value_ptr)
+-    } else {
+-        let memory = context.alloc(4)?;
+-        write_generic(context, TIME_VALUE_PTR, memory.0)?;
+-        memory
+-    };
+-    write_generic(context, context.data_ptr(memory)?, timestamp)?;
+-    Ok(memory.0)
+-}
+-
+-fn read_time_value(context: &mut dyn WIPICContext, handle: u32) -> Result<u32> {
+-    read_generic(context, context.data_ptr(WIPICIndirectPtr(handle))?)
+-}
+-
+ fn unix_seconds_to_utc(timestamp: i64) -> (i32, i32, i32, i32, i32, i32) {
+     let days = timestamp.div_euclid(86_400);
+     let seconds_of_day = timestamp.rem_euclid(86_400);
+diff --git a/wie-lgt/src/runtime/wipi_c/context.rs b/wie-lgt/src/runtime/wipi_c/context.rs
+index 4d966d1d..9cf55456 100644
+--- a/wie-lgt/src/runtime/wipi_c/context.rs
++++ b/wie-lgt/src/runtime/wipi_c/context.rs
+@@ -99,7 +99,10 @@ impl WIPICContext for LgtWIPICContext {
+                 .unwrap();
+             return Ok(Some(available as _));
+         }
+-        self.jvm.collect_garbage().unwrap();
++        // resource reads are a safe point: collect on the shared schedule (not on every read)
++        wie_jvm_support::collect_garbage_periodically(&self.jvm, self.system.platform())
++            .await
++            .unwrap();
+ 
+         Ok(self.system.filesystem().size(name).await)
+     }
+@@ -119,7 +122,10 @@ impl WIPICContext for LgtWIPICContext {
+         let read = self.system.filesystem().read(name, 0, size, &mut data).await.unwrap_or(0);
+         data.truncate(read);
+ 
+-        self.jvm.collect_garbage().unwrap();
++        // resource reads are a safe point: collect on the shared schedule (not on every read)
++        wie_jvm_support::collect_garbage_periodically(&self.jvm, self.system.platform())
++            .await
++            .unwrap();
+ 
+         Ok(data)
+     }
+diff --git a/wie-midp/src/classes/javax/microedition/lcdui/display.rs b/wie-midp/src/classes/javax/microedition/lcdui/display.rs
+index f4578e98..6b711632 100644
+--- a/wie-midp/src/classes/javax/microedition/lcdui/display.rs
++++ b/wie-midp/src/classes/javax/microedition/lcdui/display.rs
+@@ -5,7 +5,7 @@ use jvm_class_proto::{JavaFieldProto, JavaMethodProto};
+ use jvm_types::{ClassAccessFlags, FieldAccessFlags, MethodAccessFlags};
+ use rustjava_runtime::classes::java::lang::{Runnable, String as JavaString};
+ 
+-use wie_backend::{Event, Instant, text_layout::wrap};
++use wie_backend::{Event, Platform, canvas::Clip, text_layout::wrap};
+ use wie_jvm_support::{JvmSupport, WieJavaClassProto, WieJvmContext};
+ 
+ use crate::classes::javax::microedition::{
+@@ -18,7 +18,6 @@ const TITLE_HORIZONTAL_PADDING: i32 = 4;
+ const TITLE_VERTICAL_PADDING: i32 = 2;
+ const TICKER_HEIGHT: i32 = 16;
+ const TICKER_INTERVAL_MS: u64 = 100;
+-const GARBAGE_COLLECTION_INTERVAL_MS: i32 = 1000;
+ const SOFTKEY_HEIGHT: i32 = 18;
+ 
+ const TITLE_BACKGROUND: i32 = 0x263746;
+@@ -126,9 +125,6 @@ impl Display {
+                 JavaFieldProto::new("paintDisabled", "Z", FieldAccessFlags::PRIVATE),
+                 JavaFieldProto::new("repaintPending", "Z", FieldAccessFlags::PRIVATE),
+                 JavaFieldProto::new("redrawServiced", "Z", FieldAccessFlags::PRIVATE),
+-                // Low 32 bits of the platform time of the last periodic collection (0 = none yet). Static: the
+-                // platforms' other safe points (KTF resource access) share the interval.
+-                JavaFieldProto::new("lastGarbageCollection", "I", FieldAccessFlags::PRIVATE | FieldAccessFlags::STATIC),
+                 JavaFieldProto::new("alertGeneration", "I", FieldAccessFlags::PRIVATE),
+                 JavaFieldProto::new("tickerGeneration", "I", FieldAccessFlags::PRIVATE),
+             ],
+@@ -955,6 +951,29 @@ impl Display {
+             }
+ 
+             let layout = Self::chrome_layout(jvm, context, &current_displayable, width, height).await?;
++
++            // The native screen framebuffer is the same LCD on handsets: native drawing shows under this paint
++            // (던전앤파이터 격투가편 draws its frames with MC_grp* and presents them with an empty Card paint).
++            let native_lcd = context.system().native_lcd();
++            if let Some(image) = native_lcd.and_then(|lcd| lcd.changed_image()) {
++                let screen_image = jvm
++                    .get_field(
++                        &this,
++                        "javax/microedition/lcdui/Display",
++                        "screenImage",
++                        "Ljavax/microedition/lcdui/Image;",
++                    )
++                    .await?;
++                let mut canvas = Image::canvas(jvm, &screen_image).await?;
++                let clip = Clip {
++                    x: 0,
++                    y: 0,
++                    width: width as u32,
++                    height: height as u32,
++                };
++                canvas.draw(0, 0, image.width(), image.height(), &*image, 0, 0, clip);
++            }
++
+             let _: () = jvm
+                 .invoke_virtual(&screen_graphics, "javax/microedition/lcdui/Graphics", "reset", "()V", ())
+                 .await?;
+@@ -1022,31 +1041,14 @@ impl Display {
+             screen.paint(&*image);
+         }
+ 
+-        Self::collect_garbage_periodically(jvm, context.system().platform().now()).await
++        Self::collect_garbage_periodically(jvm, context.system().platform()).await
+     }
+ 
+-    /// Collects garbage at a safe point (no host code holds unrooted objects) unless a collection ran less than
+-    /// [`GARBAGE_COLLECTION_INTERVAL_MS`] of game time ago. A full collection walks every reachable object; once
+-    /// per paint it dominated frame time in paint-heavy games, and once per resource access it stalled KTF
+-    /// games that load many resources in a row (메이플스토리 도적편: ~180 ms frames while loading).
+-    pub async fn collect_garbage_periodically(jvm: &Jvm, now: Instant) -> JvmResult<()> {
+-        let now = now.raw() as i32;
+-        let last: i32 = jvm
+-            .get_static_field("javax/microedition/lcdui/Display", "lastGarbageCollection", "I")
+-            .await?;
+-        if last != 0 && (0..GARBAGE_COLLECTION_INTERVAL_MS).contains(&now.wrapping_sub(last)) {
+-            return Ok(());
+-        }
+-        jvm.put_static_field(
+-            "javax/microedition/lcdui/Display",
+-            "lastGarbageCollection",
+-            "I",
+-            if now == 0 { 1 } else { now },
+-        )
+-        .await?;
+-        jvm.collect_garbage()?;
+-
+-        Ok(())
++    /// Collects garbage at a safe point (no host code holds unrooted objects) on the shared schedule of
++    /// [`wie_jvm_support::collect_garbage_periodically`]: paints, the platforms' other safe points (KTF resource
++    /// access) and the game's own `System.gc()` calls.
++    pub async fn collect_garbage_periodically(jvm: &Jvm, platform: &dyn Platform) -> JvmResult<()> {
++        wie_jvm_support::collect_garbage_periodically(jvm, platform).await
+     }
+ 
+     async fn paint_chrome(
+diff --git a/wie-midp/src/classes/javax/microedition/lcdui/image.rs b/wie-midp/src/classes/javax/microedition/lcdui/image.rs
+index 8b425d4b..c1fa3b48 100644
+--- a/wie-midp/src/classes/javax/microedition/lcdui/image.rs
++++ b/wie-midp/src/classes/javax/microedition/lcdui/image.rs
+@@ -312,6 +312,17 @@ where
+ 
+         data.into_iter().map(T::to_color).collect()
+     }
++
++    fn get_pixels(&self, x: i32, y: i32, out: &mut [Color]) {
++        let offset = (((y as u32) * self.width() + (x as u32)) * self.bytes_per_pixel()) as usize;
++
++        let mut raw = vec![T::DataType::zeroed(); out.len()];
++        self.raw_buffer.read(offset, bytemuck::cast_slice_mut(&mut raw)).unwrap();
++
++        for (color, raw) in out.iter_mut().zip(raw) {
++            *color = T::to_color(raw);
++        }
++    }
+ }
+ 
+ impl<T> ImageBuffer for JavaImageBuffer<T>
+@@ -338,12 +349,9 @@ where
+ 
+         let offset = (((y as u32) * self.width() + (x as u32)) * self.bytes_per_pixel()) as usize;
+ 
+-        let raw_bytes = colors
+-            .iter()
+-            .flat_map(|color| bytemuck::bytes_of(&T::from_color(*color)).to_vec())
+-            .collect::<Vec<_>>();
++        let raw = colors.iter().map(|color| T::from_color(*color)).collect::<Vec<_>>();
+ 
+-        self.raw_buffer.write(offset as _, &raw_bytes).unwrap();
++        self.raw_buffer.write(offset as _, bytemuck::cast_slice(&raw)).unwrap();
+     }
+ 
+     fn xor_pixel(&mut self, x: i32, y: i32, color: Color) {
+diff --git a/wie-midp/src/classes/javax/microedition/midlet/midlet.rs b/wie-midp/src/classes/javax/microedition/midlet/midlet.rs
+index 57b4dcd7..2ce45578 100644
+--- a/wie-midp/src/classes/javax/microedition/midlet/midlet.rs
++++ b/wie-midp/src/classes/javax/microedition/midlet/midlet.rs
+@@ -89,8 +89,12 @@ impl MIDlet {
+             .await
+     }
+ 
+-    async fn notify_destroyed(_jvm: &Jvm, _context: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<()> {
+-        tracing::warn!("stub javax.microedition.midlet.MIDlet::notifyDestroyed({this:?})");
++    /// The MIDlet reports that it is destroyed; the application manager then ends it. Without that a game's
++    /// 게임종료 left it frozen on its menu (학교가는길; WIPI Jlets come here through Jlet.notifyDestroyed too).
++    async fn notify_destroyed(_jvm: &Jvm, context: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<()> {
++        tracing::debug!("javax.microedition.midlet.MIDlet::notifyDestroyed({this:?})");
++
++        context.system().platform().exit();
+ 
+         Ok(())
+     }
+diff --git a/wie-skt/src/emulator.rs b/wie-skt/src/emulator.rs
+index 79b5fda5..d17e44f4 100644
+--- a/wie-skt/src/emulator.rs
++++ b/wie-skt/src/emulator.rs
+@@ -162,6 +162,13 @@ impl SktEmulator {
+     }
+ }
+ 
++impl Drop for SktEmulator {
++    fn drop(&mut self) {
++        // Pending tasks hold clones of the system (and the VM): break that cycle so both are freed.
++        self.system.shutdown();
++    }
++}
++
+ impl Emulator for SktEmulator {
+     fn is_preparing(&self) -> bool {
+         false
+diff --git a/wie-wipi-c/src/api/database.rs b/wie-wipi-c/src/api/database.rs
+index 49feff73..1a1416f5 100644
+--- a/wie-wipi-c/src/api/database.rs
++++ b/wie-wipi-c/src/api/database.rs
+@@ -604,6 +604,20 @@ pub async fn select_record_ktf(context: &mut dyn WIPICContext, db_id: i32, offse
+     Ok(position as i32)
+ }
+ 
++/// File-API slot 10 — `MC_fsList(dirname, buf, buf_len, flags)` (LGT 0x19a): the directory's entry names into
++/// `buf`. 액션퍼즐패밀리 4 calls it with four arguments from its file wrapper table (binary.mod 0x71fc) and only
++/// checks for a negative result. The repository cannot enumerate names, so every directory lists empty.
++pub async fn list_directory(context: &mut dyn WIPICContext, ptr_name: WIPICWord, buf_ptr: WIPICWord, buf_len: i32, flags: i32) -> Result<i32> {
++    let name = read_null_terminated_string_bytes(context, ptr_name)?;
++    tracing::debug!("MC_fsList({:?}, {buf_ptr:#x}, {buf_len}, {flags})", String::from_utf8_lossy(&name));
++
++    if buf_ptr != 0 && buf_len > 0 {
++        write_generic(context, buf_ptr, 0u8)?;
++    }
++
++    Ok(0)
++}
++
+ /// KTF slot 8 — `mkdir(name, mode)`. 겟앰프드 creates its "ga" directory this way (client.bin 0x1243ca)
+ /// and then opens "/ga/<file>". Databases are kept by their full name, so directories need no storage
+ /// of their own and creating one always succeeds.
+diff --git a/wie-wipi-c/src/api/graphics.rs b/wie-wipi-c/src/api/graphics.rs
+index 7bf3fc4c..9d04e917 100644
+--- a/wie-wipi-c/src/api/graphics.rs
++++ b/wie-wipi-c/src/api/graphics.rs
+@@ -8,9 +8,11 @@ pub use image::decode_image_framebuffer;
+ 
+ use core::mem::size_of;
+ 
++use alloc::boxed::Box;
++
+ use wie_backend::{
+     Event,
+-    canvas::{Clip, Color, PixelType, Rgb565Pixel, string_width},
++    canvas::{Clip, Color, Image, PixelType, Rgb565Pixel, string_width},
+ };
+ use wie_util::{Result, read_generic, write_generic};
+ 
+@@ -42,10 +44,32 @@ pub async fn get_screen_framebuffer(context: &mut dyn WIPICContext, a0: WIPICWor
+     let memory = context.alloc(size_of::<WIPICFramebuffer>() as WIPICWord)?;
+     write_generic(context, context.data_ptr(memory)?, framebuffer.0)?;
+     write_generic(context, SCREEN_FRAMEBUFFER_PTR, memory.0)?;
++    tracing::debug!("MC_grpGetScreenFrameBuffer -> {:#x}", memory.0);
+ 
+     Ok(memory)
+ }
+ 
++/// The screen framebuffer (`MC_grpGetScreenFrameBuffer`) if the app has one and its pixels changed since
++/// `last_hash` (updated); the first sight of the buffer only records its hash. Games that draw into it and then
++/// present through a Java repaint instead of `MC_grpFlushLcd` rely on it being the LCD that Java paints on.
++pub fn screen_image_if_changed(context: &mut dyn WIPICContext, last_hash: &mut Option<u64>) -> Result<Option<Box<dyn Image>>> {
++    let framebuffer_ptr: u32 = read_generic(context, SCREEN_FRAMEBUFFER_PTR)?;
++    if framebuffer_ptr == 0 {
++        return Ok(None);
++    }
++    let framebuffer = FrameBuffer(read_generic(context, context.data_ptr(WIPICIndirectPtr(framebuffer_ptr))?)?);
++    let image = framebuffer.image(context)?;
++
++    // 64-bit FNV-1a over the pixels
++    let hash = image.raw().iter().fold(0xcbf2_9ce4_8422_2325u64, |hash, byte| {
++        (hash ^ *byte as u64).wrapping_mul(0x0100_0000_01b3)
++    });
++    let changed = last_hash.is_some_and(|last| last != hash);
++    *last_hash = Some(hash);
++
++    Ok(changed.then_some(image))
++}
++
+ pub async fn init_context(context: &mut dyn WIPICContext, p_grp_ctx: WIPICWord) -> Result<()> {
+     tracing::debug!("MC_grpInitContext({p_grp_ctx:#x})");
+ 
+@@ -399,6 +423,7 @@ pub async fn create_offscreen_framebuffer(context: &mut dyn WIPICContext, w: i32
+ 
+     let memory = context.alloc(size_of::<WIPICFramebuffer>() as WIPICWord)?;
+     write_generic(context, context.data_ptr(memory)?, framebuffer.0)?;
++    tracing::debug!("MC_grpCreateOffScreenFrameBuffer -> {:#x}", memory.0);
+ 
+     Ok(memory)
+ }
+diff --git a/wie-wipi-c/src/api/graphics/framebuffer.rs b/wie-wipi-c/src/api/graphics/framebuffer.rs
+index 40573e11..165aa3be 100644
+--- a/wie-wipi-c/src/api/graphics/framebuffer.rs
++++ b/wie-wipi-c/src/api/graphics/framebuffer.rs
+@@ -1,5 +1,5 @@
+ use alloc::{boxed::Box, vec, vec::Vec};
+-use core::ops::{Deref, DerefMut};
++use core::ops::{Deref, DerefMut, Range};
+ 
+ use bytemuck::{Pod, cast_slice_mut};
+ 
+@@ -67,13 +67,28 @@ impl FrameBuffer {
+     }
+ 
+     fn data<T: Pod>(&self, context: &dyn WIPICContext) -> Result<Vec<T>> {
+-        let (size, _) = buffer_size(self.0.width, self.0.height, self.0.bpp / 8)?;
++        self.data_rows(context, 0..self.0.height)
++    }
++
++    /// The whole framebuffer with only `rows` read from guest memory (the others stay zero).
++    fn data_rows<T: Pod>(&self, context: &dyn WIPICContext, rows: Range<u32>) -> Result<Vec<T>> {
++        let (size, bpl) = buffer_size(self.0.width, self.0.height, self.0.bpp / 8)?;
+         let mut buf = vec![T::zeroed(); size as usize / size_of::<T>()];
+-        context.read_bytes(context.data_ptr(self.0.buf)?, cast_slice_mut(&mut buf))?;
++        if !rows.is_empty() {
++            let bytes = &mut cast_slice_mut::<T, u8>(&mut buf)[(rows.start * bpl) as usize..(rows.end * bpl) as usize];
++            context.read_bytes(context.data_ptr(self.0.buf)? + rows.start * bpl, bytes)?;
++        }
+ 
+         Ok(buf)
+     }
+ 
++    /// Rows of `rows` that lie in the framebuffer.
++    fn clamp_rows(&self, rows: Range<i64>) -> Range<u32> {
++        let start = rows.start.clamp(0, self.0.height as i64) as u32;
++        let end = rows.end.clamp(start as i64, self.0.height as i64) as u32;
++        start..end
++    }
++
+     pub fn image(&self, context: &mut dyn WIPICContext) -> Result<Box<dyn Image>> {
+         Ok(match self.0.bpp {
+             16 => Box::new(VecImageBuffer::<Rgb565Pixel>::from_raw(
+@@ -91,16 +106,24 @@ impl FrameBuffer {
+     }
+ 
+     pub fn canvas<'a>(&'a self, context: &'a mut dyn WIPICContext) -> Result<FramebufferCanvas<'a>> {
++        self.canvas_rows(context, 0..self.0.height as i64)
++    }
++
++    /// A canvas over the whole framebuffer for drawing that changes only `rows`: just those rows are read
++    /// from guest memory and written back (drawing a small rect used to copy the whole screen out and back).
++    /// Coordinates and clipping are the same as on [`Self::canvas`].
++    pub fn canvas_rows<'a>(&'a self, context: &'a mut dyn WIPICContext, rows: Range<i64>) -> Result<FramebufferCanvas<'a>> {
++        let rows = self.clamp_rows(rows);
+         let canvas: Box<dyn Canvas> = match self.0.bpp {
+             16 => Box::new(ImageBufferCanvas::new(VecImageBuffer::<Rgb565Pixel>::from_raw(
+                 self.0.width as _,
+                 self.0.height as _,
+-                self.data(context)?,
++                self.data_rows(context, rows.clone())?,
+             ))),
+             32 => Box::new(ImageBufferCanvas::new(VecImageBuffer::<ArgbPixel>::from_raw(
+                 self.0.width as _,
+                 self.0.height as _,
+-                self.data(context)?,
++                self.data_rows(context, rows.clone())?,
+             ))),
+             _ => unimplemented!("Unsupported pixel format: {}", self.0.bpp),
+         };
+@@ -109,6 +132,7 @@ impl FrameBuffer {
+             framebuffer: self,
+             context,
+             canvas,
++            rows,
+             flushed: false,
+         })
+     }
+@@ -129,6 +153,8 @@ pub struct FramebufferCanvas<'a> {
+     framebuffer: &'a FrameBuffer,
+     context: &'a mut dyn WIPICContext,
+     canvas: Box<dyn Canvas>,
++    /// Rows read from and written back to the framebuffer.
++    rows: Range<u32>,
+     flushed: bool,
+ }
+ 
+@@ -136,7 +162,19 @@ impl FramebufferCanvas<'_> {
+     pub fn flush(mut self) -> Result<()> {
+         self.flushed = true;
+ 
+-        self.framebuffer.write(self.context, &self.canvas.image().raw())
++        self.write_back()
++    }
++
++    fn write_back(&mut self) -> Result<()> {
++        if self.rows.is_empty() {
++            return Ok(());
++        }
++        let bpl = (self.framebuffer.0.width * (self.framebuffer.0.bpp / 8)) as usize;
++        let raw = self.canvas.image().raw();
++        let address = self.context.data_ptr(self.framebuffer.0.buf)? + self.rows.start * bpl as u32;
++
++        self.context
++            .write_bytes(address, &raw[self.rows.start as usize * bpl..self.rows.end as usize * bpl])
+     }
+ }
+ 
+@@ -149,7 +187,7 @@ impl Drop for FramebufferCanvas<'_> {
+ 
+         tracing::warn!("framebuffer canvas dropped without explicit flush; write-back errors will be lost");
+ 
+-        if let Err(err) = self.framebuffer.write(self.context, &self.canvas.image().raw()) {
++        if let Err(err) = self.write_back() {
+             tracing::error!("Failed to flush framebuffer canvas: {err}");
+         }
+     }
+diff --git a/wie-wipi-c/src/api/graphics/primitives.rs b/wie-wipi-c/src/api/graphics/primitives.rs
+index ae7430a4..92141a19 100644
+--- a/wie-wipi-c/src/api/graphics/primitives.rs
++++ b/wie-wipi-c/src/api/graphics/primitives.rs
+@@ -1,6 +1,7 @@
+ #![allow(clippy::too_many_arguments)]
+ 
+ use alloc::{string::String, vec, vec::Vec};
++use core::ops::Range;
+ 
+ use bytemuck::{Zeroable, cast_slice, cast_slice_mut};
+ 
+@@ -37,17 +38,29 @@ pub fn read_text(context: &dyn WIPICContext, address: u32, length: i32) -> Resul
+     Ok(Some(encoding_rs::EUC_KR.decode(&bytes).0.into_owned()))
+ }
+ 
+-fn write_canvas<F>(context: &mut dyn WIPICContext, framebuffer: &FrameBuffer, operation: F) -> Result<()>
++/// Runs `operation` on a canvas over `framebuffer`. Every canvas operation draws inside `clip` only, and
++/// `rows` (framebuffer rows, unclamped) bounds the rows it can change otherwise, so only the rows in both
++/// are read from and written back to guest memory.
++fn write_canvas<F>(context: &mut dyn WIPICContext, framebuffer: &FrameBuffer, clip: Clip, rows: Range<i64>, operation: F) -> Result<()>
+ where
+     F: FnOnce(&mut dyn Canvas),
+ {
+-    let mut canvas = framebuffer.canvas(context)?;
++    let rows = rows.start.max(clip.y as i64)..rows.end.min(clip.y as i64 + clip.height as i64);
++    let mut canvas = framebuffer.canvas_rows(context, rows)?;
+     operation(&mut **canvas);
+     canvas.flush()
+ }
+ 
++/// Rows `y..y + height`.
++fn rows(y: i32, height: u32) -> Range<i64> {
++    y as i64..y as i64 + height as i64
++}
++
++/// Every row (for drawing whose extent is not computed here; the clip still bounds it).
++const ALL_ROWS: Range<i64> = i64::MIN..i64::MAX;
++
+ pub fn put_pixel(context: &mut dyn WIPICContext, framebuffer: &FrameBuffer, x: i32, y: i32, color: Color, clip: Clip) -> Result<()> {
+-    write_canvas(context, framebuffer, |canvas| canvas.put_pixel(x, y, color, clip))
++    write_canvas(context, framebuffer, clip, rows(y, 1), |canvas| canvas.put_pixel(x, y, color, clip))
+ }
+ 
+ pub fn fill_rect(
+@@ -60,7 +73,9 @@ pub fn fill_rect(
+     color: Color,
+     clip: Clip,
+ ) -> Result<()> {
+-    write_canvas(context, framebuffer, |canvas| canvas.fill_rect(x, y, width, height, color, clip))
++    write_canvas(context, framebuffer, clip, rows(y, height), |canvas| {
++        canvas.fill_rect(x, y, width, height, color, clip)
++    })
+ }
+ 
+ pub fn draw_line(
+@@ -73,7 +88,9 @@ pub fn draw_line(
+     color: Color,
+     clip: Clip,
+ ) -> Result<()> {
+-    write_canvas(context, framebuffer, |canvas| canvas.draw_line(x1, y1, x2, y2, color, clip))
++    write_canvas(context, framebuffer, clip, y1.min(y2) as i64..y1.max(y2) as i64 + 1, |canvas| {
++        canvas.draw_line(x1, y1, x2, y2, color, clip)
++    })
+ }
+ 
+ pub fn draw_rect(
+@@ -86,11 +103,15 @@ pub fn draw_rect(
+     color: Color,
+     clip: Clip,
+ ) -> Result<()> {
+-    write_canvas(context, framebuffer, |canvas| canvas.draw_rect(x, y, width, height, color, clip))
++    write_canvas(context, framebuffer, clip, rows(y, height), |canvas| {
++        canvas.draw_rect(x, y, width, height, color, clip)
++    })
+ }
+ 
+ pub fn draw_polygon(context: &mut dyn WIPICContext, framebuffer: &FrameBuffer, points: &[(i32, i32)], color: Color, clip: Clip) -> Result<()> {
+-    write_canvas(context, framebuffer, |canvas| stroke_polygon(canvas, points, color, clip))
++    write_canvas(context, framebuffer, clip, polygon_rows(points), |canvas| {
++        stroke_polygon(canvas, points, color, clip)
++    })
+ }
+ 
+ /// Fills the even-odd interior of the polygon together with its outline.
+@@ -103,7 +124,7 @@ pub fn fill_polygon(context: &mut dyn WIPICContext, framebuffer: &FrameBuffer, p
+         .min(clip.y.saturating_add(clip.height as i32) - 1)
+         .min(framebuffer.0.height as i32 - 1);
+ 
+-    write_canvas(context, framebuffer, |canvas| {
++    write_canvas(context, framebuffer, clip, polygon_rows(points), |canvas| {
+         let mut crossings = vec![];
+         for y in first..=last {
+             crossings.clear();
+@@ -124,6 +145,13 @@ pub fn fill_polygon(context: &mut dyn WIPICContext, framebuffer: &FrameBuffer, p
+     })
+ }
+ 
++/// Rows from the polygon's top to its bottom point.
++fn polygon_rows(points: &[(i32, i32)]) -> Range<i64> {
++    let top = points.iter().map(|p| p.1).min().unwrap_or(0) as i64;
++    let bottom = points.iter().map(|p| p.1).max().unwrap_or(-1) as i64;
++    top..bottom + 1
++}
++
+ fn stroke_polygon(canvas: &mut dyn Canvas, points: &[(i32, i32)], color: Color, clip: Clip) {
+     for (index, &(x1, y1)) in points.iter().enumerate() {
+         let (x2, y2) = points[(index + 1) % points.len()];
+@@ -143,7 +171,7 @@ pub fn draw_arc(
+     color: Color,
+     clip: Clip,
+ ) -> Result<()> {
+-    write_canvas(context, framebuffer, |canvas| {
++    write_canvas(context, framebuffer, clip, ALL_ROWS, |canvas| {
+         canvas.draw_arc(x, y, width, height, start_angle, arc_angle, color, clip)
+     })
+ }
+@@ -160,7 +188,7 @@ pub fn fill_arc(
+     color: Color,
+     clip: Clip,
+ ) -> Result<()> {
+-    write_canvas(context, framebuffer, |canvas| {
++    write_canvas(context, framebuffer, clip, ALL_ROWS, |canvas| {
+         canvas.fill_arc(x, y, width, height, start_angle, arc_angle, color, clip)
+     })
+ }
+@@ -177,7 +205,7 @@ pub fn draw_image(
+     source_y: i32,
+     clip: Clip,
+ ) -> Result<()> {
+-    write_canvas(context, framebuffer, |canvas| {
++    write_canvas(context, framebuffer, clip, rows(y, height), |canvas| {
+         canvas.draw(x, y, width, height, image, source_x, source_y, clip)
+     })
+ }
+@@ -371,7 +399,7 @@ fn write_rows<T: PixelType>(
+ /// full-cell bitmap fonts). Callers convert from their platform's convention first.
+ pub fn draw_text(context: &mut dyn WIPICContext, framebuffer: &FrameBuffer, string: &str, x: i32, y: i32, color: Color, clip: Clip) -> Result<()> {
+     let font = context.system().platform().font().clone();
+-    write_canvas(context, framebuffer, |canvas| {
++    write_canvas(context, framebuffer, clip, ALL_ROWS, |canvas| {
+         canvas.draw_text(
+             &font,
+             string,
+@@ -470,7 +498,7 @@ pub fn set_rgb_pixels(
+         context.read_bytes(address, &mut pixels[offset..offset + row_bytes])?;
+     }
+ 
+-    write_canvas(context, framebuffer, |canvas| {
++    write_canvas(context, framebuffer, clip, ALL_ROWS, |canvas| {
+         for row_index in 0..height {
+             let row_offset = row_index as usize * row_bytes;
+             let row = &pixels[row_offset..row_offset + row_bytes];
+@@ -487,17 +515,85 @@ pub fn set_rgb_pixels(
+ mod tests {
+     use alloc::{vec, vec::Vec};
+ 
+-    use wie_backend::canvas::{Clip, Color};
++    use wie_backend::canvas::{Canvas, Clip, Color};
+     use wie_util::{ByteRead, ByteWrite, Result};
+ 
+     use crate::{
+         api::graphics::{
+             FrameBuffer,
+-            primitives::{draw_framebuffer, draw_image, fill_rect, get_rgb_pixels, put_pixel, set_rgb_pixels},
++            primitives::{
++                draw_framebuffer, draw_image, draw_line, draw_polygon, draw_rect, fill_rect, get_rgb_pixels, put_pixel, set_rgb_pixels,
++                stroke_polygon,
++            },
+         },
+         context::{WIPICContext, test::TestContext},
+     };
+ 
++    #[test]
++    fn primitives_on_their_rows_match_drawing_on_the_whole_framebuffer() -> Result<()> {
++        type Operation = fn(&mut dyn WIPICContext, &FrameBuffer, Color, Clip) -> Result<()>;
++        type Reference = fn(&mut dyn Canvas, Color, Clip);
++        let operations: [(Operation, Reference); 5] = [
++            (
++                |context, framebuffer, color, clip| fill_rect(context, framebuffer, -2, 3, 6, 2, color, clip),
++                |canvas, color, clip| canvas.fill_rect(-2, 3, 6, 2, color, clip),
++            ),
++            (
++                |context, framebuffer, color, clip| draw_line(context, framebuffer, 8, -3, 1, 9, color, clip),
++                |canvas, color, clip| canvas.draw_line(8, -3, 1, 9, color, clip),
++            ),
++            (
++                |context, framebuffer, color, clip| draw_rect(context, framebuffer, 1, 1, 5, 4, color, clip),
++                |canvas, color, clip| canvas.draw_rect(1, 1, 5, 4, color, clip),
++            ),
++            (
++                |context, framebuffer, color, clip| put_pixel(context, framebuffer, 3, 5, color, clip),
++                |canvas, color, clip| canvas.put_pixel(3, 5, color, clip),
++            ),
++            (
++                |context, framebuffer, color, clip| draw_polygon(context, framebuffer, &[(0, 1), (7, 3), (2, 6)], color, clip),
++                |canvas, color, clip| stroke_polygon(canvas, &[(0, 1), (7, 3), (2, 6)], color, clip),
++            ),
++        ];
++        let color = Color {
++            a: 0x80,
++            r: 0x12,
++            g: 0x34,
++            b: 0x56,
++        };
++        for bpp in [16, 32] {
++            for (clip_y, clip_height) in [(0, 7), (2, 3), (-4, 6)] {
++                let clip = Clip {
++                    x: 1,
++                    y: clip_y,
++                    width: 7,
++                    height: clip_height,
++                };
++                for (index, (operation, reference)) in operations.iter().enumerate() {
++                    let mut results = Vec::new();
++                    for whole in [false, true] {
++                        let mut context = TestContext::new();
++                        let framebuffer = FrameBuffer::new(&mut context, 9, 7, bpp)?;
++                        let bytes = (0..9 * 7 * bpp / 8).map(|i| (i * 37 + 11) as u8).collect::<Vec<_>>();
++                        context.write_bytes(context.data_ptr(framebuffer.0.buf)?, &bytes)?;
++                        if whole {
++                            let mut canvas = framebuffer.canvas(&mut context)?;
++                            reference(&mut **canvas, color, clip);
++                            canvas.flush()?;
++                        } else {
++                            operation(&mut context, &framebuffer, color, clip)?;
++                        }
++                        let mut pixels = vec![0; bytes.len()];
++                        context.read_bytes(context.data_ptr(framebuffer.0.buf)?, &mut pixels)?;
++                        results.push(pixels);
++                    }
++                    assert!(results[0] == results[1], "operation {index}, {bpp} bpp, clip y {clip_y}");
++                }
++            }
++        }
++        Ok(())
++    }
++
+     #[test]
+     fn rgb565_converts_to_a_color_and_back_losslessly() {
+         use wie_backend::canvas::{PixelType, Rgb565Pixel};
+diff --git a/wie-wipi-c/src/api/im.rs b/wie-wipi-c/src/api/im.rs
+index 34381254..2dac172e 100644
+--- a/wie-wipi-c/src/api/im.rs
++++ b/wie-wipi-c/src/api/im.rs
+@@ -1,35 +1,86 @@
+-use wie_util::{Result, write_generic};
++use wie_util::{Result, read_generic, write_generic};
+ 
+ use alloc::vec::Vec;
+ 
+ use wipi_types::wipic::WIPICWord;
+ 
++use wie_backend::InputMode;
++
+ use crate::context::WIPICContext;
+ 
++// Key release, in the numbering LGT clets receive key events with (press = 502).
++const KEY_RELEASE_EVENT: i32 = 503;
++
++/// `MC_imHandleInput(key, type, committed, committedSize, composing, composingSize)`: feeds one key to
++/// the handset input method. Both sizes are buffer capacities on entry and text lengths on return.
++/// A digit, `*` or `#` enters text in the current mode; any other key finishes the composition, which
++/// Gamevil's text field does with key 0x9d before switching modes or moving on.
+ pub async fn handle_input(
+     context: &mut dyn WIPICContext,
+-    key: WIPICWord,
++    key: i32,
+     event_type: i32,
+     ptr_committed: WIPICWord,
+     ptr_committed_size: WIPICWord,
+     ptr_composing: WIPICWord,
+     ptr_composing_size: WIPICWord,
+ ) -> Result<i32> {
+-    tracing::warn!(
+-        "stub MC_imHandleInput({key:#x}, {event_type}, {ptr_committed:#x}, {ptr_committed_size:#x}, {ptr_composing:#x}, {ptr_composing_size:#x})"
++    tracing::debug!(
++        "MC_imHandleInput({key:#x}, {event_type}, {ptr_committed:#x}, {ptr_committed_size:#x}, {ptr_composing:#x}, {ptr_composing_size:#x})"
+     );
+ 
+-    write_generic(context, ptr_committed_size, 0i32)?;
+-    write_generic(context, ptr_composing_size, 0i32)?;
++    let output = if event_type == KEY_RELEASE_EVENT {
++        Default::default()
++    } else {
++        let key = u8::try_from(key)
++            .ok()
++            .map(char::from)
++            .filter(|x| x.is_ascii_digit() || *x == '*' || *x == '#');
++        context.system().input_method().press(key)
++    };
++
++    write_text(context, &output.committed, ptr_committed, ptr_committed_size)?;
++    write_text(context, &output.composing, ptr_composing, ptr_composing_size)?;
+ 
+     Ok(0)
+ }
+ 
++/// Writes as many whole characters of `text` as fit, in the handset encoding, and NUL-terminates
++/// when there is room.
++fn write_text(context: &mut dyn WIPICContext, text: &str, ptr_buf: WIPICWord, ptr_size: WIPICWord) -> Result<()> {
++    if ptr_buf == 0 || ptr_size == 0 {
++        return Ok(());
++    }
++
++    let capacity = read_generic::<i32, _>(context, ptr_size)?.max(0) as usize;
++    let mut bytes = Vec::new();
++    for c in text.chars() {
++        let mut utf8 = [0; 4];
++        let encoded = encoding_rs::EUC_KR.encode(c.encode_utf8(&mut utf8)).0;
++        if bytes.len() + encoded.len() > capacity {
++            break;
++        }
++        bytes.extend_from_slice(&encoded);
++    }
++
++    context.write_bytes(ptr_buf, &bytes)?;
++    if bytes.len() < capacity {
++        context.write_bytes(ptr_buf + bytes.len() as u32, &[0])?;
++    }
++    write_generic(context, ptr_size, bytes.len() as i32)
++}
++
+ // Input modes the platform reports, in the specification's vocabulary: an ISO 639
+ // language code, "/S" or "/L" for a script with case, and "N123" for digits.
+ // LGT titles read the first code to decide whether upper or lower case comes first
+-// and then select a mode by index, so the order is part of the contract.
+-const INPUT_MODES: [&str; 4] = ["EN/L", "EN/S", "KO", "N123"];
++// and then select a mode by index, so the order is part of the contract: Gamevil's
++// text field labels the four indexes "A", "a", "1" and "가" and treats 2 as digits
++// (one committed byte per key) and 3 as Hangul (two-byte syllables).
++const INPUT_MODES: [(&str, InputMode); 4] = [
++    ("EN/L", InputMode::Upper),
++    ("EN/S", InputMode::Lower),
++    ("N123", InputMode::Digits),
++    ("KO", InputMode::Hangul),
++];
+ 
+ pub async fn get_supported_mode_count(_context: &mut dyn WIPICContext) -> Result<i32> {
+     tracing::debug!("MC_imGetSupportedModeCount()");
+@@ -42,7 +93,7 @@ pub async fn get_supported_mode_count(_context: &mut dyn WIPICContext) -> Result
+ pub async fn get_supported_modes(context: &mut dyn WIPICContext) -> Result<WIPICWord> {
+     tracing::debug!("MC_imGetSupportedModes()");
+ 
+-    let strings: Vec<&[u8]> = INPUT_MODES.iter().map(|x| x.as_bytes()).collect();
++    let strings: Vec<&[u8]> = INPUT_MODES.iter().map(|(code, _)| code.as_bytes()).collect();
+     let table_size = (INPUT_MODES.len() * 4) as u32;
+     let total = table_size + strings.iter().map(|x| x.len() as u32 + 1).sum::<u32>();
+     let table = context.alloc_raw(total)?;
+@@ -59,15 +110,70 @@ pub async fn get_supported_modes(context: &mut dyn WIPICContext) -> Result<WIPIC
+ }
+ 
+ /// 1 when the mode was applied, 0 otherwise (the one call in this block that does not
+-/// answer with an error code). Input itself is not composed yet, so nothing is kept.
+-pub async fn set_current_mode(_context: &mut dyn WIPICContext, mode: i32) -> Result<i32> {
++/// answer with an error code).
++pub async fn set_current_mode(context: &mut dyn WIPICContext, mode: i32) -> Result<i32> {
+     tracing::debug!("MC_imSetCurrentMode({mode})");
+ 
+-    Ok(((0..INPUT_MODES.len() as i32).contains(&mode)) as i32)
++    let Some((_, mode)) = usize::try_from(mode).ok().and_then(|x| INPUT_MODES.get(x)) else {
++        return Ok(0);
++    };
++    context.system().input_method().set_mode(*mode);
++
++    Ok(1)
+ }
+ 
+-pub async fn get_current_mode(_context: &mut dyn WIPICContext) -> Result<i32> {
++pub async fn get_current_mode(context: &mut dyn WIPICContext) -> Result<i32> {
+     tracing::debug!("MC_imGetCurrentMode()");
+ 
+-    Ok(0)
++    let mode = context.system().input_method().mode();
++
++    Ok(INPUT_MODES.iter().position(|(_, x)| *x == mode).unwrap_or(0) as i32)
++}
++
++#[cfg(test)]
++mod tests {
++    use alloc::{boxed::Box, vec, vec::Vec};
++
++    use test_utils::TestPlatform;
++    use wie_backend::{DefaultTaskRunner, System};
++    use wie_util::{ByteRead, ByteWrite, read_generic};
++
++    use crate::context::test::TestContext;
++
++    use super::{handle_input, set_current_mode};
++
++    const COMMITTED: u32 = 0x1000;
++    const COMPOSING: u32 = 0x1010;
++    const COMMITTED_SIZE: u32 = 0x1020;
++    const COMPOSING_SIZE: u32 = 0x1024;
++
++    async fn press(context: &mut TestContext, key: i32) -> (Vec<u8>, Vec<u8>) {
++        context.write_bytes(COMMITTED_SIZE, &8i32.to_le_bytes()).unwrap();
++        context.write_bytes(COMPOSING_SIZE, &8i32.to_le_bytes()).unwrap();
++        handle_input(context, key, 502, COMMITTED, COMMITTED_SIZE, COMPOSING, COMPOSING_SIZE)
++            .await
++            .unwrap();
++
++        let read = |context: &TestContext, buf: u32, size: u32| {
++            let len: i32 = read_generic(context, size).unwrap();
++            let mut bytes = vec![0; len as usize];
++            context.read_bytes(buf, &mut bytes).unwrap();
++            bytes
++        };
++        (read(context, COMMITTED, COMMITTED_SIZE), read(context, COMPOSING, COMPOSING_SIZE))
++    }
++
++    #[futures_test::test]
++    async fn hangul_mode_returns_euc_kr_syllables() {
++        let system = System::new(Box::new(TestPlatform::new()), "test-pid", "test-aid", DefaultTaskRunner);
++        let mut context = TestContext::with_system(system);
++        assert_eq!(set_current_mode(&mut context, 3).await.unwrap(), 1);
++
++        // 가 = ㄱ(4) ㅣ(1) ㆍ(2); 0x9d finishes it.
++        for key in *b"41" {
++            press(&mut context, key as i32).await;
++        }
++        assert_eq!(press(&mut context, b'2' as i32).await, (vec![], vec![0xb0, 0xa1]));
++        assert_eq!(press(&mut context, 0x9d).await, (vec![0xb0, 0xa1], vec![]));
++    }
+ }
+diff --git a/wie-wipi-c/src/api/net.rs b/wie-wipi-c/src/api/net.rs
+index c05c4985..cfd3e65c 100644
+--- a/wie-wipi-c/src/api/net.rs
++++ b/wie-wipi-c/src/api/net.rs
+@@ -6,34 +6,46 @@ use wie_util::{Result, WieError};
+ 
+ use crate::{WIPICResult, context::WIPICContext, method::MethodBody};
+ 
++/// Key of the pending MC_netConnect result in the system's timer generations (no timer lives at address 0).
++const CONNECT_TIMER_KEY: WIPICWord = 0;
++
+ pub async fn connect(context: &mut dyn WIPICContext, cb: WIPICWord, param: WIPICWord) -> Result<i32> {
+     tracing::warn!("stub MC_netConnect({cb:#x}, {param:#x})");
+ 
+     struct ConnectCallback {
+         cb: WIPICWord,
+         param: WIPICWord,
++        generation: u64,
+     }
+ 
+     #[async_trait::async_trait]
+     impl MethodBody<WieError> for ConnectCallback {
+         #[tracing::instrument(name = "timer", skip_all)]
+         async fn call(&self, context: &mut dyn WIPICContext, _: Box<[WIPICWord]>) -> Result<WIPICResult> {
+-            context.system().sleep(1).await; // simulate some delay
+-
+-            context.call_function(self.cb, &[u32::MAX, self.param]).await?; // callback with M_E_ERROR
++            // MC_netClose (or another connect) since then cancels this result.
++            if context.system().timer_generation(CONNECT_TIMER_KEY) == self.generation {
++                context.call_function(self.cb, &[u32::MAX, self.param]).await?; // callback with M_E_ERROR
++            }
+ 
+             Ok(WIPICResult { results: Vec::new() })
+         }
+     }
+ 
+-    context.spawn(Box::new(ConnectCallback { cb, param }))?;
++    // The result arrives like a timer, from the application's event loop: a callback on a thread of its own ran
++    // in the middle of the game's code, and 놈ZERO's connect-failure handler freed blocks of the game's own heap
++    // while its main loop was using it ("INVALID BLOCK LENGTH" printed forever, 2 of 3 long runs).
++    let generation = context.system().next_timer_generation(CONNECT_TIMER_KEY);
++    let due = context.system().platform().now() + 1;
++    context.set_timer(due, Box::new(ConnectCallback { cb, param, generation }));
+ 
+     Ok(0)
+ }
+ 
+-pub async fn close(_context: &mut dyn WIPICContext) -> Result<()> {
++pub async fn close(context: &mut dyn WIPICContext) -> Result<()> {
+     tracing::warn!("stub MC_netClose()");
+ 
++    context.system().next_timer_generation(CONNECT_TIMER_KEY);
++
+     Ok(())
+ }
+ 
+@@ -50,3 +62,25 @@ pub async fn set_read_cb(_context: &mut dyn WIPICContext, fd: i32, cb: WIPICWord
+ 
+     Ok(-1) // M_E_ERROR
+ }
++
++/// The descriptor every [`socket`] gets: no state is kept for it, nothing is ever sent or received on it.
++const OFFLINE_SOCKET: i32 = 1;
++
++/// `MC_netSocket(domain, type)` on a handset whose data connection carries nothing: the socket is created (that
++/// needs no network), and connecting it never completes, see [`socket_connect`].
++pub async fn socket(_context: &mut dyn WIPICContext, domain: i32, socket_type: i32) -> Result<i32> {
++    tracing::warn!("offline MC_netSocket({domain}, {socket_type}) -> {OFFLINE_SOCKET}");
++
++    Ok(OFFLINE_SOCKET)
++}
++
++/// `MC_netSocketConnect(fd, addr, port, cb, param)`: the attempt starts (M_E_SUCCESS) and is never answered, like a
++/// connection whose packets go nowhere, so the game's own timeout reports the failure. 테일즈위버 ignores a failed
++/// MC_netConnect and opens a socket anyway; when the socket or this call fails, or the callback reports an error, it
++/// only frees its buffers and leaves "네트워크에 접속중입니다" up for good. Its 30-second timeout is the one path that
++/// shows "서버접속에 실패했습니다" and lets the player go on.
++pub async fn socket_connect(_context: &mut dyn WIPICContext, fd: i32, addr: WIPICWord, port: i32, cb: WIPICWord, param: WIPICWord) -> Result<i32> {
++    tracing::warn!("offline MC_netSocketConnect({fd}, {addr:#x}, {port}, {cb:#x}, {param:#x}): never answered");
++
++    Ok(0) // M_E_SUCCESS: in progress
++}
+diff --git a/wie-wipi-c/src/api/uic.rs b/wie-wipi-c/src/api/uic.rs
+index 24eee50e..9b47648c 100644
+--- a/wie-wipi-c/src/api/uic.rs
++++ b/wie-wipi-c/src/api/uic.rs
+@@ -35,3 +35,23 @@ pub async fn get_menu_item(_context: &mut dyn WIPICContext, cc: WIPICWord, idx:
+ 
+     Ok(0)
+ }
++
++/// `MC_uicGetTextSize(control)`: no control holds text. 리얼사커매니저2009 adds one to the answer for the buffer it
++/// passes to MC_uicGetText.
++pub async fn get_text_size(_context: &mut dyn WIPICContext, cc: WIPICWord) -> Result<i32> {
++    tracing::warn!("stub MC_uicGetTextSize({cc:#x})");
++
++    Ok(0)
++}
++
++/// `MC_uicGetText(control, position, buffer, size)`: an empty string. The answer is a byte count: 리얼사커매니저2009
++/// copies that many bytes out of the buffer, so it must not be an error code.
++pub async fn get_text(context: &mut dyn WIPICContext, cc: WIPICWord, position: i32, ptr_buf: WIPICWord, size: i32) -> Result<i32> {
++    tracing::warn!("stub MC_uicGetText({cc:#x}, {position}, {ptr_buf:#x}, {size})");
++
++    if ptr_buf != 0 && size > 0 {
++        context.write_bytes(ptr_buf, &[0])?;
++    }
++
++    Ok(0)
++}

@@ -85,6 +85,26 @@ fn run_cheat_step(session: &mut Session, step: &str) {
     }
 }
 
+/// CPU time of the calling thread in milliseconds (PERF measurement; not robust to other processes otherwise).
+#[cfg(windows)]
+fn thread_cpu_ms() -> f64 {
+    #[repr(C)]
+    #[derive(Default)]
+    struct FileTime(u32, u32);
+    unsafe extern "system" {
+        fn GetCurrentThread() -> isize;
+        fn GetThreadTimes(thread: isize, creation: *mut FileTime, exit: *mut FileTime, kernel: *mut FileTime, user: *mut FileTime) -> i32;
+    }
+    let (mut c, mut e, mut k, mut u) = (FileTime::default(), FileTime::default(), FileTime::default(), FileTime::default());
+    unsafe { GetThreadTimes(GetCurrentThread(), &mut c, &mut e, &mut k, &mut u) };
+    let t = |f: &FileTime| ((f.1 as u64) << 32 | f.0 as u64) as f64 / 10_000.0;
+    t(&k) + t(&u)
+}
+#[cfg(not(windows))]
+fn thread_cpu_ms() -> f64 {
+    0.0
+}
+
 fn main() -> anyhow::Result<()> {
     // Same 16 MiB stack the libretro core's worker gets; wie's runtime recurses deeply.
     std::thread::Builder::new()
@@ -110,6 +130,7 @@ fn run() -> anyhow::Result<()> {
     let mut keys: Vec<(u64, KeyCode, u64)> = Vec::new();
     let mut dump: Option<PathBuf> = None;
     let mut every = 60u64;
+    let mut timeline = false;
     let mut options = Vec::new();
     // (frame, step): memory-search steps, to try the cheat finder headless.
     let mut cheats: Vec<(u64, String)> = Vec::new();
@@ -117,6 +138,7 @@ fn run() -> anyhow::Result<()> {
 
     while let Some(a) = args.next() {
         match a.as_str() {
+            "--timeline" => timeline = true,
             "--frames" => frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(frames),
             "--every" => every = args.next().and_then(|v| v.parse().ok()).unwrap_or(every).max(1),
             "--dump" => dump = args.next().map(PathBuf::from),
@@ -176,6 +198,9 @@ fn run() -> anyhow::Result<()> {
     let mut ran = 0;
     let mut audible_frames = 0u64;
     let mut presented = 0u64;
+    // --timeline: per second of game time, new pictures and host CPU spent (spots slow stretches)
+    let (mut sec_presented, mut sec_ms) = (0u64, 0f64);
+    let mut sec_tcpu = thread_cpu_ms();
     let mut audio_peak = 0i32;
     for frame in 0..frames {
         let mut set = KeySet::default();
@@ -189,7 +214,9 @@ fn run() -> anyhow::Result<()> {
         }
         let t = Instant::now();
         out = session.run_frame(set, out);
-        worst_ms = worst_ms.max(t.elapsed().as_secs_f64() * 1000.0);
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        worst_ms = worst_ms.max(ms);
+        sec_ms += ms;
         ran += 1;
         let peak = out.audio.iter().map(|s| i32::from(*s).abs()).max().unwrap_or(0);
         if peak > 64 {
@@ -202,12 +229,18 @@ fn run() -> anyhow::Result<()> {
         }
         if let Some(v) = &out.video {
             presented += 1;
+            sec_presented += 1;
             last = Some(v.clone());
         }
         if let (Some(d), Some((px, w, h))) = (&dump, &last)
             && frame % every == 0
         {
             write_ppm(&d.join(format!("frame_{frame:06}.ppm")), px, *w, *h)?;
+        }
+        if timeline && (frame + 1) % 60 == 0 {
+            let tcpu = thread_cpu_ms();
+            println!("t {:>4}s: {sec_presented:>2} fps, cpu {sec_ms:>6.1} ms, tcpu {:>6.1} ms", (frame + 1) / 60, tcpu - sec_tcpu);
+            (sec_presented, sec_ms, sec_tcpu) = (0, 0.0, tcpu);
         }
         if out.exit {
             println!("game exited at frame {frame}");
