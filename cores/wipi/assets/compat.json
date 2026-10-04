@@ -499,7 +499,7 @@
    "status": "playable",
    "tested": "2026-10-04",
    "verified": "auto",
-   "note": "본게임 플레이 확인.",
+   "note": "본게임 플레이 확인. 게임시작 후 행성 지도에서 좌/우(4/6)로 이동하면 튜토리얼·대전 모드가 나옵니다.",
    "files": [
     {
      "sha256": "8cbd82eaeddc2fadbbd07997ba3b993c0b80b1a31ad31a87dd144fbcd3861d06",
@@ -791,6 +791,86 @@
     {
      "sha256": "be08d047cbaef52f458ccdf4739ea5314b73e7ec9f5eb3ee0537c7b34f815e96",
      "size": 1034148
+    }
+   ]
+  },
+  {
+   "title": "슈퍼액션히어로 2",
+   "carrier": "KTF",
+   "pid": "PD006023",
+   "aid": "0103BC81",
+   "status": "playable",
+   "tested": "2026-10-04",
+   "verified": "auto",
+   "note": "본게임 10분 반복 플레이 확인.",
+   "files": [
+    {
+     "sha256": "f9fdd6476e3a9267cc4ef6eec4f59a6484af837cd1b9fa1775215273a63b27a1",
+     "size": 457057
+    }
+   ]
+  },
+  {
+   "title": "와일드프론티어",
+   "carrier": "LGT",
+   "pid": "PD137061",
+   "aid": "0002CB52",
+   "status": "playable",
+   "tested": "2026-10-04",
+   "verified": "auto",
+   "note": "시작 시 인증 창에서 \"아니오\"를 누르면 바로 진행 (예: 45초 뒤 네트워크 안내 후 진행). 필드까지 확인.",
+   "files": [
+    {
+     "sha256": "393d359d081593e3927d2c7d84a5df26863ecd4d476c869778af9a06f0009787",
+     "size": 1891703
+    }
+   ]
+  },
+  {
+   "title": "액션퍼즐패밀리 1",
+   "carrier": "LGT",
+   "pid": "",
+   "aid": "",
+   "status": "playable",
+   "tested": "2026-10-04",
+   "verified": "auto",
+   "note": "퍼즐 플레이 확인.",
+   "files": [
+    {
+     "sha256": "1b26ca4ac1e532a389c9bea667bf50559fd3e14b2ed2140130e8ec70a1bb2528",
+     "size": 1106085
+    }
+   ]
+  },
+  {
+   "title": "NOM",
+   "carrier": "J2ME",
+   "pid": "",
+   "aid": "",
+   "status": "playable",
+   "tested": "2026-10-04",
+   "verified": "auto",
+   "note": "해외 J2ME판. 첫 화면에서 언어 선택(ENGLISH 등). 본게임 확인.",
+   "files": [
+    {
+     "sha256": "bd92119dfdb2e31655f0ba9fe6f82a8bbb88c3cf0b9792b426ab9ddee6d995b2",
+     "size": 129210
+    }
+   ]
+  },
+  {
+   "title": "액션퍼즐패밀리 2",
+   "carrier": "LGT",
+   "pid": "PD116528",
+   "aid": "00027D2D",
+   "status": "broken",
+   "tested": "2026-10-04",
+   "verified": "auto",
+   "note": "원래 폰의 인증 파일(ap2data.dat)이 없는 덤프라 인증 오류 4000 후 타이틀로 돌아갑니다.",
+   "files": [
+    {
+     "sha256": "ac562d201012442e1ff481500fd74ab10c609b753c8d04f0db22e4e92a9104de",
+     "size": 611356
     }
    ]
   }

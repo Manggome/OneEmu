@@ -342,8 +342,9 @@ fn seed_dump_data(game: &archive::Game, save_dir: &Path) {
 
 /// Folder name for a game's saves under the libretro save directory.
 pub fn save_key(game: &archive::Game, path: &std::path::Path) -> String {
-    let raw = match game.carrier {
-        Carrier::Ktf | Carrier::Lgt => game.id.clone().filter(|id| !id.trim().is_empty()),
+    // A bare jar or a zip without a descriptor has no real PID: use the file name like the app's WipiSaves.key.
+    let raw = match (game.carrier, &game.source) {
+        (Carrier::Ktf | Carrier::Lgt, GameSource::Archive(_)) => game.id.clone().filter(|id| !id.trim().is_empty()),
         _ => None,
     }
     .unwrap_or_else(|| path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "game".into()));

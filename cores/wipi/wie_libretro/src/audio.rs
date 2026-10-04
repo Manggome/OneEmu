@@ -8,9 +8,13 @@
 //!   sharing one SoundFont), so background music and sound effects that both use channel 0 can't cut
 //!   each other's notes off or steal each other's program changes.
 //! * PCM (`Wave`) events become independent voices (linear resampling), so overlapping effects mix
-//!   instead of queueing behind each other.
+//!   instead of queueing behind each other. Each voice goes through a DC blocker: decoded ADPCM effects
+//!   often settle on a constant offset (up to ~3/4 of full scale), which a handset's AC-coupled output
+//!   never plays but which here would end in a full-height step, a click, when the voice stops.
 //! * A sequence that ends by itself releases its notes and keeps ringing for a short tail; `Stop`
 //!   silences it at once.
+//! * Each playback carries the gain of its clip volume (`Play`/`SetGain`), applied to its own synthesizer's
+//!   output and to its PCM voices, also the ones still ringing after the sequence ended.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -29,6 +33,8 @@ const MAX_PCM_VOICES: usize = 16;
 const MAX_SYNTHS: usize = 4;
 /// How long a naturally finished sequence keeps rendering so releases ring out (frames of 1/60 s).
 const TAIL_RUNS: u32 = 30;
+/// Pole of the per-voice DC blocker `y[n] = x[n] - x[n-1] + R * y[n-1]`: about 20 Hz at 44.1 kHz.
+const DC_BLOCK_POLE: f32 = 0.997;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct AudioSettings {
@@ -63,6 +69,8 @@ struct Playback {
     /// Some(n) once the sequence ended by itself: n more runs of release tail, then it is dropped.
     tail: Option<u32>,
     has_midi: bool,
+    /// Clip volume as an amplitude factor.
+    gain: f32,
 }
 
 struct PcmVoice {
@@ -75,6 +83,10 @@ struct PcmVoice {
     step: f64,
     /// Output samples to wait before starting (event lands mid-frame).
     delay: usize,
+    /// DC blocker state per output channel: (previous input, previous output).
+    dc: [(f32, f32); 2],
+    /// Clip volume as an amplitude factor (follows `SetGain` for the voice's handle).
+    gain: f32,
 }
 
 impl PcmVoice {
@@ -172,7 +184,7 @@ impl Mixer {
 
     pub fn command(&mut self, command: AudioCommand) {
         match command {
-            AudioCommand::Play { handle, sequence, repeat } => {
+            AudioCommand::Play { handle, sequence, repeat, gain } => {
                 self.stop(handle);
                 let has_midi = sequence.events.iter().any(|e| matches!(e.data, AudioEventData::Midi(_)));
                 let synth = if has_midi { self.take_synth() } else { None };
@@ -188,10 +200,19 @@ impl Mixer {
                         used_channels: BTreeSet::new(),
                         tail: None,
                         has_midi,
+                        gain,
                     },
                 );
             }
             AudioCommand::Stop { handle } => self.stop(handle),
+            AudioCommand::SetGain { handle, gain } => {
+                if let Some(playback) = self.playbacks.get_mut(&handle) {
+                    playback.gain = gain;
+                }
+                for voice in self.voices.iter_mut().filter(|v| v.handle == handle) {
+                    voice.gain = gain;
+                }
+            }
         }
     }
 
@@ -249,6 +270,8 @@ impl Mixer {
                                         pos: 0.0,
                                         step: *sampling_rate as f64 / SAMPLE_RATE as f64,
                                         delay: offset,
+                                        dc: [(0.0, 0.0); 2],
+                                        gain: pb.gain,
                                     });
                                 }
                             }
@@ -266,7 +289,7 @@ impl Mixer {
                         .min(n as u64) as usize;
                     let until = until.max(offset);
                     if until > offset {
-                        render_synth(pb.synth.as_mut(), &mut self.tmp_l, &mut self.tmp_r, &mut self.left, &mut self.right, offset, until, midi_gain);
+                        render_synth(pb.synth.as_mut(), &mut self.tmp_l, &mut self.tmp_r, &mut self.left, &mut self.right, offset, until, midi_gain * pb.gain);
                         offset = until;
                     }
                     // `until` reaches the end of the run once no event is left inside it.
@@ -294,7 +317,7 @@ impl Mixer {
                     }
                 }
             } else {
-                render_synth(pb.synth.as_mut(), &mut self.tmp_l, &mut self.tmp_r, &mut self.left, &mut self.right, 0, n, midi_gain);
+                render_synth(pb.synth.as_mut(), &mut self.tmp_l, &mut self.tmp_r, &mut self.left, &mut self.right, 0, n, midi_gain * pb.gain);
                 if let Some(t) = pb.tail.as_mut() {
                     if *t == 0 || pb.synth.is_none() {
                         finished.push(handle);
@@ -401,12 +424,14 @@ fn render_synth(
 
 /// Mixes one PCM voice into the run. Returns false once the voice has finished.
 fn mix_voice(v: &mut PcmVoice, left: &mut [f32], right: &mut [f32], gain: f32) -> bool {
+    let gain = gain * v.gain;
     let n = left.len();
     let start = v.delay.min(n);
     v.delay -= start;
     let ch = v.channels;
     let step = v.step;
     let mut pos = v.pos;
+    let mut dc = v.dc;
     let samples = v.samples();
     let frames = samples.len() / ch;
     if frames == 0 {
@@ -416,6 +441,7 @@ fn mix_voice(v: &mut PcmVoice, left: &mut [f32], right: &mut [f32], gain: f32) -
         let idx = pos as usize;
         if idx >= frames {
             v.pos = pos;
+            v.dc = dc;
             return false;
         }
         let frac = (pos - idx as f64) as f32;
@@ -423,12 +449,19 @@ fn mix_voice(v: &mut PcmVoice, left: &mut [f32], right: &mut [f32], gain: f32) -
         let get = |frame: usize, c: usize| samples[frame * ch + c.min(ch - 1)] as f32 / 32768.0;
         let l = get(idx, 0) + (get(next, 0) - get(idx, 0)) * frac;
         let r = if ch > 1 { get(idx, 1) + (get(next, 1) - get(idx, 1)) * frac } else { l };
-        left[i] += l * gain;
-        right[i] += r * gain;
+        left[i] += dc_block(&mut dc[0], l) * gain;
+        right[i] += dc_block(&mut dc[1], r) * gain;
         pos += step;
     }
     v.pos = pos;
+    v.dc = dc;
     (pos as usize) < frames
+}
+
+fn dc_block(state: &mut (f32, f32), x: f32) -> f32 {
+    let y = x - state.0 + DC_BLOCK_POLE * state.1;
+    *state = (x, y);
+    y
 }
 
 fn load_soundfont(path: &Path) -> Option<Arc<SoundFont>> {
@@ -464,6 +497,27 @@ mod tests {
         })
     }
 
+    fn play(handle: AudioHandle, sequence: Arc<AudioSequence>) -> AudioCommand {
+        AudioCommand::Play { handle, sequence, repeat: false, gain: 1.0 }
+    }
+
+    #[test]
+    fn clip_gain_scales_pcm_and_follows_set_gain() {
+        let mut m = Mixer::new(&[], AudioSettings::default());
+        m.command(AudioCommand::Play { handle: 1, sequence: wave_seq(100_000, 0), repeat: false, gain: 0.5 });
+        let mut out = Vec::new();
+        m.render(&mut out);
+        assert!((out[0] as i32 - 16383 / 2).abs() < 4);
+        m.command(AudioCommand::SetGain { handle: 1, gain: 0.0 });
+        m.render(&mut out);
+        assert!(out.iter().all(|x| *x == 0));
+        // a gain change for another handle leaves this one alone
+        m.command(AudioCommand::SetGain { handle: 1, gain: 1.0 });
+        m.command(AudioCommand::SetGain { handle: 2, gain: 0.0 });
+        m.render(&mut out);
+        assert!(out.iter().any(|x| *x != 0));
+    }
+
     #[test]
     fn renders_exactly_one_run() {
         let mut m = Mixer::new(&[], AudioSettings::default());
@@ -476,20 +530,33 @@ mod tests {
     #[test]
     fn pcm_starts_at_its_event_time_and_overlaps() {
         let mut m = Mixer::new(&[], AudioSettings::default());
-        m.command(AudioCommand::Play { handle: 1, sequence: wave_seq(10_000, 10), repeat: false });
-        m.command(AudioCommand::Play { handle: 2, sequence: wave_seq(10_000, 0), repeat: false });
+        m.command(play(1, wave_seq(10_000, 10)));
+        m.command(play(2, wave_seq(10_000, 0)));
         let mut out = Vec::new();
         m.render(&mut out);
         let at10ms = ms_to_samples(10) as usize;
-        // before 10 ms only voice 2 plays, after it both do
+        // before 10 ms only voice 2 plays, after it both do (each one's onset passes the DC blocker)
         assert!((out[0] as i32 - 16383).abs() < 4);
-        assert!((out[(at10ms + 5) * 2] as i32 - 32767).abs() < 4);
+        assert!(out[(at10ms - 1) * 2] < 16383 / 2);
+        assert!(i32::from(out[at10ms * 2]) > i32::from(out[(at10ms - 1) * 2]) + 16383 * 9 / 10);
+    }
+
+    #[test]
+    fn pcm_offset_decays_instead_of_ending_in_a_step() {
+        let mut m = Mixer::new(&[], AudioSettings::default());
+        m.command(play(1, wave_seq(SAMPLE_RATE as usize / 2, 0)));
+        let mut out = Vec::new();
+        for _ in 0..29 {
+            m.render(&mut out);
+        }
+        // a constant offset has decayed to (almost) nothing before the wave ends after 0.5 s
+        assert!(out.iter().all(|x| x.abs() < 16));
     }
 
     #[test]
     fn stop_cuts_pcm() {
         let mut m = Mixer::new(&[], AudioSettings::default());
-        m.command(AudioCommand::Play { handle: 7, sequence: wave_seq(100_000, 0), repeat: false });
+        m.command(play(7, wave_seq(100_000, 0)));
         let mut out = Vec::new();
         m.render(&mut out);
         m.command(AudioCommand::Stop { handle: 7 });
@@ -500,7 +567,7 @@ mod tests {
     #[test]
     fn finished_sequence_is_dropped() {
         let mut m = Mixer::new(&[], AudioSettings::default());
-        m.command(AudioCommand::Play { handle: 3, sequence: wave_seq(100, 0), repeat: false });
+        m.command(play(3, wave_seq(100, 0)));
         let mut out = Vec::new();
         for _ in 0..10 {
             m.render(&mut out);

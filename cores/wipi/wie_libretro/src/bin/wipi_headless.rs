@@ -1,7 +1,7 @@
 //! Headless runner for compatibility testing (idea from ParkJeongseop/WIPI-Emulator's headless.rs).
 //!
 //!   wipi_headless <game.zip|jar|jad> [--frames N] [--keys "120:OK,200:5,260:LSK"] [--dump DIR] [--every N]
-//!                 [--option key=value ...] [--system DIR]
+//!                 [--option key=value ...] [--system DIR] [--wav OUT.wav] [--assets DIR] [--keys-file FILE]
 //!                 [--cheat "600:start:4:1500,900:dec,960:write:99999,1200:lock:99999"]
 //!
 //! Runs N frames (default 1800 = 30 s of game time) with scripted key taps (each held 4 frames), dumps
@@ -44,6 +44,28 @@ fn write_ppm(path: &PathBuf, pixels: &[u32], w: u32, h: u32) -> std::io::Result<
     let mut data = format!("P6\n{w} {h}\n255\n").into_bytes();
     for p in pixels.iter().take((w * h) as usize) {
         data.extend_from_slice(&[(p >> 16) as u8, (p >> 8) as u8, *p as u8]);
+    }
+    fs::write(path, data)
+}
+
+/// 44.1 kHz stereo 16-bit PCM WAV.
+fn write_wav(path: &PathBuf, samples: &[i16]) -> std::io::Result<()> {
+    let bytes = (samples.len() * 2) as u32;
+    let mut data = Vec::with_capacity(44 + bytes as usize);
+    data.extend_from_slice(b"RIFF");
+    data.extend_from_slice(&(36 + bytes).to_le_bytes());
+    data.extend_from_slice(b"WAVEfmt ");
+    data.extend_from_slice(&16u32.to_le_bytes());
+    data.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    data.extend_from_slice(&2u16.to_le_bytes()); // stereo
+    data.extend_from_slice(&44_100u32.to_le_bytes());
+    data.extend_from_slice(&(44_100u32 * 4).to_le_bytes());
+    data.extend_from_slice(&4u16.to_le_bytes());
+    data.extend_from_slice(&16u16.to_le_bytes());
+    data.extend_from_slice(b"data");
+    data.extend_from_slice(&bytes.to_le_bytes());
+    for s in samples {
+        data.extend_from_slice(&s.to_le_bytes());
     }
     fs::write(path, data)
 }
@@ -131,10 +153,13 @@ fn run() -> anyhow::Result<()> {
     let mut dump: Option<PathBuf> = None;
     let mut every = 60u64;
     let mut timeline = false;
+    let mut assets: Option<PathBuf> = None;
     let mut options = Vec::new();
     // (frame, step): memory-search steps, to try the cheat finder headless.
     let mut cheats: Vec<(u64, String)> = Vec::new();
     let mut system = std::env::temp_dir().join("wipi_headless");
+    // --wav PATH: the whole audio stream (44.1 kHz stereo s16) for listen-free analysis.
+    let mut wav: Option<PathBuf> = None;
 
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -142,6 +167,7 @@ fn run() -> anyhow::Result<()> {
             "--frames" => frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(frames),
             "--every" => every = args.next().and_then(|v| v.parse().ok()).unwrap_or(every).max(1),
             "--dump" => dump = args.next().map(PathBuf::from),
+            "--wav" => wav = args.next().map(PathBuf::from),
             "--system" => system = args.next().map(PathBuf::from).unwrap_or(system),
             "--option" => {
                 if let Some((k, v)) = args.next().as_deref().and_then(|kv| kv.split_once('=')) {
@@ -154,8 +180,13 @@ fn run() -> anyhow::Result<()> {
                     cheats.push((f.trim().parse()?, step.trim().to_string()));
                 }
             }
-            "--keys" => {
-                for item in args.next().unwrap_or_default().split(',').filter(|s| !s.is_empty()) {
+            "--assets" => assets = args.next().map(PathBuf::from),
+            "--keys" | "--keys-file" => {
+                let list = match a.as_str() {
+                    "--keys" => args.next().unwrap_or_default(),
+                    _ => fs::read_to_string(args.next().unwrap_or_default())?,
+                };
+                for item in list.split(|c: char| c == ',' || c.is_whitespace()).filter(|s| !s.is_empty()) {
                     let (f, k) = item.split_once(':').ok_or_else(|| anyhow::anyhow!("bad key item {item}"))?;
                     // "KEY~N" holds the key for N frames instead of the default 4-frame tap.
                     let (k, hold) = match k.split_once('~') {
@@ -178,7 +209,7 @@ fn run() -> anyhow::Result<()> {
         path: game.clone(),
         system_dir: system.join("system"),
         save_dir: system.join("saves"),
-        assets_dir: None,
+        assets_dir: assets,
         options: RawOptions { values: options },
     })?;
     println!(
@@ -202,6 +233,7 @@ fn run() -> anyhow::Result<()> {
     let (mut sec_presented, mut sec_ms) = (0u64, 0f64);
     let mut sec_tcpu = thread_cpu_ms();
     let mut audio_peak = 0i32;
+    let mut pcm: Vec<i16> = Vec::new();
     for frame in 0..frames {
         let mut set = KeySet::default();
         for (at, key, hold) in &keys {
@@ -223,6 +255,9 @@ fn run() -> anyhow::Result<()> {
             audible_frames += 1;
         }
         audio_peak = audio_peak.max(peak);
+        if wav.is_some() {
+            pcm.extend_from_slice(&out.audio);
+        }
         if let Some(e) = &out.error {
             println!("error at frame {frame}: {e}");
             break;
@@ -261,6 +296,9 @@ fn run() -> anyhow::Result<()> {
         }
     } else {
         println!("no frame was painted");
+    }
+    if let Some(path) = &wav {
+        write_wav(path, &pcm)?;
     }
     let stdout = session.stdout();
     if !stdout.is_empty() {
