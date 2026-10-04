@@ -337,6 +337,7 @@ pub fn create_emulator(game: Game, platform: Box<dyn Platform>, options: Options
         (GameSource::Archive(files), Carrier::Skt) => Box::new(SktEmulator::from_archive(platform, files)?),
         (GameSource::Archive(_), Carrier::J2me) => anyhow::bail!("J2ME archive without a jar"),
         (GameSource::Jar { filename, data }, carrier) => {
+            let filename = classpath_name(&filename);
             let stem = filename.strip_suffix(".jar").or_else(|| filename.strip_suffix(".JAR")).unwrap_or(&filename).to_string();
             match carrier {
                 Carrier::Ktf => Box::new(KtfEmulator::from_jar(platform, &filename, data, &stem, &stem, None, options)?),
@@ -345,9 +346,20 @@ pub fn create_emulator(game: Game, platform: Box<dyn Platform>, options: Options
                 Carrier::J2me => Box::new(J2MEEmulator::from_jar(platform, &filename, data)?),
             }
         }
-        (GameSource::JadJar { jad, jar_filename, jar }, _) => Box::new(J2MEEmulator::from_jad_jar(platform, jad, jar_filename, jar)?),
+        (GameSource::JadJar { jad, jar_filename, jar }, _) => {
+            Box::new(J2MEEmulator::from_jad_jar(platform, jad, classpath_name(&jar_filename), jar)?)
+        }
     };
     Ok(emulator)
+}
+
+/// The jar's name as the VM's classpath entry. It becomes a `file:` URL that the VM can't parse with spaces or
+/// URL-special characters in it (a bare "NOM (J2ME).jar" died on the first resource lookup), so those become `_`.
+fn classpath_name(filename: &str) -> String {
+    filename
+        .chars()
+        .map(|c| if c.is_whitespace() || matches!(c, '#' | '%' | '?') { '_' } else { c })
+        .collect()
 }
 
 #[cfg(test)]
@@ -356,6 +368,12 @@ mod tests {
 
     fn map(entries: &[(&str, &[u8])]) -> BTreeMap<String, Vec<u8>> {
         entries.iter().map(|(k, v)| (k.to_string(), v.to_vec())).collect()
+    }
+
+    #[test]
+    fn classpath_names_have_no_spaces() {
+        assert_eq!(super::classpath_name("NOM (J2ME).jar"), "NOM_(J2ME).jar");
+        assert_eq!(super::classpath_name("plain.jar"), "plain.jar");
     }
 
     #[test]

@@ -1,0 +1,2199 @@
+diff --git a/src/audio_sink.rs b/src/audio_sink.rs
+index 0e09bc72..6f19e804 100644
+--- a/src/audio_sink.rs
++++ b/src/audio_sink.rs
+@@ -37,10 +37,12 @@ struct Playback {
+     next_event: usize,
+     active_notes: BTreeSet<(u8, u8)>,
+     used_channels: BTreeSet<u8>,
++    /// Clip volume as an amplitude factor, applied to the events dispatched from now on.
++    gain: f32,
+ }
+ 
+ impl Playback {
+-    fn new(sequence: Arc<AudioSequence>, repeat: bool) -> Self {
++    fn new(sequence: Arc<AudioSequence>, repeat: bool, gain: f32) -> Self {
+         Self {
+             sequence,
+             repeat,
+@@ -48,6 +50,7 @@ impl Playback {
+             next_event: 0,
+             active_notes: BTreeSet::new(),
+             used_channels: BTreeSet::new(),
++            gain,
+         }
+     }
+ 
+@@ -112,11 +115,21 @@ pub fn run(rx: Receiver<AudioCommand>, midi_device: Option<usize>) {
+ 
+         if let Some(command) = command {
+             match command {
+-                AudioCommand::Play { handle, sequence, repeat } => {
++                AudioCommand::Play {
++                    handle,
++                    sequence,
++                    repeat,
++                    gain,
++                } => {
+                     if let Some(mut playback) = playbacks.remove(&handle) {
+                         cleanup(&mut midi_out, &mut playback);
+                     }
+-                    playbacks.insert(handle, Playback::new(sequence, repeat));
++                    playbacks.insert(handle, Playback::new(sequence, repeat, gain));
++                }
++                AudioCommand::SetGain { handle, gain } => {
++                    if let Some(playback) = playbacks.get_mut(&handle) {
++                        playback.gain = gain;
++                    }
+                 }
+                 AudioCommand::Stop { handle } => {
+                     if let Some(mut playback) = playbacks.remove(&handle) {
+@@ -141,6 +154,7 @@ pub fn run(rx: Receiver<AudioCommand>, midi_device: Option<usize>) {
+                     &mut midi_out,
+                     player.as_ref(),
+                     event,
++                    playback.gain,
+                     &mut playback.active_notes,
+                     &mut playback.used_channels,
+                 );
+@@ -170,11 +184,19 @@ fn play_event(
+     midi_out: &mut Option<MidiOutputConnection>,
+     player: Option<&Player>,
+     event: &TimedAudioEvent,
++    gain: f32,
+     active_notes: &mut BTreeSet<(u8, u8)>,
+     used_channels: &mut BTreeSet<u8>,
+ ) {
+     match &event.data {
+         AudioEventData::Midi(data) => {
++            // The MIDI output is shared by every playback, so the clip volume scales note velocities: GM synths
++            // play velocity v at about (v/127)^2 amplitude, hence the square root.
++            let mut data = data.clone();
++            if gain < 1.0 && data.len() >= 3 && data[0] & 0xf0 == 0x90 && data[2] > 0 {
++                data[2] = ((data[2] as f32 * gain.max(0.0).sqrt()).round() as u8).max(1);
++            }
++            let data = &data;
+             if let Some(status) = data.first().copied()
+                 && (0x80..0xf0).contains(&status)
+             {
+@@ -215,7 +237,9 @@ fn play_event(
+             player.append(SamplesBuffer::new(
+                 channels,
+                 sampling_rate,
+-                SampleTypeConverter::new(samples.iter().copied()).collect::<Vec<_>>(),
++                SampleTypeConverter::new(samples.iter().copied())
++                    .map(|sample: f32| sample * gain)
++                    .collect::<Vec<_>>(),
+             ));
+         }
+     }
+diff --git a/wie-backend/src/audio_sink.rs b/wie-backend/src/audio_sink.rs
+index 113f160c..a4380209 100644
+--- a/wie-backend/src/audio_sink.rs
++++ b/wie-backend/src/audio_sink.rs
+@@ -8,10 +8,17 @@ pub enum AudioCommand {
+         handle: AudioHandle,
+         sequence: Arc<AudioSequence>,
+         repeat: bool,
++        /// Amplitude factor (0.0 = silent, 1.0 = as decoded) for everything this playback renders.
++        gain: f32,
+     },
+     Stop {
+         handle: AudioHandle,
+     },
++    /// Changes the gain of a playback that is already running (also its PCM voices still ringing).
++    SetGain {
++        handle: AudioHandle,
++        gain: f32,
++    },
+ }
+ 
+ #[derive(Clone, Debug, PartialEq)]
+diff --git a/wie-backend/src/lib.rs b/wie-backend/src/lib.rs
+index 7997deeb..6a09d5fb 100644
+--- a/wie-backend/src/lib.rs
++++ b/wie-backend/src/lib.rs
+@@ -20,7 +20,7 @@ pub use self::{
+     executor::{AsyncCallable, AsyncCallableResult},
+     platform::{Filesystem, Platform},
+     screen::Screen,
+-    system::{Event, FilesystemOverlay, InputMethod, InputMode, InputOutput, KeyCode, NativeLcd, System},
++    system::{Event, FilesystemOverlay, InputMethod, InputMode, InputOutput, KeyCode, MAX_AUDIO_VOLUME, NativeLcd, System},
+     task::YieldFuture,
+     task_runner::{DefaultTaskRunner, TaskRunner},
+     time::Instant,
+diff --git a/wie-backend/src/system.rs b/wie-backend/src/system.rs
+index d769aaa3..60f05f73 100644
+--- a/wie-backend/src/system.rs
++++ b/wie-backend/src/system.rs
+@@ -21,6 +21,7 @@ use crate::{
+ use self::{audio::Audio, event_queue::EventQueue};
+ 
+ pub use self::{
++    audio::MAX_AUDIO_VOLUME,
+     event_queue::{Event, KeyCode},
+     file_system::FilesystemOverlay,
+     input_method::{InputMethod, InputMode, InputOutput},
+diff --git a/wie-backend/src/system/audio.rs b/wie-backend/src/system/audio.rs
+index 1a34896b..3885abad 100644
+--- a/wie-backend/src/system/audio.rs
++++ b/wie-backend/src/system/audio.rs
+@@ -1,19 +1,52 @@
+-use alloc::{boxed::Box, collections::BTreeMap, collections::BTreeSet, sync::Arc, vec, vec::Vec};
+-
++mod midi;
++mod wave;
++
++use alloc::{
++    boxed::Box,
++    collections::BTreeMap,
++    collections::BTreeSet,
++    sync::{Arc, Weak},
++    vec,
++    vec::Vec,
++};
++
++use smaf::{PCMAudioTrackChunk, PCMDataChunk, ScoreTrackChunk, Smaf, SmafChunk};
+ use smaf_player::{SmafEvent, parse_smaf};
+ 
++use self::{midi::parse_midi, wave::parse_wave};
++
+ use crate::{AudioCommand, AudioEventData, AudioHandle, AudioSequence, AudioSink, TimedAudioEvent};
+ 
++/// The WIPI volume scale (MC_mdaClipSetVolume, MC_mdaSetVolume, org.kwis.msp.media Clip/Volume): 0 = silent,
++/// 100 = loudest. Clips and the application volume start at the top, so a game that never sets a volume plays
++/// as loud as its data is, and one that reads the default to scale its own option gets the full range.
++pub const MAX_AUDIO_VOLUME: u8 = 100;
++
+ #[derive(Debug)]
+ pub enum AudioError {
+     InvalidHandle,
++    UnsupportedData,
++}
++
++/// Data a sequence was decoded from, and the sequence while any sound still uses it.
++type DecodedEntry = (Vec<u8>, Weak<AudioSequence>);
++
++struct LoadedSound {
++    sequence: Arc<AudioSequence>,
++    volume: u8,
+ }
+ 
+ pub struct Audio {
+     sink: Box<dyn AudioSink>,
+-    files: BTreeMap<AudioHandle, Arc<AudioSequence>>,
++    files: BTreeMap<AudioHandle, LoadedSound>,
+     playing: BTreeSet<AudioHandle>,
+     last_audio_handle: AudioHandle,
++    /// Application (handset) volume, applied on top of each sound's own volume.
++    master_volume: u8,
++    /// Decoded sequences by the data they were made from. Games load the same effect over and over (a clip per
++    /// shot), and Java clips that are only garbage collected never close their handle: equal data shares one
++    /// decoded sequence, so what such handles keep alive is one copy per distinct sound.
++    decoded: BTreeMap<u64, Vec<DecodedEntry>>,
+ }
+ 
+ impl Audio {
+@@ -22,22 +55,79 @@ impl Audio {
+             sink,
+             files: BTreeMap::new(),
+             playing: BTreeSet::new(),
+-            last_audio_handle: 0,
++            // 0 is never handed out, so wrappers can use it for "nothing loaded"
++            last_audio_handle: 1,
++            master_volume: MAX_AUDIO_VOLUME,
++            decoded: BTreeMap::new(),
+         }
+     }
+ 
+     pub fn load_smaf(&mut self, data: &[u8]) -> Result<AudioHandle, AudioError> {
++        let sequence = self.decode(data, |data| {
++            let mut events = parse_smaf(data);
++            redecode_adpcm_waves(data, &mut events);
++            Some(convert_smaf_events(events))
++        });
++
++        Ok(self.insert(sequence.ok_or(AudioError::UnsupportedData)?))
++    }
++
++    /// Loads SMAF, a Standard MIDI File or a PCM WAVE file, told apart by their magic.
++    pub fn load(&mut self, data: &[u8]) -> Result<AudioHandle, AudioError> {
++        let sequence = match data.get(0..4) {
++            Some(b"MThd") => self.decode(data, parse_midi),
++            Some(b"RIFF") => self.decode(data, parse_wave),
++            _ => return self.load_smaf(data),
++        };
++
++        Ok(self.insert(sequence.ok_or(AudioError::UnsupportedData)?))
++    }
++
++    fn insert(&mut self, sequence: Arc<AudioSequence>) -> AudioHandle {
+         let audio_handle = self.last_audio_handle;
+-        let sequence = Arc::new(convert_smaf_events(parse_smaf(data)));
+ 
+         self.last_audio_handle += 1;
+-        self.files.insert(audio_handle, sequence);
++        self.files.insert(
++            audio_handle,
++            LoadedSound {
++                sequence,
++                volume: MAX_AUDIO_VOLUME,
++            },
++        );
++
++        audio_handle
++    }
++
++    /// The sequence `parse` makes of `data`, shared with the sounds already loaded from equal data.
++    fn decode(&mut self, data: &[u8], parse: impl FnOnce(&[u8]) -> Option<AudioSequence>) -> Option<Arc<AudioSequence>> {
++        let key = fnv1a(data);
++        if let Some(sequence) = self
++            .decoded
++            .get(&key)
++            .and_then(|entries| entries.iter().find(|(source, _)| source == data))
++            .and_then(|(_, sequence)| sequence.upgrade())
++        {
++            return Some(sequence);
++        }
+ 
+-        Ok(audio_handle)
++        let sequence = Arc::new(parse(data)?);
++
++        let entries = self.decoded.entry(key).or_default();
++        entries.retain(|(source, sequence)| sequence.strong_count() > 0 && source != data);
++        entries.push((data.to_vec(), Arc::downgrade(&sequence)));
++        if self.decoded.len() > 2 * self.files.len() + 16 {
++            self.decoded.retain(|_, entries| {
++                entries.retain(|(_, sequence)| sequence.strong_count() > 0);
++                !entries.is_empty()
++            });
++        }
++
++        Some(sequence)
+     }
+ 
+     pub fn play(&mut self, audio_handle: AudioHandle, repeat: bool) -> Result<(), AudioError> {
+-        let sequence = self.files.get(&audio_handle).cloned().ok_or(AudioError::InvalidHandle)?;
++        let sound = self.files.get(&audio_handle).ok_or(AudioError::InvalidHandle)?;
++        let (sequence, gain) = (sound.sequence.clone(), self.gain(sound.volume));
+ 
+         self.stop(audio_handle);
+         self.playing.insert(audio_handle);
+@@ -45,6 +135,7 @@ impl Audio {
+             handle: audio_handle,
+             sequence,
+             repeat,
++            gain,
+         });
+ 
+         Ok(())
+@@ -56,6 +147,7 @@ impl Audio {
+         }
+     }
+ 
++    /// Stops the sound and forgets its handle.
+     pub fn close(&mut self, audio_handle: AudioHandle) -> Result<(), AudioError> {
+         self.stop(audio_handle);
+ 
+@@ -65,6 +157,136 @@ impl Audio {
+ 
+         Ok(())
+     }
++
++    /// Sets a sound's own volume (0..=100, larger values are clamped); a running playback follows at once.
++    pub fn set_volume(&mut self, audio_handle: AudioHandle, volume: u8) -> Result<(), AudioError> {
++        let volume = volume.min(MAX_AUDIO_VOLUME);
++        self.files.get_mut(&audio_handle).ok_or(AudioError::InvalidHandle)?.volume = volume;
++
++        let gain = self.gain(volume);
++        if self.playing.contains(&audio_handle) {
++            self.sink.send(AudioCommand::SetGain { handle: audio_handle, gain });
++        }
++
++        Ok(())
++    }
++
++    pub fn volume(&self, audio_handle: AudioHandle) -> Result<u8, AudioError> {
++        self.files.get(&audio_handle).map(|sound| sound.volume).ok_or(AudioError::InvalidHandle)
++    }
++
++    /// Sets the application volume (0..=100) that scales every sound; running playbacks follow at once.
++    pub fn set_master_volume(&mut self, volume: u8) {
++        self.master_volume = volume.min(MAX_AUDIO_VOLUME);
++
++        for handle in &self.playing {
++            if let Some(sound) = self.files.get(handle) {
++                self.sink.send(AudioCommand::SetGain {
++                    handle: *handle,
++                    gain: self.gain(sound.volume),
++                });
++            }
++        }
++    }
++
++    pub fn master_volume(&self) -> u8 {
++        self.master_volume
++    }
++
++    /// Number of loaded sounds (handles not closed yet).
++    pub fn loaded_count(&self) -> usize {
++        self.files.len()
++    }
++
++    /// Amplitude factor for a sound volume under the current master volume: the volume scale is linear in
++    /// amplitude (50 = half amplitude); the handsets' own curve is not documented.
++    fn gain(&self, volume: u8) -> f32 {
++        (volume as f32 / MAX_AUDIO_VOLUME as f32) * (self.master_volume as f32 / MAX_AUDIO_VOLUME as f32)
++    }
++}
++
++fn fnv1a(data: &[u8]) -> u64 {
++    data.iter()
++        .fold(0xcbf2_9ce4_8422_2325, |hash, byte| (hash ^ *byte as u64).wrapping_mul(0x0100_0000_01b3))
++}
++
++/// SMAF's 4-bit Yamaha ADPCM keeps the first sample of each byte in the low nibble. smaf-player 0.1.2 decodes
++/// the high nibble first, which turns every sampled sound into a drifting, clipping signal: decoded effects sit
++/// on DC plateaus of up to half full scale and saturate in bursts (슈퍼액션히어로 3: 1194 clipped samples in its
++/// first 40 waves, 132 in low-nibble order; low-nibble order has less DC drift in 47 of its 58 waves and in most
++/// waves of every other game with ADPCM effects). Replace each wave event's samples with the low-nibble
++/// decoding of the wave data they were made from.
++fn redecode_adpcm_waves(data: &[u8], events: &mut [(usize, SmafEvent)]) {
++    if !events.iter().any(|(_, event)| matches!(event, SmafEvent::Wave { .. })) {
++        return;
++    }
++    let Ok(smaf) = Smaf::parse(data) else {
++        return;
++    };
++
++    let mut waves: Vec<&[u8]> = Vec::new();
++    for chunk in &smaf.chunks {
++        match chunk {
++            SmafChunk::ScoreTrack(_, track) => {
++                for chunk in &track.chunks {
++                    if let ScoreTrackChunk::PCMData(pcm) = chunk {
++                        waves.extend(pcm.iter().map(|PCMDataChunk::WaveData(_, wave)| wave.wave_data));
++                    }
++                }
++            }
++            SmafChunk::PCMAudioTrack(_, track) => {
++                for chunk in &track.chunks {
++                    if let PCMAudioTrackChunk::WaveData(_, wave) = chunk {
++                        waves.push(wave);
++                    }
++                }
++            }
++            _ => {}
++        }
++    }
++
++    // (smaf-player's decoding, correct decoding) per wave, made on first use. An event is matched to its wave
++    // by content, so waves smaf-player skips or decodes some other way are left alone.
++    let mut decoded: Vec<Option<(Vec<i16>, Vec<i16>)>> = vec![None; waves.len()];
++    for (_, event) in events.iter_mut() {
++        let SmafEvent::Wave { data: samples, .. } = event else {
++            continue;
++        };
++        for (wave, decoded) in waves.iter().zip(decoded.iter_mut()) {
++            if wave.len() * 2 != samples.len() {
++                continue;
++            }
++            let (high_first, low_first) = decoded.get_or_insert_with(|| (decode_yamaha_adpcm(wave, false), decode_yamaha_adpcm(wave, true)));
++            if high_first == samples {
++                samples.clone_from(low_first);
++                break;
++            }
++        }
++    }
++}
++
++/// 4-bit Yamaha ADPCM (MA-series / ADPCM-B step adaptation), two samples per byte.
++fn decode_yamaha_adpcm(data: &[u8], low_nibble_first: bool) -> Vec<i16> {
++    const STEP_SCALE: [u32; 8] = [57, 57, 57, 57, 77, 102, 128, 153];
++
++    let mut result = Vec::with_capacity(data.len() * 2);
++    let (mut history, mut step) = (0i32, 127u32);
++    for byte in data {
++        let nibbles = if low_nibble_first {
++            [byte & 0x0f, byte >> 4]
++        } else {
++            [byte >> 4, byte & 0x0f]
++        };
++        for nibble in nibbles {
++            let magnitude = (nibble & 7) as u32;
++            let diff = (((1 + (magnitude << 1)) * step) >> 3) as i32;
++            history = if nibble & 8 != 0 { history - diff } else { history + diff }.clamp(i16::MIN as i32, i16::MAX as i32);
++            step = ((STEP_SCALE[magnitude as usize] * step) >> 6).clamp(127, 24576);
++            result.push(history as i16);
++        }
++    }
++
++    result
+ }
+ 
+ fn convert_smaf_events(events: Vec<(usize, SmafEvent)>) -> AudioSequence {
+@@ -109,7 +331,7 @@ mod tests {
+ 
+     use smaf_player::SmafEvent;
+ 
+-    use super::{Audio, convert_smaf_events};
++    use super::{Audio, MAX_AUDIO_VOLUME, convert_smaf_events, decode_yamaha_adpcm};
+     use crate::{AudioCommand, AudioEventData, AudioSequence, AudioSink, TimedAudioEvent};
+ 
+     struct RecordingSink(Arc<Mutex<Vec<AudioCommand>>>);
+@@ -146,6 +368,49 @@ mod tests {
+         );
+     }
+ 
++    /// One ADPCM audio track (mono, 8 kHz, 4 bit) that plays wave 1 at time 0.
++    fn adpcm_smaf(wave: &[u8]) -> Vec<u8> {
++        let sequence = [0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00];
++        let mut track = vec![0x00, 0x00, 0x11, 0x00, 0x02, 0x02];
++        track.extend_from_slice(b"Atsq");
++        track.extend_from_slice(&(sequence.len() as u32).to_be_bytes());
++        track.extend_from_slice(&sequence);
++        track.extend_from_slice(b"Awa\x01");
++        track.extend_from_slice(&(wave.len() as u32).to_be_bytes());
++        track.extend_from_slice(wave);
++
++        let mut body = b"ATR\x00".to_vec();
++        body.extend_from_slice(&(track.len() as u32).to_be_bytes());
++        body.extend_from_slice(&track);
++        let mut file = b"MMMD".to_vec();
++        file.extend_from_slice(&(body.len() as u32 + 2).to_be_bytes());
++        file.extend_from_slice(&body);
++        file.extend_from_slice(&[0, 0]);
++        file
++    }
++
++    #[test]
++    fn adpcm_waves_decode_low_nibble_first() {
++        // low nibble 7 (+15/8 step), then high nibble 0 (+1/8 step)
++        assert_eq!(decode_yamaha_adpcm(&[0x07], true), vec![238, 275]);
++
++        let wave = [0x07, 0x7f, 0x80, 0x31];
++        let commands = Arc::new(Mutex::new(Vec::new()));
++        let mut audio = Audio::new(Box::new(RecordingSink(commands.clone())));
++        let handle = audio.load_smaf(&adpcm_smaf(&wave)).unwrap();
++        audio.play(handle, false).unwrap();
++
++        let commands = commands.lock().unwrap();
++        let AudioCommand::Play { sequence, .. } = &commands[0] else {
++            panic!("expected play command");
++        };
++        let AudioEventData::Wave { samples, sampling_rate, .. } = &sequence.events[0].data else {
++            panic!("expected wave event");
++        };
++        assert_eq!(*sampling_rate, 8000);
++        assert_eq!(*samples, decode_yamaha_adpcm(&wave, true));
++    }
++
+     #[test]
+     fn replay_stops_previous_playback_before_starting_again() {
+         let commands = Arc::new(Mutex::new(Vec::new()));
+@@ -188,4 +453,69 @@ mod tests {
+         assert_eq!(commands.lock().unwrap()[1], AudioCommand::Stop { handle });
+         assert!(audio.play(handle, false).is_err());
+     }
++
++    fn play_gain(command: &AudioCommand) -> f32 {
++        let AudioCommand::Play { gain, .. } = command else {
++            panic!("expected play command, got {command:?}");
++        };
++        *gain
++    }
++
++    #[test]
++    fn volume_scales_playback_and_reaches_a_running_one() {
++        let commands = Arc::new(Mutex::new(Vec::new()));
++        let mut audio = Audio::new(Box::new(RecordingSink(commands.clone())));
++        let handle = audio.load_smaf(&[]).unwrap();
++        assert_ne!(handle, 0);
++        assert_eq!(audio.volume(handle).unwrap(), MAX_AUDIO_VOLUME);
++
++        audio.play(handle, false).unwrap();
++        audio.set_volume(handle, 40).unwrap();
++        audio.set_master_volume(50);
++        audio.stop(handle);
++        audio.set_volume(handle, 255).unwrap();
++        audio.play(handle, false).unwrap();
++
++        let commands = commands.lock().unwrap();
++        assert_eq!(play_gain(&commands[0]), 1.0);
++        assert_eq!(commands[1], AudioCommand::SetGain { handle, gain: 0.4 });
++        assert_eq!(commands[2], AudioCommand::SetGain { handle, gain: 0.2 });
++        assert_eq!(commands[3], AudioCommand::Stop { handle });
++        // a stopped sound gets no gain change; the clamped volume applies when it plays again
++        assert_eq!(play_gain(&commands[4]), 0.5);
++        assert_eq!(audio.volume(handle).unwrap(), MAX_AUDIO_VOLUME);
++        assert!(audio.set_volume(handle + 1, 10).is_err());
++    }
++
++    #[test]
++    fn equal_data_shares_one_decoded_sequence_until_closed() {
++        let commands = Arc::new(Mutex::new(Vec::new()));
++        let mut audio = Audio::new(Box::new(RecordingSink(commands.clone())));
++        let wave = [0x07, 0x7f, 0x80, 0x31];
++        let first = audio.load_smaf(&adpcm_smaf(&wave)).unwrap();
++        let second = audio.load_smaf(&adpcm_smaf(&wave)).unwrap();
++        let other = audio.load_smaf(&adpcm_smaf(&[0x11, 0x22])).unwrap();
++        assert_eq!(audio.loaded_count(), 3);
++        assert!(Arc::ptr_eq(&audio.files[&first].sequence, &audio.files[&second].sequence));
++        assert!(!Arc::ptr_eq(&audio.files[&first].sequence, &audio.files[&other].sequence));
++
++        // the clip volume belongs to the handle, not to the shared sequence
++        audio.set_volume(first, 10).unwrap();
++        assert_eq!(audio.volume(second).unwrap(), MAX_AUDIO_VOLUME);
++
++        for handle in [first, second, other] {
++            audio.close(handle).unwrap();
++        }
++        assert_eq!(audio.loaded_count(), 0);
++        assert!(audio.close(first).is_err());
++
++        // decoded again after every handle of it was closed
++        let again = audio.load_smaf(&adpcm_smaf(&wave)).unwrap();
++        audio.play(again, false).unwrap();
++        let commands = commands.lock().unwrap();
++        let AudioCommand::Play { sequence, .. } = &commands[0] else {
++            panic!("expected play command");
++        };
++        assert_eq!(sequence.events.len(), 1);
++    }
+ }
+diff --git a/wie-backend/src/system/audio/midi.rs b/wie-backend/src/system/audio/midi.rs
+new file mode 100644
+index 00000000..cf0a23a3
+--- /dev/null
++++ b/wie-backend/src/system/audio/midi.rs
+@@ -0,0 +1,220 @@
++//! Standard MIDI File (SMF format 0/1/2) to a timed MIDI event sequence in milliseconds.
++
++use alloc::{vec, vec::Vec};
++
++use crate::{AudioEventData, AudioSequence, TimedAudioEvent};
++
++const DEFAULT_TEMPO: u64 = 500_000; // microseconds per quarter note (120 bpm)
++
++enum TrackEvent {
++    Midi(Vec<u8>),
++    Tempo(u64),
++    End,
++}
++
++struct Reader<'a> {
++    data: &'a [u8],
++    pos: usize,
++}
++
++impl Reader<'_> {
++    fn u8(&mut self) -> Option<u8> {
++        let value = *self.data.get(self.pos)?;
++        self.pos += 1;
++        Some(value)
++    }
++
++    fn bytes(&mut self, length: usize) -> Option<&[u8]> {
++        let end = self.pos.checked_add(length)?;
++        let value = self.data.get(self.pos..end)?;
++        self.pos = end;
++        Some(value)
++    }
++
++    fn vlq(&mut self) -> Option<u64> {
++        let mut value = 0u64;
++        for _ in 0..4 {
++            let byte = self.u8()?;
++            value = (value << 7) | (byte & 0x7f) as u64;
++            if byte & 0x80 == 0 {
++                return Some(value);
++            }
++        }
++        None
++    }
++}
++
++fn be32(data: &[u8], at: usize) -> Option<usize> {
++    Some(u32::from_be_bytes(data.get(at..at + 4)?.try_into().ok()?) as usize)
++}
++
++/// Events of one MTrk chunk as (tick, event). A malformed tail ends the track at the last good event.
++fn parse_track(data: &[u8]) -> Vec<(u64, TrackEvent)> {
++    let mut reader = Reader { data, pos: 0 };
++    let mut events = Vec::new();
++    let mut tick = 0u64;
++    let mut running_status = None;
++
++    while let Some(delta) = reader.vlq() {
++        tick += delta;
++        let Some(first) = reader.u8() else { break };
++        let status = if first & 0x80 != 0 {
++            first
++        } else {
++            // Running status: `first` is already the first data byte.
++            reader.pos -= 1;
++            match running_status {
++                Some(status) => status,
++                None => break,
++            }
++        };
++
++        match status {
++            0xff => {
++                running_status = None;
++                let (Some(kind), Some(length)) = (reader.u8(), reader.vlq()) else {
++                    break;
++                };
++                let Some(body) = reader.bytes(length as usize) else { break };
++                match kind {
++                    0x51 if body.len() == 3 => events.push((
++                        tick,
++                        TrackEvent::Tempo(((body[0] as u64) << 16) | ((body[1] as u64) << 8) | body[2] as u64),
++                    )),
++                    0x2f => {
++                        events.push((tick, TrackEvent::End));
++                        break;
++                    }
++                    _ => {}
++                }
++            }
++            0xf0 | 0xf7 => {
++                running_status = None;
++                let Some(length) = reader.vlq() else { break };
++                let Some(body) = reader.bytes(length as usize) else { break };
++                if status == 0xf0 {
++                    let mut message = vec![0xf0];
++                    message.extend_from_slice(body);
++                    events.push((tick, TrackEvent::Midi(message)));
++                }
++            }
++            0x80..=0xef => {
++                running_status = Some(status);
++                let length = if matches!(status & 0xf0, 0xc0 | 0xd0) { 1 } else { 2 };
++                let Some(body) = reader.bytes(length) else { break };
++                let mut message = vec![status];
++                message.extend_from_slice(body);
++                events.push((tick, TrackEvent::Midi(message)));
++            }
++            _ => break,
++        }
++    }
++
++    events
++}
++
++pub fn parse_midi(data: &[u8]) -> Option<AudioSequence> {
++    if data.get(0..4)? != b"MThd" {
++        return None;
++    }
++    let header_length = be32(data, 4)?;
++    let header = data.get(8..8 + header_length.max(6))?;
++    let division = u16::from_be_bytes([header[4], header[5]]);
++
++    // (tick, track, event): a stable sort by tick keeps each track's order and puts earlier tracks first.
++    let mut events = Vec::new();
++    let mut pos = 8 + header_length;
++    let mut track = 0;
++    while pos + 8 <= data.len() {
++        let length = be32(data, pos + 4)?;
++        let body = &data[pos + 8..(pos + 8).saturating_add(length).min(data.len())];
++        if &data[pos..pos + 4] == b"MTrk" {
++            events.extend(parse_track(body).into_iter().map(|(tick, event)| (tick, track, event)));
++            track += 1;
++        }
++        pos = pos.saturating_add(8 + length);
++    }
++    events.sort_by_key(|(tick, track, _)| (*tick, *track));
++
++    // Ticks to microseconds: SMPTE divisions are fixed ticks per second, PPQ divisions follow the tempo map.
++    let smpte_ticks_per_second = if division & 0x8000 != 0 {
++        let frames = -((division >> 8) as i8) as u64;
++        Some((frames * (division & 0xff) as u64).max(1))
++    } else {
++        None
++    };
++    let ticks_per_quarter = (division as u64).max(1);
++    let (mut tempo, mut last_tick, mut last_us) = (DEFAULT_TEMPO, 0u64, 0u64);
++
++    let mut sequence = AudioSequence {
++        duration: 0,
++        events: Vec::new(),
++    };
++    for (tick, _, event) in events {
++        let us = match smpte_ticks_per_second {
++            Some(ticks_per_second) => tick * 1_000_000 / ticks_per_second,
++            None => last_us + (tick - last_tick) * tempo / ticks_per_quarter,
++        };
++        (last_tick, last_us) = (tick, us);
++        let time = us / 1000;
++        sequence.duration = sequence.duration.max(time);
++
++        match event {
++            TrackEvent::Midi(message) => sequence.events.push(TimedAudioEvent {
++                time,
++                data: AudioEventData::Midi(message),
++            }),
++            TrackEvent::Tempo(value) => tempo = value,
++            TrackEvent::End => {}
++        }
++    }
++
++    Some(sequence)
++}
++
++#[cfg(test)]
++mod tests {
++    use alloc::vec;
++
++    use super::parse_midi;
++    use crate::{AudioEventData, TimedAudioEvent};
++
++    #[test]
++    fn parses_tempo_running_status_and_tracks() {
++        let mut data = vec![];
++        data.extend_from_slice(b"MThd\0\0\0\x06\0\x01\0\x02\x00\x60"); // format 1, 2 tracks, 96 ppq
++        // tempo track: 250000 us per quarter (240 bpm) at tick 0, end at 96
++        let track0 = [0x00, 0xff, 0x51, 0x03, 0x03, 0xd0, 0x90, 0x60, 0xff, 0x2f, 0x00];
++        data.extend_from_slice(b"MTrk\0\0\0\x0b");
++        data.extend_from_slice(&track0);
++        // note on, running-status note on after a quarter, program change, end
++        let track1 = [0x00, 0x90, 0x3c, 0x40, 0x60, 0x3e, 0x40, 0x00, 0xc1, 0x05, 0x00, 0xff, 0x2f, 0x00];
++        data.extend_from_slice(b"MTrk\0\0\0\x0e");
++        data.extend_from_slice(&track1);
++
++        let sequence = parse_midi(&data).unwrap();
++        assert_eq!(
++            sequence.events,
++            vec![
++                TimedAudioEvent {
++                    time: 0,
++                    data: AudioEventData::Midi(vec![0x90, 0x3c, 0x40])
++                },
++                TimedAudioEvent {
++                    time: 250,
++                    data: AudioEventData::Midi(vec![0x90, 0x3e, 0x40])
++                },
++                TimedAudioEvent {
++                    time: 250,
++                    data: AudioEventData::Midi(vec![0xc1, 0x05])
++                },
++            ]
++        );
++        assert_eq!(sequence.duration, 250);
++    }
++
++    #[test]
++    fn rejects_other_data() {
++        assert!(parse_midi(b"MMMD").is_none());
++    }
++}
+diff --git a/wie-backend/src/system/audio/wave.rs b/wie-backend/src/system/audio/wave.rs
+new file mode 100644
+index 00000000..312b3414
+--- /dev/null
++++ b/wie-backend/src/system/audio/wave.rs
+@@ -0,0 +1,88 @@
++//! RIFF WAVE with linear PCM (8-bit unsigned or 16-bit signed) to a single PCM event.
++
++use alloc::{vec, vec::Vec};
++
++use crate::{AudioEventData, AudioSequence, TimedAudioEvent};
++
++pub fn parse_wave(data: &[u8]) -> Option<AudioSequence> {
++    if data.get(0..4)? != b"RIFF" || data.get(8..12)? != b"WAVE" {
++        return None;
++    }
++
++    let mut format = None;
++    let mut pos = 12;
++    while pos + 8 <= data.len() {
++        let length = u32::from_le_bytes(data[pos + 4..pos + 8].try_into().ok()?) as usize;
++        let body = &data[pos + 8..(pos + 8).saturating_add(length).min(data.len())];
++        match &data[pos..pos + 4] {
++            b"fmt " if body.len() >= 16 => {
++                let u16_at = |at: usize| u16::from_le_bytes([body[at], body[at + 1]]);
++                let sampling_rate = u32::from_le_bytes(body[4..8].try_into().ok()?);
++                // (format tag, channels, rate, bits per sample)
++                format = Some((u16_at(0), u16_at(2), sampling_rate, u16_at(14)));
++            }
++            b"data" => {
++                let (1, channels @ 1..=2, sampling_rate @ 1.., bits) = format? else {
++                    return None;
++                };
++                let samples: Vec<i16> = match bits {
++                    8 => body.iter().map(|&x| ((x as i16) - 128) << 8).collect(),
++                    16 => body.as_chunks::<2>().0.iter().map(|x| i16::from_le_bytes(*x)).collect(),
++                    _ => return None,
++                };
++                let duration = (samples.len() as u64 / channels as u64) * 1000 / sampling_rate as u64;
++
++                return Some(AudioSequence {
++                    duration,
++                    events: vec![TimedAudioEvent {
++                        time: 0,
++                        data: AudioEventData::Wave {
++                            channels: channels as u8,
++                            sampling_rate,
++                            samples,
++                        },
++                    }],
++                });
++            }
++            _ => {}
++        }
++        // Chunks are padded to an even length.
++        pos = pos.saturating_add(8 + length + (length & 1));
++    }
++
++    None
++}
++
++#[cfg(test)]
++mod tests {
++    use alloc::vec;
++
++    use super::parse_wave;
++    use crate::AudioEventData;
++
++    #[test]
++    fn parses_8bit_mono_pcm() {
++        let mut data = vec![];
++        data.extend_from_slice(b"RIFF\x2c\0\0\0WAVEfmt \x10\0\0\0\x01\0\x01\0\x40\x1f\0\0\x40\x1f\0\0\x01\0\x08\0data\x04\0\0\0");
++        data.extend_from_slice(&[0x80, 0xff, 0x00, 0x90]);
++
++        let sequence = parse_wave(&data).unwrap();
++        let AudioEventData::Wave {
++            channels,
++            sampling_rate,
++            samples,
++        } = &sequence.events[0].data
++        else {
++            panic!("expected PCM");
++        };
++        assert_eq!((*channels, *sampling_rate), (1, 8000));
++        assert_eq!(samples, &vec![0, 127 << 8, -128 << 8, 16 << 8]);
++        assert_eq!(sequence.duration, 0);
++    }
++
++    #[test]
++    fn rejects_compressed_wave() {
++        let data = b"RIFF\x24\0\0\0WAVEfmt \x10\0\0\0\x11\0\x01\0\x40\x1f\0\0\x40\x1f\0\0\x01\0\x04\0data\x00\0\0\0";
++        assert!(parse_wave(data).is_none());
++    }
++}
+diff --git a/wie-j2me/src/emulator.rs b/wie-j2me/src/emulator.rs
+index 955f7205..34d652ae 100644
+--- a/wie-j2me/src/emulator.rs
++++ b/wie-j2me/src/emulator.rs
+@@ -90,9 +90,11 @@ impl J2MEEmulator {
+         properties: BTreeMap<String, String>,
+         main_class_name: Option<String>,
+     ) -> Result<()> {
++        // Plain MIDP games read the Nokia / Sony Ericsson key codes (soft keys -6/-7).
+         let properties = properties
+             .into_iter()
+             .map(|(k, v)| (format!("wie.appProperty.{k}"), v))
++            .chain([("wie.midp.keyLayout".to_owned(), "nokia".to_owned())])
+             .collect::<Vec<_>>();
+         let properties = properties.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect::<Vec<_>>();
+ 
+diff --git a/wie-jvm-support/src/runtime.rs b/wie-jvm-support/src/runtime.rs
+index d7375bd2..2e3a1571 100644
+--- a/wie-jvm-support/src/runtime.rs
++++ b/wie-jvm-support/src/runtime.rs
+@@ -145,8 +145,11 @@ impl<T> Runtime for JvmRuntime<T>
+ where
+     T: JvmImplementation + Sync + Send + 'static,
+ {
++    /// A zero sleep waits 1 ms. Sleeping 0 leaves the task runnable, so a frame limiter spinning on
++    /// `Thread.yield(); Thread.sleep(0)` until its next frame (NOM) kept the executor busy for the whole wait;
++    /// with 1 ms the executor idles until the clock gets there.
+     async fn sleep(&self, duration: Duration) {
+-        self.system.sleep(duration.as_millis() as _).await;
++        self.system.sleep(duration.as_millis().max(1) as _).await;
+     }
+ 
+     async fn r#yield(&self) {
+diff --git a/wie-midp/src/classes/javax/microedition/lcdui/canvas.rs b/wie-midp/src/classes/javax/microedition/lcdui/canvas.rs
+index 56ffdd1d..cab9a5ce 100644
+--- a/wie-midp/src/classes/javax/microedition/lcdui/canvas.rs
++++ b/wie-midp/src/classes/javax/microedition/lcdui/canvas.rs
+@@ -1,9 +1,11 @@
+ use alloc::vec;
+ 
+-use jvm::{ClassInstanceRef, Jvm, Result as JvmResult};
++use jvm::{ClassInstanceRef, Jvm, Result as JvmResult, runtime::JavaLangString};
+ use jvm_class_proto::JavaMethodProto;
+ use jvm_types::{ClassAccessFlags, MethodAccessFlags};
+ 
++use rustjava_runtime::classes::java::lang::String;
++
+ use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
+ 
+ use crate::classes::{
+@@ -11,6 +13,17 @@ use crate::classes::{
+     net::wie::{KeyboardEventType, MIDPKeyCode},
+ };
+ 
++const NOKIA_KEY_CODES: [(i32, i32); 8] = [
++    (MIDPKeyCode::UP as i32, -1),
++    (MIDPKeyCode::DOWN as i32, -2),
++    (MIDPKeyCode::LEFT as i32, -3),
++    (MIDPKeyCode::RIGHT as i32, -4),
++    (MIDPKeyCode::FIRE as i32, -5),
++    (MIDPKeyCode::LEFT_SOFT_KEY as i32, -6),
++    (MIDPKeyCode::RIGHT_SOFT_KEY as i32, -7),
++    (MIDPKeyCode::CLEAR as i32, -8),
++];
++
+ // abstract class javax.microedition.lcdui.Canvas
+ pub struct Canvas;
+ 
+@@ -138,6 +151,7 @@ impl Canvas {
+     async fn get_game_action(_: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>, key: i32) -> JvmResult<i32> {
+         tracing::debug!("javax.microedition.lcdui.Canvas::getGameAction({this:?}, {key})");
+ 
++        let key = Self::internal_key_code(key);
+         let action = match MIDPKeyCode::from_raw(key) {
+             Some(MIDPKeyCode::UP) => 1,    // UP
+             Some(MIDPKeyCode::DOWN) => 6,  // DOWN
+@@ -190,6 +204,7 @@ impl Canvas {
+             return Err(jvm.exception("java/lang/IllegalArgumentException", "Invalid keyboard event type").await);
+         };
+ 
++        let code = Self::platform_key_code(jvm, code).await?;
+         let _: () = match event_type {
+             KeyboardEventType::KeyPressed => {
+                 jvm.invoke_virtual(&this, "javax/microedition/lcdui/Canvas", "keyPressed", "(I)V", (code,))
+@@ -209,6 +224,33 @@ impl Canvas {
+         Ok(())
+     }
+ 
++    /// MIDP leaves the codes of non-numeric keys to the device; wie's own codes are SK-VM's. Plain MIDP games
++    /// expect the common Nokia / Sony Ericsson layout (soft keys -6/-7), which a platform selects with the
++    /// system property `wie.midp.keyLayout=nokia`.
++    async fn platform_key_code(jvm: &Jvm, code: i32) -> JvmResult<i32> {
++        let name = JavaLangString::from_rust_string(jvm, "wie.midp.keyLayout").await?;
++        let layout: ClassInstanceRef<String> = jvm
++            .invoke_static("java/lang/System", "getProperty", "(Ljava/lang/String;)Ljava/lang/String;", (name,))
++            .await?;
++        if layout.is_null() || JavaLangString::to_rust_string(jvm, &layout).await? != "nokia" {
++            return Ok(code);
++        }
++
++        Ok(NOKIA_KEY_CODES
++            .iter()
++            .find(|(internal, _)| *internal == code)
++            .map(|(_, nokia)| *nokia)
++            .unwrap_or(code))
++    }
++
++    fn internal_key_code(code: i32) -> i32 {
++        NOKIA_KEY_CODES
++            .iter()
++            .find(|(_, nokia)| *nokia == code)
++            .map(|(internal, _)| *internal)
++            .unwrap_or(code)
++    }
++
+     async fn handle_paint_event(
+         jvm: &Jvm,
+         _context: &mut WieJvmContext,
+@@ -558,4 +600,28 @@ mod test {
+             },
+         )
+     }
++    #[test]
++    fn nokia_key_layout_is_opt_in() -> Result<()> {
++        run_jvm_test(Box::new([get_protos().into()]), |jvm| async move {
++            let soft_key = MIDPKeyCode::LEFT_SOFT_KEY as i32;
++            assert_eq!(Canvas::platform_key_code(&jvm, soft_key).await?, soft_key);
++
++            let key = JavaLangString::from_rust_string(&jvm, "wie.midp.keyLayout").await?;
++            let value = JavaLangString::from_rust_string(&jvm, "nokia").await?;
++            let _: Option<Box<dyn jvm::ClassInstance>> = jvm
++                .invoke_static(
++                    "java/lang/System",
++                    "setProperty",
++                    "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;",
++                    (key, value),
++                )
++                .await?;
++            assert_eq!(Canvas::platform_key_code(&jvm, soft_key).await?, -6);
++            assert_eq!(Canvas::platform_key_code(&jvm, MIDPKeyCode::KEY_NUM5 as i32).await?, 53);
++            assert_eq!(Canvas::internal_key_code(-5), MIDPKeyCode::FIRE as i32);
++            assert_eq!(Canvas::internal_key_code(MIDPKeyCode::UP as i32), MIDPKeyCode::UP as i32);
++
++            Ok(())
++        })
++    }
+ }
+diff --git a/wie-midp/src/classes/javax/microedition/lcdui/image.rs b/wie-midp/src/classes/javax/microedition/lcdui/image.rs
+index c1fa3b48..8f5adc96 100644
+--- a/wie-midp/src/classes/javax/microedition/lcdui/image.rs
++++ b/wie-midp/src/classes/javax/microedition/lcdui/image.rs
+@@ -31,6 +31,7 @@ impl Image {
+                 JavaMethodProto::new("<init>", "(II[BI)V", Self::init, MethodAccessFlags::empty()),
+                 JavaMethodProto::new("getWidth", "()I", Self::get_width, MethodAccessFlags::PUBLIC),
+                 JavaMethodProto::new("getHeight", "()I", Self::get_height, MethodAccessFlags::PUBLIC),
++                JavaMethodProto::new("getRGB", "([IIIIIII)V", Self::get_rgb, MethodAccessFlags::PUBLIC),
+                 JavaMethodProto::new(
+                     "getGraphics",
+                     "()Ljavax/microedition/lcdui/Graphics;",
+@@ -199,6 +200,55 @@ impl Image {
+         jvm.get_field(&this, "javax/microedition/lcdui/Image", "h", "I").await
+     }
+ 
++    /// MIDP 2.0: copies the region (x, y, width, height) as 0xAARRGGBB into rgbData; pixel (x + a, y + b) goes to
++    /// rgbData[offset + a + b * scanlength] (scanlength may be negative).
++    #[allow(clippy::too_many_arguments)]
++    async fn get_rgb(
++        jvm: &Jvm,
++        _: &mut WieJvmContext,
++        this: ClassInstanceRef<Self>,
++        mut rgb_data: ClassInstanceRef<Array<i32>>,
++        offset: i32,
++        scan_length: i32,
++        x: i32,
++        y: i32,
++        width: i32,
++        height: i32,
++    ) -> JvmResult<()> {
++        tracing::debug!("javax.microedition.lcdui.Image::getRGB({this:?}, {rgb_data:?}, {offset}, {scan_length}, {x}, {y}, {width}, {height})");
++
++        if rgb_data.is_null() {
++            return Err(jvm.exception("java/lang/NullPointerException", "rgbData is null").await);
++        }
++        if width <= 0 || height <= 0 {
++            return Ok(());
++        }
++
++        let image = Self::image(jvm, &this).await?;
++        let (image_width, image_height) = (image.width() as i64, image.height() as i64);
++        let (x, y, width, height, offset, scan_length) = (x as i64, y as i64, width as i64, height as i64, offset as i64, scan_length as i64);
++        if x < 0 || y < 0 || x + width > image_width || y + height > image_height || scan_length.abs() < width {
++            return Err(jvm
++                .exception("java/lang/IllegalArgumentException", "region out of image or bad scanlength")
++                .await);
++        }
++
++        let length = jvm.array_length(&rgb_data).await? as i64;
++        let last_row = offset + (height - 1) * scan_length;
++        if offset.min(last_row) < 0 || offset.max(last_row) + width > length {
++            return Err(jvm.exception("java/lang/ArrayIndexOutOfBoundsException", "rgbData too small").await);
++        }
++
++        let mut colors = vec![Color { a: 0, r: 0, g: 0, b: 0 }; width as usize];
++        for row in 0..height {
++            image.get_pixels(x as i32, (y + row) as i32, &mut colors);
++            let argb = colors.iter().map(|&color| ArgbPixel::from_color(color) as i32).collect::<Vec<_>>();
++            jvm.store_array(&mut rgb_data, (offset + row * scan_length) as usize, argb).await?;
++        }
++
++        Ok(())
++    }
++
+     pub async fn image(jvm: &Jvm, this: &ClassInstanceRef<Self>) -> JvmResult<Box<dyn BackendImage>> {
+         let width: i32 = jvm.get_field(this, "javax/microedition/lcdui/Image", "w", "I").await?;
+         let bpl: i32 = jvm.get_field(this, "javax/microedition/lcdui/Image", "bpl", "I").await?;
+@@ -402,4 +452,34 @@ mod tests {
+             Ok(())
+         })
+     }
++
++    #[test]
++    fn get_rgb_uses_offset_and_scanlength() -> wie_util::Result<()> {
++        test_utils::run_jvm_test(Box::new([crate::get_protos().into()]), |jvm| async move {
++            // 3x2 image; copy its right 2x2 block to offset 1 with a scanlength of 3, then bottom-up (scanlength -3).
++            let pixels: [u32; 6] = [0xff000001, 0xff000002, 0x80000003, 0xff000004, 0xff000005, 0x00000006];
++            let image = Image::create_image_instance(&jvm, 3, 2, bytemuck::cast_slice(&pixels), 4).await?;
++            let rgb = jvm.instantiate_array("I", 8).await?;
++            let args = (rgb.clone(), 1, 3, 1, 0, 2, 2);
++            let _: () = jvm
++                .invoke_virtual(&image, "javax/microedition/lcdui/Image", "getRGB", "([IIIIIII)V", args)
++                .await?;
++            let out: Vec<i32> = jvm.load_array(&rgb.clone(), 0, 8).await?;
++            assert_eq!(out, [0, 0xff000002u32 as i32, 0x80000003u32 as i32, 0, 0xff000005u32 as i32, 6, 0, 0]);
++
++            let args = (rgb.clone(), 4, -3, 1, 0, 2, 2);
++            let _: () = jvm
++                .invoke_virtual(&image, "javax/microedition/lcdui/Image", "getRGB", "([IIIIIII)V", args)
++                .await?;
++            let out: Vec<i32> = jvm.load_array(&rgb.clone(), 0, 3).await?;
++            assert_eq!(out, [0, 0xff000005u32 as i32, 6]);
++
++            let args = (rgb, 0, 1, 0, 0, 2, 1);
++            let result: JvmResult<()> = jvm
++                .invoke_virtual(&image, "javax/microedition/lcdui/Image", "getRGB", "([IIIIIII)V", args)
++                .await;
++            assert!(result.is_err());
++            Ok(())
++        })
++    }
+ }
+diff --git a/wie-midp/src/classes/javax/microedition/media.rs b/wie-midp/src/classes/javax/microedition/media.rs
+index 82198930..dd99e2bc 100644
+--- a/wie-midp/src/classes/javax/microedition/media.rs
++++ b/wie-midp/src/classes/javax/microedition/media.rs
+@@ -6,5 +6,5 @@ mod player;
+ mod player_listener;
+ 
+ pub use self::{
+-    control::Control, controllable::Controllable, manager::Manager, media_exception::MediaException, player::Player, player_listener::PlayerListener,
++    control::{Control, VolumeControl}, controllable::Controllable, manager::Manager, media_exception::MediaException, player::Player, player_listener::PlayerListener,
+ };
+diff --git a/wie-midp/src/classes/javax/microedition/media/control.rs b/wie-midp/src/classes/javax/microedition/media/control.rs
+index 3c02e957..ac5c4b86 100644
+--- a/wie-midp/src/classes/javax/microedition/media/control.rs
++++ b/wie-midp/src/classes/javax/microedition/media/control.rs
+@@ -1,9 +1,13 @@
++mod volume_control;
++
+ use alloc::vec;
+ 
+ use jvm_types::ClassAccessFlags;
+ 
+ use wie_jvm_support::WieJavaClassProto;
+ 
++pub use self::volume_control::VolumeControl;
++
+ // interface javax.microedition.media.Control
+ pub struct Control;
+ 
+diff --git a/wie-midp/src/classes/javax/microedition/media/control/volume_control.rs b/wie-midp/src/classes/javax/microedition/media/control/volume_control.rs
+new file mode 100644
+index 00000000..e6ec89cc
+--- /dev/null
++++ b/wie-midp/src/classes/javax/microedition/media/control/volume_control.rs
+@@ -0,0 +1,27 @@
++use alloc::vec;
++
++use jvm_class_proto::JavaMethodProto;
++use jvm_types::{ClassAccessFlags, MethodAccessFlags};
++
++use wie_jvm_support::WieJavaClassProto;
++
++// interface javax.microedition.media.control.VolumeControl
++pub struct VolumeControl;
++
++impl VolumeControl {
++    pub fn as_proto() -> WieJavaClassProto {
++        WieJavaClassProto {
++            name: "javax/microedition/media/control/VolumeControl",
++            parent_class: None,
++            interfaces: vec!["javax/microedition/media/Control"],
++            methods: vec![
++                JavaMethodProto::new_abstract("setMute", "(Z)V", MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT),
++                JavaMethodProto::new_abstract("isMuted", "()Z", MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT),
++                JavaMethodProto::new_abstract("setLevel", "(I)I", MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT),
++                JavaMethodProto::new_abstract("getLevel", "()I", MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT),
++            ],
++            fields: vec![],
++            access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::INTERFACE | ClassAccessFlags::ABSTRACT,
++        }
++    }
++}
+diff --git a/wie-midp/src/classes/javax/microedition/media/manager.rs b/wie-midp/src/classes/javax/microedition/media/manager.rs
+index 1d88736c..ea78a5fb 100644
+--- a/wie-midp/src/classes/javax/microedition/media/manager.rs
++++ b/wie-midp/src/classes/javax/microedition/media/manager.rs
+@@ -37,8 +37,13 @@ impl Manager {
+     ) -> Result<ClassInstanceRef<Player>> {
+         tracing::debug!("javax.microedition.media.Manager::createPlayer({stream:?}, {type:?})");
+ 
+-        let type_string = JavaLangString::to_rust_string(jvm, &r#type).await?;
+-        if type_string == "application/vnd.smaf" {
++        // A null type asks for detection from the content; the player tells the formats apart by their magic.
++        let supported = r#type.is_null()
++            || matches!(
++                JavaLangString::to_rust_string(jvm, &r#type).await?.as_str(),
++                "application/vnd.smaf" | "audio/midi" | "audio/mid" | "audio/x-midi" | "audio/sp-midi" | "audio/x-wav" | "audio/wav"
++            );
++        if supported {
+             Ok(jvm.new_class("net/wie/SmafPlayer", "(Ljava/io/InputStream;)V", (stream,)).await?.into())
+         } else {
+             Err(jvm.exception("javax/microedition/media/MediaException", "Unsupported media type").await)
+diff --git a/wie-midp/src/classes/javax/microedition/midlet/midlet.rs b/wie-midp/src/classes/javax/microedition/midlet/midlet.rs
+index 2ce45578..11734575 100644
+--- a/wie-midp/src/classes/javax/microedition/midlet/midlet.rs
++++ b/wie-midp/src/classes/javax/microedition/midlet/midlet.rs
+@@ -33,6 +33,12 @@ impl MIDlet {
+                     Self::notify_destroyed,
+                     MethodAccessFlags::PUBLIC | MethodAccessFlags::FINAL,
+                 ),
++                JavaMethodProto::new(
++                    "platformRequest",
++                    "(Ljava/lang/String;)Z",
++                    Self::platform_request,
++                    MethodAccessFlags::PUBLIC | MethodAccessFlags::FINAL,
++                ),
+             ],
+             fields: vec![
+                 JavaFieldProto::new(
+@@ -99,6 +105,24 @@ impl MIDlet {
+         Ok(())
+     }
+ 
++    /// MIDP 2.0: asks the device to open a URL (browser, call). There is no handler here; the request is
++    /// dropped and false says the MIDlet need not exit for it.
++    async fn platform_request(
++        jvm: &Jvm,
++        _context: &mut WieJvmContext,
++        this: ClassInstanceRef<Self>,
++        url: ClassInstanceRef<String>,
++    ) -> JvmResult<bool> {
++        let url = if url.is_null() {
++            None
++        } else {
++            Some(JavaLangString::to_rust_string(jvm, &url).await?)
++        };
++        tracing::warn!("javax.microedition.midlet.MIDlet::platformRequest({this:?}, {url:?}) ignored");
++
++        Ok(false)
++    }
++
+     pub async fn display(jvm: &Jvm, this: &ClassInstanceRef<Self>) -> JvmResult<ClassInstanceRef<Display>> {
+         jvm.get_field(this, "javax/microedition/midlet/MIDlet", "display", "Ljavax/microedition/lcdui/Display;")
+             .await
+diff --git a/wie-midp/src/classes/net/wie.rs b/wie-midp/src/classes/net/wie.rs
+index 39033a07..1f6d7a2f 100644
+--- a/wie-midp/src/classes/net/wie.rs
++++ b/wie-midp/src/classes/net/wie.rs
+@@ -3,6 +3,7 @@ mod command_event;
+ mod event_queue;
+ mod item_state_event;
+ mod launcher;
++mod player_volume_control;
+ mod smaf_player;
+ mod wie_error;
+ 
+@@ -12,6 +13,7 @@ pub use self::{
+     event_queue::{EventQueue, KeyboardEventType, MIDPKeyCode},
+     item_state_event::ItemStateEvent,
+     launcher::Launcher,
++    player_volume_control::PlayerVolumeControl,
+     smaf_player::SmafPlayer,
+     wie_error::WieError,
+ };
+diff --git a/wie-midp/src/classes/net/wie/player_volume_control.rs b/wie-midp/src/classes/net/wie/player_volume_control.rs
+new file mode 100644
+index 00000000..b4353b9e
+--- /dev/null
++++ b/wie-midp/src/classes/net/wie/player_volume_control.rs
+@@ -0,0 +1,83 @@
++use alloc::vec;
++
++use jvm::{ClassInstanceRef, Jvm, Result as JvmResult};
++use jvm_class_proto::{JavaFieldProto, JavaMethodProto};
++use jvm_types::{ClassAccessFlags, FieldAccessFlags, MethodAccessFlags};
++
++use wie_backend::MAX_AUDIO_VOLUME;
++use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
++
++// class net.wie.PlayerVolumeControl: the VolumeControl of a net.wie.SmafPlayer. It keeps level and mute state as
++// MIDP specifies and gives the player's sound that volume (0 while muted).
++pub struct PlayerVolumeControl;
++
++impl PlayerVolumeControl {
++    pub fn as_proto() -> WieJavaClassProto {
++        WieJavaClassProto {
++            name: "net/wie/PlayerVolumeControl",
++            parent_class: Some("java/lang/Object"),
++            interfaces: vec!["javax/microedition/media/control/VolumeControl"],
++            methods: vec![
++                JavaMethodProto::new("<init>", "(I)V", Self::init, MethodAccessFlags::PUBLIC),
++                JavaMethodProto::new("setMute", "(Z)V", Self::set_mute, MethodAccessFlags::PUBLIC),
++                JavaMethodProto::new("isMuted", "()Z", Self::is_muted, MethodAccessFlags::PUBLIC),
++                JavaMethodProto::new("setLevel", "(I)I", Self::set_level, MethodAccessFlags::PUBLIC),
++                JavaMethodProto::new("getLevel", "()I", Self::get_level, MethodAccessFlags::PUBLIC),
++            ],
++            fields: vec![
++                JavaFieldProto::new("level", "I", FieldAccessFlags::PRIVATE),
++                JavaFieldProto::new("muted", "Z", FieldAccessFlags::PRIVATE),
++                JavaFieldProto::new("audioHandle", "I", FieldAccessFlags::PRIVATE),
++            ],
++            access_flags: ClassAccessFlags::PUBLIC,
++        }
++    }
++
++    async fn init(jvm: &Jvm, _: &mut WieJvmContext, mut this: ClassInstanceRef<Self>, audio_handle: i32) -> JvmResult<()> {
++        let _: () = jvm.invoke_special(&this, "java/lang/Object", "<init>", "()V", ()).await?;
++
++        jvm.put_field(&mut this, "net/wie/PlayerVolumeControl", "audioHandle", "I", audio_handle)
++            .await?;
++        jvm.put_field(&mut this, "net/wie/PlayerVolumeControl", "level", "I", MAX_AUDIO_VOLUME as i32)
++            .await
++    }
++
++    async fn set_mute(jvm: &Jvm, context: &mut WieJvmContext, mut this: ClassInstanceRef<Self>, muted: bool) -> JvmResult<()> {
++        tracing::debug!("net.wie.PlayerVolumeControl::setMute({this:?}, {muted})");
++
++        jvm.put_field(&mut this, "net/wie/PlayerVolumeControl", "muted", "Z", muted).await?;
++
++        Self::apply(jvm, context, &this).await
++    }
++
++    async fn apply(jvm: &Jvm, context: &mut WieJvmContext, this: &ClassInstanceRef<Self>) -> JvmResult<()> {
++        let audio_handle: i32 = jvm.get_field(this, "net/wie/PlayerVolumeControl", "audioHandle", "I").await?;
++        let level: i32 = jvm.get_field(this, "net/wie/PlayerVolumeControl", "level", "I").await?;
++        let muted: bool = jvm.get_field(this, "net/wie/PlayerVolumeControl", "muted", "Z").await?;
++
++        let volume = if muted { 0 } else { level as u8 };
++        // a closed player has no sound left to change
++        let _ = context.system().audio().set_volume(audio_handle as u32, volume);
++
++        Ok(())
++    }
++
++    async fn is_muted(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<bool> {
++        jvm.get_field(&this, "net/wie/PlayerVolumeControl", "muted", "Z").await
++    }
++
++    /// Clamps to 0..=100 and returns the level that was set.
++    async fn set_level(jvm: &Jvm, context: &mut WieJvmContext, mut this: ClassInstanceRef<Self>, level: i32) -> JvmResult<i32> {
++        tracing::debug!("net.wie.PlayerVolumeControl::setLevel({this:?}, {level})");
++
++        let level = level.clamp(0, MAX_AUDIO_VOLUME as i32);
++        jvm.put_field(&mut this, "net/wie/PlayerVolumeControl", "level", "I", level).await?;
++        Self::apply(jvm, context, &this).await?;
++
++        Ok(level)
++    }
++
++    async fn get_level(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<i32> {
++        jvm.get_field(&this, "net/wie/PlayerVolumeControl", "level", "I").await
++    }
++}
+diff --git a/wie-midp/src/classes/net/wie/smaf_player.rs b/wie-midp/src/classes/net/wie/smaf_player.rs
+index 65b88898..95d2e404 100644
+--- a/wie-midp/src/classes/net/wie/smaf_player.rs
++++ b/wie-midp/src/classes/net/wie/smaf_player.rs
+@@ -10,9 +10,9 @@ use rustjava_runtime::classes::java::{io::InputStream, lang::String};
+ 
+ use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
+ 
+-use crate::classes::javax::microedition::media::{Control, PlayerListener};
++use crate::classes::javax::microedition::media::{Control, Player, PlayerListener};
+ 
+-// class net.wie.SmafPlayer
++// class net.wie.SmafPlayer: plays SMAF, MIDI and PCM WAVE data (System::audio tells them apart)
+ pub struct SmafPlayer;
+ 
+ impl SmafPlayer {
+@@ -66,7 +66,15 @@ impl SmafPlayer {
+                     MethodAccessFlags::PUBLIC,
+                 ),
+             ],
+-            fields: vec![JavaFieldProto::new("audioHandle", "I", FieldAccessFlags::PRIVATE)],
++            fields: vec![
++                JavaFieldProto::new("audioHandle", "I", FieldAccessFlags::PRIVATE),
++                JavaFieldProto::new("loopCount", "I", FieldAccessFlags::PRIVATE),
++                JavaFieldProto::new(
++                    "volumeControl",
++                    "Ljavax/microedition/media/control/VolumeControl;",
++                    FieldAccessFlags::PRIVATE,
++                ),
++            ],
+             access_flags: ClassAccessFlags::PUBLIC,
+         }
+     }
+@@ -77,16 +85,31 @@ impl SmafPlayer {
+         let _: () = jvm.invoke_special(&this, "java/lang/Object", "<init>", "()V", ()).await?;
+ 
+         let data = JavaIoInputStream::read_until_end(jvm, &stream).await?;
+-        let audio_handle = context.system().audio().load_smaf(&data).unwrap();
++        let Ok(audio_handle) = context.system().audio().load(&data) else {
++            return Err(jvm.exception("javax/microedition/media/MediaException", "Unsupported media data").await);
++        };
+ 
+         jvm.put_field(&mut this, "net/wie/SmafPlayer", "audioHandle", "I", audio_handle as i32)
+             .await?;
++        jvm.put_field(&mut this, "net/wie/SmafPlayer", "loopCount", "I", 1).await?;
++        let volume_control = jvm.new_class("net/wie/PlayerVolumeControl", "(I)V", (audio_handle as i32,)).await?;
++        jvm.put_field(
++            &mut this,
++            "net/wie/SmafPlayer",
++            "volumeControl",
++            "Ljavax/microedition/media/control/VolumeControl;",
++            volume_control,
++        )
++        .await?;
+ 
+         Ok(())
+     }
+ 
++    /// MIDP start(): setLoopCount(-1) loops forever; other counts play once.
+     async fn start(jvm: &Jvm, context: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> Result<()> {
+-        Self::start_with_repeat(jvm, context, this, false).await
++        let loop_count: i32 = jvm.get_field(&this, "net/wie/SmafPlayer", "loopCount", "I").await?;
++
++        Self::start_with_repeat(jvm, context, this, loop_count == -1).await
+     }
+ 
+     async fn start_with_repeat(jvm: &Jvm, context: &mut WieJvmContext, this: ClassInstanceRef<Self>, repeat: bool) -> Result<()> {
+@@ -94,7 +117,9 @@ impl SmafPlayer {
+ 
+         let audio_handle: i32 = jvm.get_field(&this, "net/wie/SmafPlayer", "audioHandle", "I").await?;
+ 
+-        context.system().audio().play(audio_handle as u32, repeat).unwrap();
++        if context.system().audio().play(audio_handle as u32, repeat).is_err() {
++            tracing::warn!("net.wie.SmafPlayer::start({this:?}): the player is closed");
++        }
+ 
+         Ok(())
+     }
+@@ -118,7 +143,17 @@ impl SmafPlayer {
+ 
+         let system = context.system();
+ 
+-        system.audio().close(audio_handle as u32).unwrap();
++        // closing twice is allowed (MIDP: close on a closed player does nothing)
++        let _ = system.audio().close(audio_handle as u32);
++
++        Ok(())
++    }
++
++    /// Sets the volume (0..=100) of the sound a `net.wie.SmafPlayer` plays, for the platform clip classes that wrap one.
++    pub async fn set_volume(jvm: &Jvm, context: &mut WieJvmContext, player: &ClassInstanceRef<Player>, volume: u8) -> Result<()> {
++        let audio_handle: i32 = jvm.get_field(player, "net/wie/SmafPlayer", "audioHandle", "I").await?;
++
++        let _ = context.system().audio().set_volume(audio_handle as u32, volume);
+ 
+         Ok(())
+     }
+@@ -171,14 +206,14 @@ impl SmafPlayer {
+         Ok(JavaLangString::from_rust_string(jvm, "application/vnd.smaf").await?.into())
+     }
+ 
+-    async fn set_loop_count(jvm: &Jvm, _context: &mut WieJvmContext, this: ClassInstanceRef<Self>, count: i32) -> Result<()> {
+-        tracing::warn!("stub net.wie.SmafPlayer::setLoopCount({this:?}, {count})");
++    async fn set_loop_count(jvm: &Jvm, _context: &mut WieJvmContext, mut this: ClassInstanceRef<Self>, count: i32) -> Result<()> {
++        tracing::debug!("net.wie.SmafPlayer::setLoopCount({this:?}, {count})");
+ 
+         if count == 0 || count < -1 {
+             return Err(jvm.exception("java/lang/IllegalArgumentException", "Invalid loop count").await);
+         }
+ 
+-        Ok(())
++        jvm.put_field(&mut this, "net/wie/SmafPlayer", "loopCount", "I", count).await
+     }
+ 
+     async fn add_player_listener(
+@@ -209,19 +244,43 @@ impl SmafPlayer {
+         this: ClassInstanceRef<Self>,
+         control_type: ClassInstanceRef<String>,
+     ) -> Result<ClassInstanceRef<Control>> {
+-        tracing::warn!("stub net.wie.SmafPlayer::getControl({this:?}, {control_type:?})");
++        tracing::debug!("net.wie.SmafPlayer::getControl({this:?}, {control_type:?})");
+ 
+         if control_type.is_null() {
+             return Err(jvm.exception("java/lang/IllegalArgumentException", "Control type is null").await);
+         }
+ 
++        // MMAPI: a name without a package means javax.microedition.media.control.
++        let control_type = JavaLangString::to_rust_string(jvm, &control_type).await?;
++        if matches!(control_type.as_str(), "VolumeControl" | "javax.microedition.media.control.VolumeControl") {
++            return jvm
++                .get_field(
++                    &this,
++                    "net/wie/SmafPlayer",
++                    "volumeControl",
++                    "Ljavax/microedition/media/control/VolumeControl;",
++                )
++                .await;
++        }
++
+         Ok(None.into())
+     }
+ 
+     async fn get_controls(jvm: &Jvm, _context: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> Result<ClassInstanceRef<Array<Control>>> {
+-        tracing::warn!("stub net.wie.SmafPlayer::getControls({this:?})");
++        tracing::debug!("net.wie.SmafPlayer::getControls({this:?})");
++
++        let volume_control: ClassInstanceRef<Control> = jvm
++            .get_field(
++                &this,
++                "net/wie/SmafPlayer",
++                "volumeControl",
++                "Ljavax/microedition/media/control/VolumeControl;",
++            )
++            .await?;
++        let mut controls = jvm.instantiate_array("Ljavax/microedition/media/Control;", 1).await?;
++        jvm.store_array(&mut controls, 0, [volume_control]).await?;
+ 
+-        Ok(jvm.instantiate_array("Ljavax/microedition/media/Control;", 0).await?.into())
++        Ok(controls.into())
+     }
+ }
+ 
+@@ -239,7 +298,7 @@ mod test {
+     };
+ 
+     #[test]
+-    fn test_unsupported_player_controls() -> Result<()> {
++    fn test_player_controls() -> Result<()> {
+         run_jvm_test(Box::new([get_protos().into()]), |jvm| async move {
+             let data = jvm.instantiate_array("B", 0).await?;
+             let stream = jvm.new_class("java/io/ByteArrayInputStream", "([B)V", (data,)).await?;
+@@ -265,9 +324,25 @@ mod test {
+                     (),
+                 )
+                 .await?;
+-            assert_eq!(jvm.array_length(&controls).await?, 0);
++            assert_eq!(jvm.array_length(&controls).await?, 1);
+ 
+             let control_type = JavaLangString::from_rust_string(&jvm, "VolumeControl").await?;
++            let control: ClassInstanceRef<Control> = jvm
++                .invoke_virtual(
++                    &player,
++                    "javax/microedition/media/Player",
++                    "getControl",
++                    "(Ljava/lang/String;)Ljavax/microedition/media/Control;",
++                    (control_type,),
++                )
++                .await?;
++            assert!(jvm.is_instance(&**control, "javax/microedition/media/control/VolumeControl"));
++            let level: i32 = jvm
++                .invoke_virtual(&control, "javax/microedition/media/control/VolumeControl", "setLevel", "(I)I", (150,))
++                .await?;
++            assert_eq!(level, 100);
++
++            let control_type = JavaLangString::from_rust_string(&jvm, "ToneControl").await?;
+             let control: ClassInstanceRef<Control> = jvm
+                 .invoke_virtual(
+                     &player,
+diff --git a/wie-midp/src/lib.rs b/wie-midp/src/lib.rs
+index 303a121f..633d86b6 100644
+--- a/wie-midp/src/lib.rs
++++ b/wie-midp/src/lib.rs
+@@ -5,7 +5,7 @@ pub mod classes;
+ 
+ use wie_jvm_support::WieJavaClassProto;
+ 
+-pub fn get_protos() -> [WieJavaClassProto; 40] {
++pub fn get_protos() -> [WieJavaClassProto; 42] {
+     [
+         classes::javax::microedition::lcdui::Alert::as_proto(),
+         classes::javax::microedition::lcdui::AlertType::as_proto(),
+@@ -36,6 +36,7 @@ pub fn get_protos() -> [WieJavaClassProto; 40] {
+         classes::javax::microedition::media::MediaException::as_proto(),
+         classes::javax::microedition::media::Player::as_proto(),
+         classes::javax::microedition::media::PlayerListener::as_proto(),
++        classes::javax::microedition::media::VolumeControl::as_proto(),
+         classes::javax::microedition::midlet::MIDlet::as_proto(),
+         classes::javax::microedition::rms::InvalidRecordIDException::as_proto(),
+         classes::javax::microedition::rms::RecordStore::as_proto(),
+@@ -45,6 +46,7 @@ pub fn get_protos() -> [WieJavaClassProto; 40] {
+         classes::net::wie::EventQueue::as_proto(),
+         classes::net::wie::ItemStateEvent::as_proto(),
+         classes::net::wie::Launcher::as_proto(),
++        classes::net::wie::PlayerVolumeControl::as_proto(),
+         classes::net::wie::SmafPlayer::as_proto(),
+         classes::net::wie::WieError::as_proto(),
+     ]
+diff --git a/wie-skvm/src/classes/net/wie/wie_audio_clip.rs b/wie-skvm/src/classes/net/wie/wie_audio_clip.rs
+index baf007fc..41e0554e 100644
+--- a/wie-skvm/src/classes/net/wie/wie_audio_clip.rs
++++ b/wie-skvm/src/classes/net/wie/wie_audio_clip.rs
+@@ -65,9 +65,17 @@ impl WieAudioClip {
+         let raw: Vec<i8> = jvm.load_array(&data, offset as _, buffer_size as _).await?;
+         let bytes: Vec<u8> = raw.into_iter().map(|b| b as u8).collect();
+ 
++        // new data replaces the clip's previous sound
++        let previous: i32 = jvm.get_field(&this, "net/wie/WieAudioClip", "audioHandle", "I").await?;
++        if previous != 0 {
++            let _ = context.system().audio().close(previous as u32);
++            jvm.put_field(&mut this, "net/wie/WieAudioClip", "audioHandle", "I", 0).await?;
++        }
++
+         match context.system().audio().load_smaf(&bytes) {
+             Ok(audio_handle) => {
+-                jvm.put_field(&mut this, "net/wie/WieAudioClip", "audioHandle", "I", audio_handle as i32).await?;
++                jvm.put_field(&mut this, "net/wie/WieAudioClip", "audioHandle", "I", audio_handle as i32)
++                    .await?;
+             }
+             Err(e) => {
+                 tracing::warn!("net.wie.WieAudioClip::open: unsupported audio data ({e:?})");
+@@ -122,8 +130,14 @@ impl WieAudioClip {
+         Ok(())
+     }
+ 
+-    async fn close(_jvm: &Jvm, _context: &mut WieJvmContext, this: ClassInstanceRef<Self>) -> JvmResult<()> {
+-        tracing::warn!("stub net.wie.WieAudioClip::close({this:?})");
++    async fn close(jvm: &Jvm, context: &mut WieJvmContext, mut this: ClassInstanceRef<Self>) -> JvmResult<()> {
++        tracing::debug!("net.wie.WieAudioClip::close({this:?})");
++
++        let audio_handle: i32 = jvm.get_field(&this, "net/wie/WieAudioClip", "audioHandle", "I").await?;
++        if audio_handle != 0 {
++            let _ = context.system().audio().close(audio_handle as u32);
++            jvm.put_field(&mut this, "net/wie/WieAudioClip", "audioHandle", "I", 0).await?;
++        }
+ 
+         Ok(())
+     }
+diff --git a/wie-web/src/rust/audio_sink.rs b/wie-web/src/rust/audio_sink.rs
+index f74bf52a..773e4617 100644
+--- a/wie-web/src/rust/audio_sink.rs
++++ b/wie-web/src/rust/audio_sink.rs
+@@ -1,3 +1,5 @@
++use alloc::vec::Vec;
++
+ use js_sys::{Array, Int16Array, Uint8Array};
+ use wasm_bindgen::prelude::*;
+ 
+@@ -41,7 +43,14 @@ impl AudioSink {
+ impl wie_backend::AudioSink for AudioSink {
+     fn send(&self, command: AudioCommand) {
+         match command {
+-            AudioCommand::Play { handle, sequence, repeat } => {
++            // The JavaScript player mixes every playback into shared gain nodes: the clip volume is applied to the
++            // events as they are handed over (note velocities, wave samples), so a change reaches the next play.
++            AudioCommand::Play {
++                handle,
++                sequence,
++                repeat,
++                gain,
++            } => {
+                 let events = Array::new();
+                 for event in &sequence.events {
+                     let value = Array::new();
+@@ -49,6 +58,11 @@ impl wie_backend::AudioSink for AudioSink {
+ 
+                     match &event.data {
+                         AudioEventData::Midi(data) => {
++                            let mut data = data.clone();
++                            if gain < 1.0 && data.len() >= 3 && data[0] & 0xf0 == 0x90 && data[2] > 0 {
++                                // synths play velocity v at about (v/127)^2 amplitude
++                                data[2] = ((data[2] as f32 * gain.max(0.0).sqrt()).round() as u8).max(1);
++                            }
+                             value.push(&JsValue::from_str("midi"));
+                             value.push(Uint8Array::from(data.as_slice()).as_ref());
+                         }
+@@ -60,7 +74,12 @@ impl wie_backend::AudioSink for AudioSink {
+                             value.push(&JsValue::from_str("wave"));
+                             value.push(&JsValue::from(*channels));
+                             value.push(&JsValue::from(*sampling_rate));
+-                            value.push(Int16Array::from(samples.as_slice()).as_ref());
++                            if gain < 1.0 {
++                                let scaled: Vec<i16> = samples.iter().map(|sample| (*sample as f32 * gain) as i16).collect();
++                                value.push(Int16Array::from(scaled.as_slice()).as_ref());
++                            } else {
++                                value.push(Int16Array::from(samples.as_slice()).as_ref());
++                            }
+                         }
+                     }
+ 
+@@ -70,6 +89,7 @@ impl wie_backend::AudioSink for AudioSink {
+                 self.player.play(handle, sequence.duration as f64, events, repeat);
+             }
+             AudioCommand::Stop { handle } => self.player.stop(handle),
++            AudioCommand::SetGain { .. } => {}
+         }
+     }
+ }
+diff --git a/wie-wipi-c/src/api/media.rs b/wie-wipi-c/src/api/media.rs
+index 05b42163..43b0209c 100644
+--- a/wie-wipi-c/src/api/media.rs
++++ b/wie-wipi-c/src/api/media.rs
+@@ -4,6 +4,7 @@ use bytemuck::{Pod, Zeroable};
+ 
+ use wipi_types::wipic::WIPICWord;
+ 
++use wie_backend::MAX_AUDIO_VOLUME;
+ use wie_util::{Result, read_generic, write_generic};
+ 
+ use crate::context::WIPICContext;
+@@ -74,13 +75,27 @@ struct MdaClip {
+     device_info: i32,
+ 
+     // not in sdk, for internal usage
+-    handle: u32,
++    handle: u32, // backend audio handle, NO_SOUND until data is put
++    volume: i32,
+ }
+ 
++/// `MdaClip::handle` of a clip without data (the backend never hands out 0).
++const NO_SOUND: u32 = 0;
++
+ pub async fn clip_create(context: &mut dyn WIPICContext, ptr_type: WIPICWord, buf_size: WIPICWord, callback: WIPICWord) -> Result<WIPICWord> {
+     tracing::debug!("MC_mdaClipCreate({ptr_type:#x}, {buf_size:#x}, {callback:#x})");
+ 
+     let clip = context.alloc_raw(size_of::<MdaClip>() as u32)?;
++    // The allocation is not cleared: a clip made where a freed one was would otherwise reuse its sound handle.
++    write_generic(
++        context,
++        clip,
++        MdaClip {
++            handle: NO_SOUND,
++            volume: MAX_AUDIO_VOLUME as _,
++            ..MdaClip::zeroed()
++        },
++    )?;
+ 
+     Ok(clip)
+ }
+@@ -93,6 +108,12 @@ pub async fn clip_free(context: &mut dyn WIPICContext, clip: WIPICWord) -> Resul
+         return Ok(0);
+     }
+ 
++    // The clip's decoded sound goes with it (games load a clip per effect: 슈퍼액션히어로 3 ~30 a minute).
++    let data: MdaClip = read_generic(context, clip)?;
++    if data.handle != NO_SOUND && context.system().audio().close(data.handle).is_err() {
++        tracing::warn!("MC_mdaClipFree({clip:#x}): sound handle {} was already closed", data.handle);
++    }
++
+     context.free_raw(clip, size_of::<MdaClip>() as u32)?;
+ 
+     Ok(0)
+@@ -141,6 +162,13 @@ pub async fn clip_put_data(context: &mut dyn WIPICContext, ptr_clip: WIPICWord,
+     let handle = handle.unwrap();
+ 
+     let mut clip: MdaClip = read_generic(context, ptr_clip)?;
++    let mut audio = context.system().audio();
++    if clip.handle != NO_SOUND {
++        // new data replaces the clip's previous sound
++        let _ = audio.close(clip.handle);
++    }
++    let _ = audio.set_volume(handle, clip.volume.clamp(0, MAX_AUDIO_VOLUME as _) as u8);
++    drop(audio);
+     clip.handle = handle;
+     write_generic(context, ptr_clip, clip)?;
+ 
+@@ -159,26 +187,50 @@ pub async fn clip_set_position(_context: &mut dyn WIPICContext, clip: WIPICWord,
+     Ok(0)
+ }
+ 
+-pub async fn clip_get_volume(_context: &mut dyn WIPICContext, clip: WIPICWord) -> Result<WIPICWord> {
+-    tracing::warn!("stub MC_mdaClipGetVolume({clip:#x})");
++/// A new clip's volume is the top of the 0..=100 scale. Games read it from a scratch clip as the handset default:
++/// 미니게임천국 and other Com2uS titles play at max(this, MC_mdaGetVolume()) until the player changes it.
++pub async fn clip_get_volume(context: &mut dyn WIPICContext, clip: WIPICWord) -> Result<WIPICWord> {
++    tracing::debug!("MC_mdaClipGetVolume({clip:#x})");
+ 
+-    Ok(0)
++    if clip == 0 {
++        return Ok(0);
++    }
++
++    let clip: MdaClip = read_generic(context, clip)?;
++
++    Ok(clip.volume as _)
+ }
+ 
+-pub async fn clip_set_volume(_context: &mut dyn WIPICContext, clip: WIPICWord, volume: WIPICWord) -> Result<WIPICWord> {
+-    tracing::warn!("stub MC_mdaClipSetVolume({clip:#x}, {volume:#x})");
++/// Volume 0..=100 (슈퍼액션히어로 3 clamps its option × 10 to that range; 겟앰프드 scales its level to 100).
++pub async fn clip_set_volume(context: &mut dyn WIPICContext, ptr_clip: WIPICWord, volume: i32) -> Result<WIPICWord> {
++    tracing::debug!("MC_mdaClipSetVolume({ptr_clip:#x}, {volume})");
++
++    if ptr_clip == 0 {
++        return Ok(0);
++    }
++
++    let mut clip: MdaClip = read_generic(context, ptr_clip)?;
++    clip.volume = volume.clamp(0, MAX_AUDIO_VOLUME as _);
++    write_generic(context, ptr_clip, clip)?;
++
++    if clip.handle != NO_SOUND {
++        let _ = context.system().audio().set_volume(clip.handle, clip.volume as u8);
++    }
+ 
+     Ok(0)
+ }
+ 
+-pub async fn get_volume(_context: &mut dyn WIPICContext) -> Result<WIPICWord> {
+-    tracing::warn!("stub MC_mdaGetVolume");
++/// The application volume (0..=100), scaling every clip.
++pub async fn get_volume(context: &mut dyn WIPICContext) -> Result<WIPICWord> {
++    tracing::debug!("MC_mdaGetVolume");
+ 
+-    Ok(0)
++    Ok(context.system().audio().master_volume() as _)
+ }
+ 
+-pub async fn set_volume(_context: &mut dyn WIPICContext, volume: i32) -> Result<()> {
+-    tracing::warn!("stub MC_mdaSetVolume({volume})");
++pub async fn set_volume(context: &mut dyn WIPICContext, volume: i32) -> Result<()> {
++    tracing::debug!("MC_mdaSetVolume({volume})");
++
++    context.system().audio().set_master_volume(volume.clamp(0, MAX_AUDIO_VOLUME as _) as u8);
+ 
+     Ok(())
+ }
+@@ -191,6 +243,9 @@ pub async fn play(context: &mut dyn WIPICContext, ptr_clip: WIPICWord, repeat: W
+     }
+ 
+     let clip: MdaClip = read_generic(context, ptr_clip)?;
++    if clip.handle == NO_SOUND {
++        return Ok(0);
++    }
+ 
+     let result = context.system().audio().play(clip.handle, repeat != 0);
+ 
+@@ -280,3 +335,74 @@ pub async fn unk18(_context: &mut dyn WIPICContext, clip: WIPICWord) -> Result<W
+ 
+     Ok(0)
+ }
++
++#[cfg(test)]
++mod tests {
++    use alloc::boxed::Box;
++
++    use test_utils::TestPlatform;
++    use wie_backend::{DefaultTaskRunner, System};
++    use wie_util::{ByteWrite, Result, read_generic};
++
++    use crate::{WIPICContext, context::test::TestContext};
++
++    use super::{MdaClip, NO_SOUND, clip_create, clip_free, clip_get_volume, clip_put_data, clip_set_volume, get_volume, set_volume};
++
++    fn media_test_context() -> TestContext {
++        TestContext::with_system(System::new(Box::new(TestPlatform::new()), "test-pid", "test-aid", DefaultTaskRunner))
++    }
++
++    #[futures_test::test]
++    async fn clip_volume_follows_the_clip_and_its_sound() -> Result<()> {
++        let mut context = media_test_context();
++        let data = context.alloc_raw(4)?;
++        context.write_bytes(data, &[0; 4])?;
++
++        let clip = clip_create(&mut context, 0, 0x400, 0).await?;
++        assert_eq!(clip_get_volume(&mut context, clip).await?, 100);
++
++        // a volume set before the data reaches the sound made from it
++        clip_set_volume(&mut context, clip, 40).await?;
++        assert_eq!(clip_put_data(&mut context, clip, data, 4).await?, 4);
++        let handle = read_generic::<MdaClip, _>(&context, clip)?.handle;
++        assert_ne!(handle, NO_SOUND);
++        assert_eq!(context.system().audio().volume(handle).unwrap(), 40);
++
++        clip_set_volume(&mut context, clip, 250).await?;
++        assert_eq!(clip_get_volume(&mut context, clip).await?, 100);
++        clip_set_volume(&mut context, clip, -3).await?;
++        assert_eq!(clip_get_volume(&mut context, clip).await?, 0);
++        assert_eq!(context.system().audio().volume(handle).unwrap(), 0);
++
++        assert_eq!(get_volume(&mut context).await?, 100);
++        set_volume(&mut context, 66).await?;
++        assert_eq!(get_volume(&mut context).await?, 66);
++
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn clip_free_and_new_data_close_the_previous_sound() -> Result<()> {
++        let mut context = media_test_context();
++        let data = context.alloc_raw(4)?;
++        context.write_bytes(data, &[0; 4])?;
++
++        let clip = clip_create(&mut context, 0, 0x400, 0).await?;
++        clip_put_data(&mut context, clip, data, 4).await?;
++        clip_put_data(&mut context, clip, data, 4).await?;
++        assert_eq!(context.system().audio().loaded_count(), 1);
++
++        clip_free(&mut context, clip).await?;
++        assert_eq!(context.system().audio().loaded_count(), 0);
++
++        // a clip made over a freed one's memory starts without a sound
++        let next = context.alloc_raw(0)?; // the test allocator's next address
++        context.write_bytes(next, &[0x55; size_of::<MdaClip>()])?;
++        let fresh = clip_create(&mut context, 0, 0x400, 0).await?;
++        assert_eq!(fresh, next);
++        assert_eq!(read_generic::<MdaClip, _>(&context, fresh)?.handle, NO_SOUND);
++        clip_free(&mut context, fresh).await?;
++
++        Ok(())
++    }
++}
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_box_component.rs b/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_box_component.rs
+index c3296122..2f32f09e 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_box_component.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_box_component.rs
+@@ -7,6 +7,8 @@ use rustjava_runtime::classes::java::lang::String;
+ 
+ use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
+ 
++use crate::classes::org::kwis::msp::lwc::TextComponent;
++
+ // class org.kwis.msp.lwc.TextBoxComponent
+ pub struct TextBoxComponent;
+ 
+@@ -28,15 +30,15 @@ impl TextBoxComponent {
+     async fn init(
+         jvm: &Jvm,
+         _: &mut WieJvmContext,
+-        this: ClassInstanceRef<TextBoxComponent>,
++        mut this: ClassInstanceRef<TextBoxComponent>,
+         data: ClassInstanceRef<String>,
+         constraint: i32,
+     ) -> JvmResult<()> {
+-        tracing::warn!("stub org.kwis.msp.lwc.TextBoxComponent::<init>({this:?}, {data:?}, {constraint:?})");
++        tracing::debug!("org.kwis.msp.lwc.TextBoxComponent::<init>({this:?}, {data:?}, {constraint:?})");
+ 
+         let _: () = jvm.invoke_special(&this, "org/kwis/msp/lwc/TextComponent", "<init>", "()V", ()).await?;
+ 
+-        Ok(())
++        TextComponent::init_text(jvm, &mut this, data, constraint).await
+     }
+ 
+     async fn init_with_max_length(
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_component.rs b/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_component.rs
+index 93441c49..ee30e30a 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_component.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_component.rs
+@@ -23,6 +23,7 @@ impl TextComponent {
+                 JavaMethodProto::new("setString", "(Ljava/lang/String;)V", Self::set_string, MethodAccessFlags::PUBLIC),
+                 JavaMethodProto::new("setMaxLength", "(I)V", Self::set_max_length, MethodAccessFlags::PUBLIC),
+                 JavaMethodProto::new("getString", "()Ljava/lang/String;", Self::get_string, MethodAccessFlags::PUBLIC),
++                JavaMethodProto::new("getConstraint", "()I", Self::get_constraint, MethodAccessFlags::PUBLIC),
+             ],
+             fields: vec![
+                 JavaFieldProto::new("m_cPos", "I", FieldAccessFlags::PROTECTED),
+@@ -30,6 +31,7 @@ impl TextComponent {
+                 JavaFieldProto::new("maxLength", "I", FieldAccessFlags::PROTECTED),
+                 JavaFieldProto::new("m_td", "[C", FieldAccessFlags::PROTECTED),
+                 JavaFieldProto::new("imHandler", "Lorg/kwis/msp/lcdui/InputMethodHandler;", FieldAccessFlags::PROTECTED),
++                JavaFieldProto::new("constraint", "I", FieldAccessFlags::PRIVATE),
+             ],
+             access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::ABSTRACT,
+         }
+@@ -58,7 +60,8 @@ impl TextComponent {
+     async fn set_max_length(jvm: &Jvm, _: &mut WieJvmContext, mut this: ClassInstanceRef<TextComponent>, max_length: i32) -> JvmResult<()> {
+         tracing::debug!("org.kwis.msp.lwc.TextComponent::setMaxLength({this:?}, {max_length})");
+ 
+-        jvm.put_field(&mut this, "org/kwis/msp/lwc/TextComponent", "maxLength", "I", max_length).await?;
++        jvm.put_field(&mut this, "org/kwis/msp/lwc/TextComponent", "maxLength", "I", max_length)
++            .await?;
+ 
+         Ok(())
+     }
+@@ -86,6 +89,25 @@ impl TextComponent {
+         Ok(())
+     }
+ 
++    /// The input constraint the subclass was created with (TextFieldComponent / TextBoxComponent constructors).
++    async fn get_constraint(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<TextComponent>) -> JvmResult<i32> {
++        tracing::debug!("org.kwis.msp.lwc.TextComponent::getConstraint({this:?})");
++
++        jvm.get_field(&this, "org/kwis/msp/lwc/TextComponent", "constraint", "I").await
++    }
++
++    pub async fn init_text<T>(jvm: &Jvm, this: &mut ClassInstanceRef<T>, data: ClassInstanceRef<String>, constraint: i32) -> JvmResult<()> {
++        jvm.put_field(this, "org/kwis/msp/lwc/TextComponent", "constraint", "I", constraint)
++            .await?;
++        if !data.is_null() {
++            let _: () = jvm
++                .invoke_virtual(this, "org/kwis/msp/lwc/TextComponent", "setString", "(Ljava/lang/String;)V", (data,))
++                .await?;
++        }
++
++        Ok(())
++    }
++
+     async fn get_string(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<TextComponent>) -> JvmResult<ClassInstanceRef<String>> {
+         tracing::debug!("org.kwis.msp.lwc.TextComponent::getString({this:?})");
+ 
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_field_component.rs b/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_field_component.rs
+index 4614f95a..222613b9 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_field_component.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/lwc/text_field_component.rs
+@@ -7,6 +7,8 @@ use rustjava_runtime::classes::java::lang::String;
+ 
+ use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
+ 
++use crate::classes::org::kwis::msp::lwc::TextComponent;
++
+ // class org.kwis.msp.lwc.TextFieldComponent
+ pub struct TextFieldComponent;
+ 
+@@ -29,15 +31,15 @@ impl TextFieldComponent {
+     async fn init(
+         jvm: &Jvm,
+         _: &mut WieJvmContext,
+-        this: ClassInstanceRef<TextFieldComponent>,
++        mut this: ClassInstanceRef<TextFieldComponent>,
+         data: ClassInstanceRef<String>,
+         constraint: i32,
+     ) -> JvmResult<()> {
+-        tracing::warn!("stub org.kwis.msp.lwc.TextFieldComponent::<init>({this:?}, {data:?}, {constraint:?})");
++        tracing::debug!("org.kwis.msp.lwc.TextFieldComponent::<init>({this:?}, {data:?}, {constraint:?})");
+ 
+         let _: () = jvm.invoke_special(&this, "org/kwis/msp/lwc/TextComponent", "<init>", "()V", ()).await?;
+ 
+-        Ok(())
++        TextComponent::init_text(jvm, &mut this, data, constraint).await
+     }
+ 
+     async fn insert(
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/media/base_clip.rs b/wie-wipi-java/src/classes/org/kwis/msp/media/base_clip.rs
+index 1236f35c..967cc0f4 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/media/base_clip.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/media/base_clip.rs
+@@ -57,6 +57,16 @@ impl BaseClip {
+     ) -> JvmResult<i32> {
+         tracing::debug!("org.kwis.msp.media.Clip::putData({this:?}, {buffer:?}, {offset}, {length})");
+ 
++        // new data replaces the clip's previous sound (놈3 puts the same data three times per clip)
++        let previous: ClassInstanceRef<Player> = jvm
++            .get_field(&this, "org/kwis/msp/media/BaseClip", "player", "Ljavax/microedition/media/Player;")
++            .await?;
++        if !previous.is_null() {
++            let _: () = jvm
++                .invoke_virtual(&previous, "javax/microedition/media/Player", "close", "()V", ())
++                .await?;
++        }
++
+         let input_stream = jvm.new_class("java/io/ByteArrayInputStream", "([BII)V", (buffer, offset, length)).await?;
+         let r#type = JavaLangString::from_rust_string(jvm, "application/vnd.smaf").await?;
+ 
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/media/clip.rs b/wie-wipi-java/src/classes/org/kwis/msp/media/clip.rs
+index 8d8eaff0..ca7cde81 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/media/clip.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/media/clip.rs
+@@ -7,8 +7,9 @@ use jvm_class_proto::{JavaFieldProto, JavaMethodProto};
+ use jvm_types::{ClassAccessFlags, FieldAccessFlags, MethodAccessFlags};
+ use rustjava_runtime::classes::java::lang::String;
+ 
++use wie_backend::MAX_AUDIO_VOLUME;
+ use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
+-use wie_midp::classes::javax::microedition::media::Player;
++use wie_midp::classes::{javax::microedition::media::Player, net::wie::SmafPlayer};
+ 
+ use crate::classes::org::kwis::msp::media::PlayListener;
+ 
+@@ -63,6 +64,9 @@ impl Clip {
+         let _: () = jvm.invoke_special(&this, "org/kwis/msp/media/BaseClip", "<init>", "()V", ()).await?;
+         jvm.put_field(&mut this, "org/kwis/msp/media/Clip", "type", "Ljava/lang/String;", r#type)
+             .await?;
++        // a new clip plays at full volume (0..=100), like WIPI-C clips
++        jvm.put_field(&mut this, "org/kwis/msp/media/Clip", "volume", "I", MAX_AUDIO_VOLUME as i32)
++            .await?;
+ 
+         Ok(())
+     }
+@@ -145,18 +149,31 @@ impl Clip {
+         Ok(())
+     }
+ 
+-    async fn set_volume(jvm: &Jvm, _: &mut WieJvmContext, mut this: ClassInstanceRef<Clip>, level: i32) -> JvmResult<bool> {
++    async fn set_volume(jvm: &Jvm, context: &mut WieJvmContext, mut this: ClassInstanceRef<Clip>, level: i32) -> JvmResult<bool> {
+         tracing::debug!("org.kwis.msp.media.Clip::setVolume({this:?}, {level})");
+ 
+-        if !(0..=100).contains(&level) {
++        if !(0..=MAX_AUDIO_VOLUME as i32).contains(&level) {
+             return Ok(false);
+         }
+ 
+         jvm.put_field(&mut this, "org/kwis/msp/media/Clip", "volume", "I", level).await?;
++        // a playing clip follows at once; Player.play applies it to data put later
++        Self::apply_volume(jvm, context, &this).await?;
+ 
+         Ok(true)
+     }
+ 
++    /// Gives the clip's sound (if it has data) the clip's volume.
++    pub async fn apply_volume(jvm: &Jvm, context: &mut WieJvmContext, this: &ClassInstanceRef<Self>) -> JvmResult<()> {
++        let player = Self::player(jvm, this).await?;
++        if player.is_null() {
++            return Ok(());
++        }
++        let volume: i32 = jvm.get_field(this, "org/kwis/msp/media/Clip", "volume", "I").await?;
++
++        SmafPlayer::set_volume(jvm, context, &player, volume.clamp(0, MAX_AUDIO_VOLUME as i32) as u8).await
++    }
++
+     // not in spec, but some apps call it
+     async fn set_volume_void(jvm: &Jvm, _: &mut WieJvmContext, this: ClassInstanceRef<Clip>, level: i32) -> JvmResult<()> {
+         tracing::debug!("org.kwis.msp.media.Clip::setVolume({this:?}, {level})");
+@@ -333,7 +350,7 @@ mod test {
+                 .invoke_virtual(&second_clip, "org/kwis/msp/media/Clip", "getVolume", "()I", ())
+                 .await?;
+ 
+-            assert_eq!(second_initial_volume, 0);
++            assert_eq!(second_initial_volume, 100);
+             assert!(minimum_set);
+             assert_eq!(minimum_volume, 0);
+             assert!(maximum_set);
+@@ -342,7 +359,7 @@ mod test {
+             assert_eq!(volume_after_below_minimum, 100);
+             assert!(!above_maximum_set);
+             assert_eq!(volume_after_above_maximum, 100);
+-            assert_eq!(second_final_volume, 0);
++            assert_eq!(second_final_volume, 100);
+ 
+             Ok(())
+         })
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/media/player.rs b/wie-wipi-java/src/classes/org/kwis/msp/media/player.rs
+index 16fa382f..4b8633d2 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/media/player.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/media/player.rs
+@@ -114,7 +114,7 @@ impl Player {
+         Ok(false)
+     }
+ 
+-    async fn play_clip(jvm: &Jvm, _context: &mut WieJvmContext, clip: ClassInstanceRef<Clip>, repeat: bool) -> JvmResult<bool> {
++    async fn play_clip(jvm: &Jvm, context: &mut WieJvmContext, clip: ClassInstanceRef<Clip>, repeat: bool) -> JvmResult<bool> {
+         tracing::debug!("org.kwis.msp.media.Player::play({clip:?}, {repeat})");
+ 
+         if clip.is_null() {
+@@ -123,6 +123,8 @@ impl Player {
+         let player = Clip::player(jvm, &clip).await?;
+ 
+         if !player.is_null() {
++            // setVolume may have come before the data
++            Clip::apply_volume(jvm, context, &clip).await?;
+             let _: () = jvm.invoke_virtual(&player, "net/wie/SmafPlayer", "start", "(Z)V", (repeat,)).await?;
+ 
+             Ok(true)
+@@ -148,7 +150,7 @@ impl Player {
+         Ok(false)
+     }
+ 
+-    async fn resume_clip(jvm: &Jvm, _: &mut WieJvmContext, clip: ClassInstanceRef<Clip>) -> JvmResult<bool> {
++    async fn resume_clip(jvm: &Jvm, context: &mut WieJvmContext, clip: ClassInstanceRef<Clip>) -> JvmResult<bool> {
+         tracing::debug!("org.kwis.msp.media.Player::resume({clip:?})");
+ 
+         if clip.is_null() {
+@@ -157,6 +159,7 @@ impl Player {
+         let player = Clip::player(jvm, &clip).await?;
+ 
+         if !player.is_null() {
++            Clip::apply_volume(jvm, context, &clip).await?;
+             // start(Z) is SmafPlayer's own entry point (see play_clip); the MIDP Player
+             // interface only declares start()V, so looking it up there fails.
+             let _: () = jvm.invoke_virtual(&player, "net/wie/SmafPlayer", "start", "(Z)V", (false,)).await?;
+diff --git a/wie-wipi-java/src/classes/org/kwis/msp/media/volume.rs b/wie-wipi-java/src/classes/org/kwis/msp/media/volume.rs
+index 2629ac81..d1e91416 100644
+--- a/wie-wipi-java/src/classes/org/kwis/msp/media/volume.rs
++++ b/wie-wipi-java/src/classes/org/kwis/msp/media/volume.rs
+@@ -4,6 +4,7 @@ use jvm::{Jvm, Result as JvmResult};
+ use jvm_class_proto::JavaMethodProto;
+ use jvm_types::{ClassAccessFlags, MethodAccessFlags};
+ 
++use wie_backend::MAX_AUDIO_VOLUME;
+ use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
+ 
+ // class org.kwis.msp.media.Volume
+@@ -48,14 +49,17 @@ impl Volume {
+         }
+     }
+ 
+-    async fn get(_: &Jvm, _: &mut WieJvmContext) -> JvmResult<i32> {
+-        tracing::warn!("stub org.kwis.msp.media.Volume::get()");
++    /// The application volume (0..=100) that scales every clip, shared with WIPI-C MC_mdaGet/SetVolume.
++    async fn get(_: &Jvm, context: &mut WieJvmContext) -> JvmResult<i32> {
++        tracing::debug!("org.kwis.msp.media.Volume::get()");
+ 
+-        Ok(0)
++        Ok(context.system().audio().master_volume() as i32)
+     }
+ 
+-    async fn set(_: &Jvm, _: &mut WieJvmContext, level: i32) -> JvmResult<()> {
+-        tracing::warn!("stub org.kwis.msp.media.Volume::set({level})");
++    async fn set(_: &Jvm, context: &mut WieJvmContext, level: i32) -> JvmResult<()> {
++        tracing::debug!("org.kwis.msp.media.Volume::set({level})");
++
++        context.system().audio().set_master_volume(level.clamp(0, MAX_AUDIO_VOLUME as i32) as u8);
+ 
+         Ok(())
+     }
