@@ -220,6 +220,8 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
 
             if (state is EmulatorSession.State.Loading || state is EmulatorSession.State.Idle) LoadingOverlay(ui.title)
 
+            if (state is EmulatorSession.State.Exited) LaunchedEffect(Unit) { host.closeAndFinish() }
+
             val sessionError = state as? EmulatorSession.State.Error
             val error = ui.error ?: sessionError?.message
             if (error != null) {

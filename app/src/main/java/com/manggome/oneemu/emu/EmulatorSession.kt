@@ -49,6 +49,9 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         data object Running : State()
         data object Paused : State()
 
+        /** The game quit by itself (RETRO_ENVIRONMENT_SHUTDOWN while running, e.g. a phone game's 게임종료). */
+        data object Exited : State()
+
         /**
          * [message] is the Korean text for the user; [detail] holds the raw reason plus the last core log lines
          * for a "자세히" expander / copy button.
@@ -540,7 +543,13 @@ class EmulatorSession(val game: GameEntity, val core: CoreInfo, private val hwAp
         )
     }
 
-    override fun onCoreShutdown() { _state.value = makeError(ErrorKind.CORE_SHUTDOWN, "RETRO_ENVIRONMENT_SHUTDOWN") }
+    override fun onCoreShutdown() {
+        // A running game that quits through its own menu is a normal end, not an error; only a shutdown
+        // before the game ever ran is reported.
+        val st = _state.value
+        _state.value = if (st is State.Running || st is State.Paused) State.Exited
+        else makeError(ErrorKind.CORE_SHUTDOWN, "RETRO_ENVIRONMENT_SHUTDOWN")
+    }
     override fun onFatal(what: String, errorCode: Int) { _state.value = makeError(ErrorKind.fromCode(errorCode), what) }
 
     fun consumeMessage() { _messages.value = null }
