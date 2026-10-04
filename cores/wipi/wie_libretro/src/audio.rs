@@ -355,8 +355,20 @@ impl Mixer {
     }
 }
 
+/// Level above which the output is compressed instead of hard-clipped.
+const LIMIT_KNEE: f32 = 0.75;
+
+/// Soft limiter: linear up to [`LIMIT_KNEE`], then a tanh curve that approaches full scale (same slope at the
+/// knee). Music plus several effect voices (던전앤파이터, 질주쾌감스케쳐, 미니게임천국) summed past full scale and
+/// were hard-clipped into crackle.
 fn to_i16(x: f32) -> i16 {
-    (x.clamp(-1.0, 1.0) * 32767.0) as i16
+    let m = x.abs();
+    let y = if m <= LIMIT_KNEE {
+        m
+    } else {
+        LIMIT_KNEE + (1.0 - LIMIT_KNEE) * ((m - LIMIT_KNEE) / (1.0 - LIMIT_KNEE)).tanh()
+    };
+    (y.copysign(x) * 32767.0) as i16
 }
 
 fn silence(pb: &mut Playback) {
@@ -516,6 +528,15 @@ mod tests {
         m.command(AudioCommand::SetGain { handle: 2, gain: 0.0 });
         m.render(&mut out);
         assert!(out.iter().any(|x| *x != 0));
+    }
+
+    #[test]
+    fn limiter_is_linear_below_the_knee_and_never_clips() {
+        assert_eq!(to_i16(0.5), (0.5 * 32767.0) as i16);
+        assert_eq!(to_i16(-0.5), -(0.5 * 32767.0) as i16);
+        assert!(to_i16(1.0) < to_i16(1.2) && to_i16(1.0) > 30000);
+        assert!(to_i16(0.9) > to_i16(0.8));
+        assert!(to_i16(-3.0) >= -32767);
     }
 
     #[test]

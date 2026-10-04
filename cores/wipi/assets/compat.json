@@ -172,10 +172,10 @@
    "carrier": "KTF",
    "pid": "PD004489",
    "aid": "01035578",
-   "status": "menu",
+   "status": "playable",
    "tested": "2026-10-04",
    "verified": "auto",
-   "note": "메뉴·도움말까지 확인. 본게임은 자동 테스트로 미확인.",
+   "note": "장사하기 → 모드·펫 선택 → 붕어빵 굽기까지 확인. 첫 실행 때 속도 체크가 있습니다.",
    "files": [
     {
      "sha256": "5bfe10a82849eb02bd49db9ed264139f7a5b5eb04bdf2083cca227bb3ba73ec6",
@@ -380,10 +380,10 @@
    "carrier": "LGT",
    "pid": "PD135777",
    "aid": "0002C663",
-   "status": "menu",
+   "status": "playable",
    "tested": "2026-10-04",
    "verified": "auto",
-   "note": "인증 실패 후 오프라인 진행 → 팀 선택·경기 준비까지 확인.",
+   "note": "인증 파일을 뺀 덤프: 서버 접속 실패 후 오프라인 진행, 경기(타격)까지 확인.",
    "files": [
     {
      "sha256": "3725d42082105a387d0a6e12a9b4f9da2f7163b4e8e032e915ebc3b2a38d3905",
@@ -687,10 +687,10 @@
    "carrier": "KTF",
    "pid": "PD004539",
    "aid": "01031C0A",
-   "status": "menu",
+   "status": "playable",
    "tested": "2026-10-04",
    "verified": "auto",
-   "note": "메뉴까지 확인. 자동 테스트가 잠긴 캐릭터 안내창에서 멈춰 본게임은 미확인.",
+   "note": "스토리 모드 → 캐릭터 선택에서 왼쪽 키로 쓸 수 있는 캐릭터를 고르면 진행 (잠긴 캐릭터 안내창은 CLR로 닫기). 덤프의 저장 설정이 볼륨 0이라 소리가 없으면 환경설정에서 볼륨을 올리세요.",
    "files": [
     {
      "sha256": "e085e193211d048f4906f801f79f7dd3ee6ef91e5405d179569c43e98460edc8",
@@ -719,10 +719,10 @@
    "carrier": "KTF",
    "pid": "PD004541",
    "aid": "01034DC3",
-   "status": "menu",
+   "status": "playable",
    "tested": "2026-10-04",
    "verified": "auto",
-   "note": "메뉴·게임설명까지 확인. 본게임은 자동 테스트로 미확인.",
+   "note": "스테이지 플레이 확인.",
    "files": [
     {
      "sha256": "3ccc6cf147d2d537a27b60e151732c2bed0144127bd1b93944591b0e4169373b",
@@ -767,10 +767,10 @@
    "carrier": "LGT",
    "pid": "PD134240",
    "aid": "0002C059",
-   "status": "intro",
+   "status": "playable",
    "tested": "2026-10-04",
    "verified": "auto",
-   "note": "도입부까지 확인.",
+   "note": "어드벤처 진행 확인.",
    "files": [
     {
      "sha256": "ecb1bf8d2079eed2b49b639697c8fda0c47d52cd9e7b6be39f3798bdbe9a5f71",
