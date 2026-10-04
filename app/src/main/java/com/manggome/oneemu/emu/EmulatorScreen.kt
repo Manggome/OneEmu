@@ -286,6 +286,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                 )
                 Sheet.CHEATS -> CheatsSheet(
                     gameId = session.game.id,
+                    gamePath = session.game.path,
                     core = session.core,
                     onChanged = { session.applyCheats() },
                     onMessage = { ui.toast = it },
