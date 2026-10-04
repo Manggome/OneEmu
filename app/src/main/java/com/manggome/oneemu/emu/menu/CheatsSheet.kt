@@ -24,10 +24,17 @@ import com.manggome.oneemu.R
 import com.manggome.oneemu.core.CoreInfo
 import com.manggome.oneemu.ui.theme.OneEmuColors
 
-/** In-game cheat sheet: a titled bottom sheet around the shared [CheatEditor]. */
+/** In-game cheat sheet: a titled bottom sheet with the game's presets ([CheatPresets]), the finder and the shared [CheatEditor]. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CheatsSheet(gameId: Long, core: CoreInfo?, onChanged: suspend () -> Unit, onMessage: (String) -> Unit, onDismiss: () -> Unit) {
+fun CheatsSheet(
+    gameId: Long,
+    gamePath: String,
+    core: CoreInfo?,
+    onChanged: suspend () -> Unit,
+    onMessage: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = OneEmuColors.Surface) {
         Row(
@@ -38,6 +45,7 @@ fun CheatsSheet(gameId: Long, core: CoreInfo?, onChanged: suspend () -> Unit, on
             Text(stringResource(R.string.cheat_title), style = MaterialTheme.typography.titleMedium)
         }
         Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+            if (core?.id == "wipi") CheatPresets(gameId = gameId, gamePath = gamePath, onChanged = onChanged, onMessage = onMessage)
             CheatFinder(gameId = gameId, onChanged = onChanged, onMessage = onMessage)
             CheatEditor(gameId = gameId, core = core, onChanged = onChanged, onMessage = onMessage)
         }

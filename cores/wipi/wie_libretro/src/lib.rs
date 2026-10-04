@@ -3,11 +3,12 @@
 
 mod archive;
 mod audio;
-mod cheat;
+pub mod cheat;
 mod clock;
 mod ffi;
 mod host;
 mod input;
+pub mod locate;
 mod log;
 mod options;
 mod quirks;
@@ -587,7 +588,8 @@ pub extern "C" fn retro_cheat_reset() {
     with_worker(|w| w.call(|s| s.reset_cheats()));
 }
 
-/// Codes are `AAAAAAAA:VALUE` memory locks (see cheat.rs), kept fixed every frame.
+/// Codes are raw `AAAAAAAA:VALUE` memory locks, `P:` pointer chains and `J:` Java field paths, kept fixed every
+/// frame or written once with a `once:` prefix (see cheat.rs).
 #[unsafe(no_mangle)]
 pub extern "C" fn retro_cheat_set(index: c_uint, enabled: bool, code: *const c_char) {
     let code = if code.is_null() { String::new() } else { unsafe { CStr::from_ptr(code) }.to_string_lossy().into_owned() };

@@ -1,0 +1,51 @@
+{
+ "schema": 1,
+ "updated": "2026-10-05",
+ "_comment": "피처폰(WIPI) 게임별 치트 프리셋. 앱의 치트 화면 '게임 치트'에 PID로 찾아 보여 준다. code 의 {v} 자리에 사용자가 넣은 숫자(10진수)가 들어간다. 코드 형식은 cores/wipi/wie_libretro/src/cheat.rs: P:BASE>OFF:{v} (게임 바이너리의 데이터/BSS 주소에서 포인터를 따라감, 재실행해도 같은 주소), J:Class.field.field:{v} (자바 게임 필드 경로). type: u8/u16/i16/u32/i32/i64 (입력 범위), min/max 로 좁힐 수 있다. files: 확인한 파일(SHA-256); 같은 PID 의 다른 파일이면 '다른 판본' 경고와 함께 보여 준다. 게임 파일은 포함하지 않는다. 항목 찾는 법은 wipi_headless 의 --cheat 'locate' 단계 참고.",
+ "games": [
+  {
+   "title": "슈퍼액션히어로 3",
+   "carrier": "LGT",
+   "pid": "PD121120",
+   "files": [
+    {
+     "sha256": "8cbd82eaeddc2fadbbd07997ba3b993c0b80b1a31ad31a87dd144fbcd3861d06",
+     "size": 777549
+    }
+   ],
+   "cheats": [
+    {
+     "name": "별",
+     "code": "P:015087C0:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 99999,
+     "note": "화면 왼쪽 아래 별 개수. 새 게임은 2000개. 바꾼 값은 게임이 저장할 때(환경설정 변경 등) 세이브에 남습니다."
+    }
+   ]
+  },
+  {
+   "title": "영웅서기 1",
+   "carrier": "KTF",
+   "pid": "PD002678",
+   "files": [
+    {
+     "sha256": "ead25bc6ffa7777862328ba6fa057911645d69ad47c2e8d922a1d545a1728d2d",
+     "size": 1044629
+    }
+   ],
+   "cheats": [
+    {
+     "name": "골드",
+     "code": "J:p.a(Lcs).a(Lbr).a(I):{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999999,
+     "default": 99999,
+     "note": "상태 창 오른쪽 위 금액. 상태 창을 다시 열면 바뀐 숫자가 보입니다."
+    }
+   ]
+  }
+ ]
+}

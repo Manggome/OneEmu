@@ -2,7 +2,18 @@
 //!
 //!   wipi_headless <game.zip|jar|jad> [--frames N] [--keys "120:OK,200:5,260:LSK"] [--dump DIR] [--every N]
 //!                 [--option key=value ...] [--system DIR] [--wav OUT.wav] [--assets DIR] [--keys-file FILE]
-//!                 [--cheat "600:start:4:1500,900:dec,960:write:99999,1200:lock:99999"]
+//!                 [--cheat "600:start:4:1500,900:dec,960:write:99999,1200:lock:99999"] [--cheat-file FILE]
+//!
+//! Cheat steps (`FRAME:STEP`, comma-separated, or one per line in --cheat-file), run before that frame:
+//!   search: `start:SIZE:VALUE`, `equal:VALUE`, `changed`, `unchanged`, `inc`, `dec`, `write:VALUE` (all
+//!   candidates), `lock:VALUE` (first candidate, as a raw code);
+//!   codes: `code:CODE` enables CODE as the next cheat (any syntax in cheat.rs, e.g. `code:once:P:0012A4C0>10:5000`),
+//!   `off:N` disables cheat N, `status` prints where each enabled code points and the value there;
+//!   research: `locate` (every search candidate, up to 16) or `locate:ADDR[:DEPTH[:MAXOFF]]` (hex address; Java
+//!   depth default 4, pointer offset limit default 0x10000) prints restart-proof locators reaching the address;
+//!   `probe:LOCATOR` / `probes:FILE` (one locator per line) print what locators resolve to now;
+//!   `peek:ADDR:LEN` prints LEN bytes (hex) from ADDR as 32-bit words; `java` lists the application's Java
+//!   classes, `java:Class` its static fields with values, `java:Class.field.field` the object or array there.
 //!
 //! Runs N frames (default 1800 = 30 s of game time) with scripted key taps (each held 4 frames), dumps
 //! every N-th frame as PPM, and prints timing plus how much of the last frame is non-black.
@@ -10,7 +21,7 @@
 use std::{fs, path::PathBuf, time::Instant};
 
 use wie_backend::KeyCode;
-use wipi_libretro::{FrameOutput, KeySet, LoadRequest, RawOptions, SearchOp, Session};
+use wipi_libretro::{FrameOutput, KeySet, LoadRequest, RawOptions, SearchOp, Session, cheat::Value};
 
 fn parse_key(name: &str) -> Option<KeyCode> {
     Some(match name {
@@ -72,7 +83,78 @@ fn write_wav(path: &PathBuf, samples: &[i16]) -> std::io::Result<()> {
 
 /// `start:SIZE:VALUE`, `equal:VALUE`, `changed`, `unchanged`, `inc`, `dec`, `write:VALUE` (all candidates),
 /// `lock:VALUE` (first candidate, as a cheat code).
-fn run_cheat_step(session: &mut Session, step: &str) {
+fn run_cheat_step(session: &mut Session, step: &str, next_index: &mut u32) {
+    if let Some(code) = step.strip_prefix("code:") {
+        session.set_cheat(*next_index, true, code);
+        println!("cheat {step}: enabled as #{next_index}");
+        *next_index += 1;
+        return;
+    }
+    if let Some(n) = step.strip_prefix("off:") {
+        session.set_cheat(n.trim().parse().unwrap_or(u32::MAX), false, "");
+        println!("cheat {step}: disabled");
+        return;
+    }
+    if step == "status" {
+        for s in session.cheat_status() {
+            let at = s.at.map(|at| format!("{:08X} ({} bytes)", at.address, at.size)).unwrap_or_else(|| "unresolved".into());
+            println!("cheat status #{}: {} once={} done={} -> {at} now {}", s.index, s.code.locator, s.code.once, s.done, show(s.now));
+        }
+        return;
+    }
+    if step == "locate" || step.starts_with("locate:") {
+        let args: Vec<&str> = step.split(':').skip(1).collect();
+        let depth = args.get(1).and_then(|x| x.parse().ok()).unwrap_or(4);
+        let max_offset = args.get(2).and_then(|x| u32::from_str_radix(x.trim_start_matches("0x"), 16).ok()).unwrap_or(0x10000);
+        let targets: Vec<u32> = match args.first().and_then(|x| u32::from_str_radix(x.trim_start_matches("0x"), 16).ok()) {
+            Some(address) => vec![address],
+            None => session.cheat_results(16).0.into_iter().map(|(a, _)| a).collect(),
+        };
+        for target in targets {
+            let found = session.cheat_locate(target, depth, max_offset);
+            println!("cheat locate {target:08X}: {} locators", found.len());
+            for f in found.iter().take(60) {
+                println!("  {}  [{} bytes] {}", f.locator, f.size, f.note);
+            }
+        }
+        return;
+    }
+    if step == "java" || step.starts_with("java:") {
+        for line in session.cheat_java(step.strip_prefix("java:").unwrap_or("")) {
+            println!("cheat java {line}");
+        }
+        return;
+    }
+    if let Some(rest) = step.strip_prefix("peek:") {
+        let (address, len) = rest.split_once(':').unwrap_or((rest, "40"));
+        let hex = |x: &str| u32::from_str_radix(x.trim_start_matches("0x"), 16).unwrap_or(0);
+        let (address, len) = (hex(address) & !3, hex(len));
+        for row in (0..len).step_by(32) {
+            let words: Vec<String> = (row..(row + 32).min(len))
+                .step_by(4)
+                .map(|o| match session.cheat_probe(&format!("P:{:08X}:0", address + o)) {
+                    Some((_, _, Value::Int(v))) => format!("{v:08X}"),
+                    _ => "--------".into(),
+                })
+                .collect();
+            println!("cheat peek {:08X}: {}", address + row, words.join(" "));
+        }
+        return;
+    }
+    if let Some(rest) = step.strip_prefix("probe:").or_else(|| step.strip_prefix("probes:")) {
+        let locators: Vec<String> = if step.starts_with("probes:") {
+            fs::read_to_string(rest).unwrap_or_default().lines().map(|l| l.split_whitespace().next().unwrap_or("").to_string()).filter(|l| !l.is_empty()).collect()
+        } else {
+            vec![rest.to_string()]
+        };
+        for locator in locators {
+            match session.cheat_probe(&format!("{locator}:0")) {
+                Some((address, size, value)) => println!("cheat probe {locator} -> {address:08X} ({size} bytes) = {}", show(Some(value))),
+                None => println!("cheat probe {locator} -> unresolved"),
+            }
+        }
+        return;
+    }
     let parts: Vec<&str> = step.split(':').collect();
     let num = |i: usize| parts.get(i).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
     let (op, size) = match parts[0] {
@@ -99,11 +181,20 @@ fn run_cheat_step(session: &mut Session, step: &str) {
         "lock" => {
             if let Some((a, _)) = results.first() {
                 let code = format!("{a:08X}:{:0w$X}", num(1), w = width as usize * 2);
-                session.set_cheat(0, true, &code);
-                println!("cheat {step}: locked with code {code}");
+                session.set_cheat(*next_index, true, &code);
+                println!("cheat {step}: locked with code {code} as #{next_index}");
+                *next_index += 1;
             }
         }
         _ => println!("cheat {step}: unknown step"),
+    }
+}
+
+fn show(value: Option<Value>) -> String {
+    match value {
+        Some(Value::Int(v)) => v.to_string(),
+        Some(Value::Float(v)) => v.to_string(),
+        None => "-".into(),
     }
 }
 
@@ -174,8 +265,13 @@ fn run() -> anyhow::Result<()> {
                     options.push((k.to_string(), v.to_string()));
                 }
             }
-            "--cheat" => {
-                for item in args.next().unwrap_or_default().split(',').filter(|s| !s.is_empty()) {
+            "--cheat" | "--cheat-file" => {
+                let list = match a.as_str() {
+                    "--cheat" => args.next().unwrap_or_default().replace(',', "
+"),
+                    _ => fs::read_to_string(args.next().unwrap_or_default())?,
+                };
+                for item in list.lines().map(str::trim).filter(|s| !s.is_empty() && !s.starts_with('#')) {
                     let (f, step) = item.split_once(':').ok_or_else(|| anyhow::anyhow!("bad cheat item {item}"))?;
                     cheats.push((f.trim().parse()?, step.trim().to_string()));
                 }
@@ -222,6 +318,7 @@ fn run() -> anyhow::Result<()> {
         info.quirk_name
     );
 
+    let mut next_cheat = 0u32;
     let mut out = FrameOutput::default();
     let mut last: Option<(Vec<u32>, u32, u32)> = None;
     let started = Instant::now();
@@ -242,7 +339,7 @@ fn run() -> anyhow::Result<()> {
             }
         }
         for (_, step) in cheats.iter().filter(|(at, _)| *at == frame) {
-            run_cheat_step(&mut session, step);
+            run_cheat_step(&mut session, step, &mut next_cheat);
         }
         let t = Instant::now();
         out = session.run_frame(set, out);

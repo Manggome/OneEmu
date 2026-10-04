@@ -184,10 +184,11 @@ impl Session {
                 self.failed = Some(e);
                 self.mixer.stop_all();
                 out.error = self.failed.clone();
-            } else if self.cheats.has_locks()
-                && let Some(memory) = self.emulator.guest_memory()
-            {
-                self.cheats.apply(memory);
+            } else if self.cheats.has_locks() {
+                let heap = if self.cheats.needs_java() { self.emulator.java_heap() } else { None };
+                if let Some(memory) = self.emulator.guest_memory() {
+                    self.cheats.apply(memory, heap.as_deref());
+                }
             }
         }
 
@@ -292,6 +293,48 @@ impl Session {
 
     pub fn reset_cheats(&mut self) {
         self.cheats.reset_codes();
+    }
+
+    /// Where each enabled cheat code points now and the value there (tools).
+    pub fn cheat_status(&mut self) -> Vec<cheat::CodeStatus> {
+        let heap = self.emulator.java_heap();
+        match self.emulator.guest_memory() {
+            Some(memory) => self.cheats.status(memory, heap.as_deref()),
+            None => Vec::new(),
+        }
+    }
+
+    /// Locators that reach `address` and survive a restart (research for cheat presets; see locate.rs):
+    /// Java field paths up to `java_depth` references deep, and pointer chains from the game binary.
+    pub fn cheat_locate(&mut self, address: u32, java_depth: usize, max_offset: u32) -> Vec<crate::locate::Found> {
+        let heap = self.emulator.java_heap();
+        let Some(memory) = self.emulator.guest_memory() else {
+            return Vec::new();
+        };
+        let mut found = heap.as_deref().map(|heap| crate::locate::java_paths(memory, heap, address, java_depth)).unwrap_or_default();
+        found.extend(crate::locate::pointer_paths(memory, address, max_offset));
+        found
+    }
+
+    /// Browses the Java heap by name (research for cheat presets): no path = loaded application classes; `Class`
+    /// = its static fields; `Class.field[.field|[i]]...` = the fields or elements of the object there.
+    pub fn cheat_java(&mut self, path: &str) -> Vec<String> {
+        let Some(heap) = self.emulator.java_heap() else {
+            return vec!["no Java heap".into()];
+        };
+        let Some(memory) = self.emulator.guest_memory() else {
+            return Vec::new();
+        };
+        crate::locate::browse(memory, &*heap, path)
+    }
+
+    /// What `code` (one code, value included) resolves to now: (address, width, value there).
+    pub fn cheat_probe(&mut self, code: &str) -> Option<(u32, u8, cheat::Value)> {
+        let code = cheat::parse_one(code)?;
+        let heap = self.emulator.java_heap();
+        let memory = self.emulator.guest_memory()?;
+        let at = cheat::resolve(&code, memory, heap.as_deref())?;
+        Some((at.address, at.size, cheat::read_resolved(memory, at)?))
     }
 
     /// Everything the game wrote to stdout (tests / headless runs).
