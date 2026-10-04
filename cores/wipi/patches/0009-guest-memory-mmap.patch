@@ -1,0 +1,101 @@
+diff --git a/wie-core-arm/cpp/dynarmic_shim.cpp b/wie-core-arm/cpp/dynarmic_shim.cpp
+index f47c1798..0efc32fc 100644
+--- a/wie-core-arm/cpp/dynarmic_shim.cpp
++++ b/wie-core-arm/cpp/dynarmic_shim.cpp
+@@ -10,6 +10,14 @@
+ #include <memory>
+ #include <optional>
+ 
++#if defined(_WIN32)
++#define WIN32_LEAN_AND_MEAN
++#define NOMINMAX
++#include <windows.h>
++#else
++#include <sys/mman.h>
++#endif
++
+ #include <dynarmic/interface/A32/a32.h>
+ #include <dynarmic/interface/A32/config.h>
+ #include <dynarmic/interface/A32/coprocessor.h>
+@@ -282,4 +290,24 @@ void wie_dyn_invalidate(void* handle, std::uint32_t address, std::uint32_t lengt
+     static_cast<Shim*>(handle)->jit->InvalidateCacheRange(address, length);
+ }
+ 
++// Zero-filled guest memory straight from the OS: pages are committed when first touched. A calloc of the
++// 256 MiB heap is committed (and zeroed) up front by Android's allocator, ~270 MB per game.
++void* wie_dyn_map_pages(std::size_t size) {
++#if defined(_WIN32)
++    return VirtualAlloc(nullptr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
++#else
++    void* p = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
++    return p == MAP_FAILED ? nullptr : p;
++#endif
++}
++
++void wie_dyn_unmap_pages(void* pages, std::size_t size) {
++#if defined(_WIN32)
++    (void)size;
++    VirtualFree(pages, 0, MEM_RELEASE);
++#else
++    munmap(pages, size);
++#endif
++}
++
+ }  // extern "C"
+diff --git a/wie-core-arm/src/engine/dynarmic.rs b/wie-core-arm/src/engine/dynarmic.rs
+index f9198a4d..986ae516 100644
+--- a/wie-core-arm/src/engine/dynarmic.rs
++++ b/wie-core-arm/src/engine/dynarmic.rs
+@@ -1,12 +1,12 @@
+ //! ARM32 JIT engine on dynarmic (native targets only, behind the `dynarmic` feature).
+ //!
+-//! Guest memory is kept in 64 KiB host pages that never move once mapped (each mapping is one zeroed host
+-//! allocation, so the OS commits only the pages a game touches); dynarmic reaches them through a
++//! Guest memory is kept in 64 KiB host pages that never move once mapped (each mapping is one anonymous OS
++//! mapping, so the OS commits only the pages a game touches); dynarmic reaches them through a
+ //! 4 KiB-granular page table, so loads and stores run in generated code without calling back. Translated
+ //! code is dropped when the host writes into a page that has been translated, and on CP15 cache maintenance.
+ 
+ use alloc::{
+-    alloc::{Layout, alloc_zeroed, dealloc, handle_alloc_error},
++    alloc::{Layout, handle_alloc_error},
+     boxed::Box,
+     format, vec,
+     vec::Vec,
+@@ -48,14 +48,16 @@ unsafe extern "C" {
+     fn wie_dyn_cpsr(handle: *mut c_void) -> u32;
+     fn wie_dyn_set_cpsr(handle: *mut c_void, value: u32);
+     fn wie_dyn_invalidate(handle: *mut c_void, address: u32, length: u32);
++    fn wie_dyn_map_pages(size: usize) -> *mut u8;
++    fn wie_dyn_unmap_pages(pages: *mut u8, size: usize);
+ }
+ 
+ pub struct DynarmicEngine {
+     handle: *mut c_void,
+     /// Host page per 64 KiB guest page, null when unmapped. They point into `chunks`.
+     pages: Vec<*mut u8>,
+-    /// Zeroed host allocations backing `pages`, freed on drop. A mapping is one allocation instead of one per
+-    /// page: the 256 MiB guest heap as 4096 separate 64 KiB blocks was committed and zero-filled up front.
++    /// OS mappings (mmap / VirtualAlloc, zero-filled on first touch) backing `pages`, unmapped on drop. The 256
++    /// MiB guest heap as 4096 boxed 64 KiB blocks, and later as one calloc on Android, was committed up front.
+     chunks: Vec<(*mut u8, Layout)>,
+     // Both are read by generated code through raw pointers, so they must not move: boxed slices, never resized.
+     page_table: Box<[*mut u8]>,
+@@ -139,7 +141,7 @@ impl Drop for DynarmicEngine {
+     fn drop(&mut self) {
+         unsafe { wie_dyn_free(self.handle) };
+         for (chunk, layout) in self.chunks.drain(..) {
+-            unsafe { dealloc(chunk, layout) };
++            unsafe { wie_dyn_unmap_pages(chunk, layout.size()) };
+         }
+     }
+ }
+@@ -220,7 +222,7 @@ impl ArmEngine for DynarmicEngine {
+             // one allocation for each run of unmapped pages
+             let run = (index..end).take_while(|&i| self.pages[i].is_null()).count();
+             let layout = Layout::from_size_align(run * PAGE_SIZE, PAGE_SIZE).unwrap();
+-            let chunk = unsafe { alloc_zeroed(layout) };
++            let chunk = unsafe { wie_dyn_map_pages(layout.size()) };
+             if chunk.is_null() {
+                 handle_alloc_error(layout);
+             }
