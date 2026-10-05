@@ -4,6 +4,928 @@
  "_comment": "피처폰(WIPI) 게임별 치트 프리셋. 앱의 치트 화면 '게임 치트'에 PID로 찾아 보여 준다. code 의 {v} 자리에 사용자가 넣은 숫자(10진수)가 들어간다. 코드 형식은 cores/wipi/wie_libretro/src/cheat.rs: P:BASE>OFF:{v} (게임 바이너리의 데이터/BSS 주소에서 포인터를 따라감, 재실행해도 같은 주소), J:Class.field.field:{v} (자바 게임 필드 경로). type: u8/u16/i16/u32/i32/i64 (입력 범위), min/max 로 좁힐 수 있다. files: 확인한 파일(SHA-256); 같은 PID 의 다른 파일이면 '다른 판본' 경고와 함께 보여 준다. 게임 파일은 포함하지 않는다. 항목 찾는 법은 wipi_headless 의 --cheat 'locate' 단계 참고.",
  "games": [
   {
+   "title": "겟앰프드",
+   "carrier": "KTF",
+   "pid": "PD004539",
+   "files": [
+    {
+     "sha256": "e085e193211d048f4906f801f79f7dd3ee6ef91e5405d179569c43e98460edc8",
+     "size": 1282979
+    }
+   ],
+   "cheats": [
+    {
+     "name": "체력",
+     "code": "P:0013F4C0:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 9999,
+     "default": 100,
+     "note": "스토리 모드 내 캐릭터 체력(왼쪽 위 초록 막대). 최대는 100, 더 크게 넣으면 막대는 꽉 찬 채로 더 오래 버팁니다."
+    },
+    {
+     "name": "남은 이어하기",
+     "code": "P:0016DB50:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9,
+     "default": 9,
+     "note": "'게임을 계속하시겠습니까?(N회)' 횟수. 화면은 한 자리만 표시해서 10 이상은 글자가 깨집니다."
+    }
+   ]
+  },
+  {
+   "title": "놈3",
+   "carrier": "KTF",
+   "pid": "PD005376",
+   "files": [
+    {
+     "sha256": "b665ede83645e56828cb9cc93a1d32ed60303cb5efee286865f84df183fa43c8",
+     "size": 499053
+    }
+   ],
+   "cheats": [
+    {
+     "name": "생명",
+     "code": "J:u.v(I):{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 9,
+     "default": 5,
+     "note": "게임 중 하트 수. 화면에는 최대 5개까지 표시. 고정하면 무한 생명"
+    },
+    {
+     "name": "현재점수",
+     "code": "J:u.u(I):{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999,
+     "default": 500,
+     "note": "게임 중 현재점수. 스킨 획득 미션(500점 이상) 달성용. 1회 적용 권장"
+    }
+   ]
+  },
+  {
+   "title": "놈투",
+   "carrier": "KTF",
+   "pid": "PD001896",
+   "files": [
+    {
+     "sha256": "8ac1d682de08419bc5410f1a3d17df9fce7d21f0740a746f46e23d1130bd48ec",
+     "size": 276476
+    }
+   ],
+   "cheats": [
+    {
+     "name": "에너지",
+     "code": "J:b.hm.h1.a0[0]:{v}",
+     "type": "u8",
+     "min": 1,
+     "max": 100,
+     "default": 100,
+     "note": "화면 위 E 막대(최대 100). 고정하면 에너지가 줄지 않음"
+    }
+   ]
+  },
+  {
+   "title": "던전앤파이터 격투가편",
+   "carrier": "KTF",
+   "pid": "PD006079",
+   "files": [
+    {
+     "sha256": "4120f27288abc27eb5ff318a2daf79f07823b5781af94f22fa5c0d1905e29295",
+     "size": 731523
+    }
+   ],
+   "cheats": [
+    {
+     "name": "골드",
+     "code": "P:00168194:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 99999,
+     "note": "캐릭터 창(CHA) 아래 금액."
+    },
+    {
+     "name": "HP",
+     "code": "P:0016815C:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 9999,
+     "default": 130,
+     "note": "캐릭터 창 HP 앞 숫자(현재 HP). 최대치보다 크게 넣으면 막대가 넘쳐 보입니다."
+    },
+    {
+     "name": "MP",
+     "code": "P:00168160:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999,
+     "default": 130,
+     "note": "캐릭터 창 MP 앞 숫자(현재 MP)."
+    },
+    {
+     "name": "스탯 포인트",
+     "code": "P:00168190:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999,
+     "default": 10,
+     "note": "캐릭터 창 STAT: 숫자. 남은 포인트를 STR/DEX/CON/INT 에 나눠 줄 수 있습니다. 한 번 적용을 권장합니다."
+    },
+    {
+     "name": "경험치",
+     "code": "P:00168198:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 1000,
+     "note": "캐릭터 창 EXP. 한 번 적용을 권장합니다."
+    }
+   ]
+  },
+  {
+   "title": "리듬스타",
+   "carrier": "KTF",
+   "pid": "PD006539",
+   "files": [
+    {
+     "sha256": "f67a7089538bcaaa9086512e77453f059a74f4a07c11d7de4c18deea2dd37fc4",
+     "size": 2015106
+    }
+   ],
+   "cheats": [
+    {
+     "name": "음표",
+     "code": "P:00160420:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999,
+     "default": 9999,
+     "note": "곡 선택 화면의 ♪ 숫자(# 행성치유에 사용). 화면은 4자리(9999)까지만 보입니다. 행성치유 후나 곡이 끝난 뒤 재시작해도 남습니다."
+    }
+   ]
+  },
+  {
+   "title": "미니게임천국 2",
+   "carrier": "KTF",
+   "pid": "PD004335",
+   "files": [
+    {
+     "sha256": "ef5450374e2d87eaec7b2354412deb3254b8f836812461f9fe5e596de62d65cd",
+     "size": 239807
+    }
+   ],
+   "cheats": [
+    {
+     "name": "별",
+     "code": "P2:0013E1FA:{v}",
+     "type": "i16",
+     "min": 0,
+     "max": 32000,
+     "default": 9999,
+     "note": "게임 고르기 화면 오른쪽 아래 별 개수(잠긴 게임 열기에 500개). 화면을 다시 열면 바뀐 숫자가 보입니다. 게임이 32000개에서 막고, 게임을 열 때 저장됩니다."
+    }
+   ]
+  },
+  {
+   "title": "미니게임천국 3",
+   "carrier": "KTF",
+   "pid": "PD005770",
+   "files": [
+    {
+     "sha256": "2dab850c3aa252b26ba39dab8fdd155966db0bc8db15fac7ecf4170ab18fe000",
+     "size": 373945
+    }
+   ],
+   "cheats": [
+    {
+     "name": "별",
+     "code": "P:001540AC:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 10000,
+     "default": 9999,
+     "note": "게임 고르기 화면 오른쪽 아래 별 개수(게임 열기·선물가게에 사용). 게임이 판이 끝날 때 10000개로 줄이므로 그 이상은 고정할 때만 유지됩니다. 게임을 열 때 저장됩니다."
+    }
+   ]
+  },
+  {
+   "title": "미니게임천국 4",
+   "carrier": "KTF",
+   "pid": "PD007720",
+   "files": [
+    {
+     "sha256": "468a0d52e618ddcb3515aca0717db91b577ad3899c65cb0b7fcd7437c0feeec7",
+     "size": 692071
+    }
+   ],
+   "cheats": [
+    {
+     "name": "별",
+     "code": "P:0017BAA0:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999999,
+     "default": 99999,
+     "note": "게임 고르기 화면 오른쪽 아래 별 개수(게임 열기·선물가게에 사용). 화면을 다시 열면 바뀐 숫자가 보입니다. 7자리부터는 별 아이콘과 겹칩니다. 게임을 열 때 저장됩니다."
+    }
+   ]
+  },
+  {
+   "title": "붕어빵타이쿤3",
+   "carrier": "KTF",
+   "pid": "PD004489",
+   "files": [
+    {
+     "sha256": "5bfe10a82849eb02bd49db9ed264139f7a5b5eb04bdf2083cca227bb3ba73ec6",
+     "size": 552226
+    }
+   ],
+   "cheats": [
+    {
+     "name": "돈",
+     "code": "P:00140664>190>40:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999,
+     "default": 99999,
+     "note": "화면 위쪽 ₩ 금액 = 값×10원 (99999 = 999,990원). 7자리 이상은 화면에서 잘립니다. 장사끝 때 저장되어 이어하기에 남습니다. 버닝 모드에서는 같은 칸이 점수로 쓰입니다."
+    }
+   ]
+  },
+  {
+   "title": "슈퍼액션히어로 2",
+   "carrier": "KTF",
+   "pid": "PD006023",
+   "files": [
+    {
+     "sha256": "f9fdd6476e3a9267cc4ef6eec4f59a6484af837cd1b9fa1775215273a63b27a1",
+     "size": 457057
+    }
+   ],
+   "cheats": [
+    {
+     "name": "별",
+     "code": "P:0016ACE8:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 99999,
+     "note": "메인 화면 왼쪽 아래 별 개수(새 게임 2000). 환경설정을 한 번 바꾸면 세이브에 저장됩니다."
+    }
+   ]
+  },
+  {
+   "title": "액션퍼즐패밀리 1",
+   "carrier": "KTF",
+   "pid": "PD005489",
+   "files": [
+    {
+     "sha256": "79d9bc10be823a1a7119598bd6f7791583ae2af97c366cf338e5d55262c9f3ba",
+     "size": 368670
+    }
+   ],
+   "cheats": [
+    {
+     "name": "별",
+     "code": "P:0015903C:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999,
+     "default": 9999,
+     "note": "게임선택 화면 오른쪽 아래 별 개수(게임 열기 800개, 아이템가게에 사용). 6자리부터는 글자가 겹칩니다. 게임을 열고 판을 마치면 저장되어 재시작 후에도 남습니다."
+    }
+   ]
+  },
+  {
+   "title": "영웅서기 1",
+   "carrier": "KTF",
+   "pid": "PD002678",
+   "files": [
+    {
+     "sha256": "ead25bc6ffa7777862328ba6fa057911645d69ad47c2e8d922a1d545a1728d2d",
+     "size": 1044629
+    }
+   ],
+   "cheats": [
+    {
+     "name": "골드",
+     "code": "J:p.a(Lcs).a(Lbr).a(I):{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 99999,
+     "note": "상태 창 오른쪽 위 금액. 상태 창을 다시 열면 바뀐 숫자가 보입니다."
+    },
+    {
+     "name": "HP",
+     "code": "J:p.a(Lcs).a(I):{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 9999,
+     "default": 624,
+     "note": "상태 창 HP 앞 숫자(현재 HP). 최대치보다 크게 넣으면 막대가 넘쳐 보입니다."
+    },
+    {
+     "name": "SP",
+     "code": "J:p.a(Lcs).b(I):{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999,
+     "default": 612,
+     "note": "상태 창 SP 앞 숫자(현재 SP)."
+    },
+    {
+     "name": "경험치",
+     "code": "J:p.a(Lcs).c(I):{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 30000,
+     "note": "상태 창 EXP. NEXT 이상이면 다음 전투 후 레벨이 오릅니다. 한 번 적용을 권장합니다."
+    }
+   ]
+  },
+  {
+   "title": "영웅서기 2",
+   "carrier": "KTF",
+   "pid": "PD004517",
+   "files": [
+    {
+     "sha256": "0afb3c87273b2ed4731f756b0cd43bbbd25c532088391b196c8267405feea282",
+     "size": 890972
+    }
+   ],
+   "cheats": [
+    {
+     "name": "골드",
+     "code": "J:ag.f(I):{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 99999,
+     "note": "인벤토리 소지금. 창을 다시 열면 바뀐 숫자가 보입니다."
+    },
+    {
+     "name": "HP",
+     "code": "J:ag.a(La).a(I):{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 9999,
+     "default": 500,
+     "note": "상태 창 현재 HP. 화면 표시는 최대 HP에서 멈춥니다."
+    },
+    {
+     "name": "SP",
+     "code": "J:ag.a(La).b(I):{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999,
+     "default": 300,
+     "note": "상태 창 현재 SP."
+    },
+    {
+     "name": "경험치",
+     "code": "J:ag.a(La).c(I):{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 100000,
+     "note": "상태 창 EXP. 한 번 적용을 권장합니다(레벨업은 게임이 처리)."
+    }
+   ]
+  },
+  {
+   "title": "영웅서기 3",
+   "carrier": "KTF",
+   "pid": "PD007102",
+   "files": [
+    {
+     "sha256": "503d5d2f196b378c3ce38c12fccf62b718c4169e84f6fe1b62eaabcfd2fcc133",
+     "size": 1804711
+    }
+   ],
+   "cheats": [
+    {
+     "name": "골드",
+     "code": "P:001B7C38:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 99999,
+     "note": "메뉴(CLR) 소지금. 게임 저장 시 세이브에 남습니다."
+    },
+    {
+     "name": "HP",
+     "code": "P2:001B7C5E:{v}",
+     "type": "i16",
+     "min": 1,
+     "max": 9999,
+     "default": 393,
+     "note": "상태 창 현재 HP. 최대치보다 크게 넣으면 막대가 넘쳐 보입니다."
+    },
+    {
+     "name": "경험치",
+     "code": "P:001B7C50:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 10000,
+     "note": "상태 창 EXP. 한 번 적용을 권장합니다."
+    }
+   ]
+  },
+  {
+   "title": "영웅서기 4",
+   "carrier": "KTF",
+   "pid": "PD008712",
+   "files": [
+    {
+     "sha256": "49ade89578c59befbcc12945fa38070e0e31b625d9eff9975b5b5916d7055c42",
+     "size": 2497815
+    }
+   ],
+   "cheats": [
+    {
+     "name": "골드",
+     "code": "P:0019ABBC:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 99999,
+     "note": "인벤토리(메뉴 → 상태보기 → 3) 소지금. 게임 저장(시스템 → 세이브) 후 다시 불러와도 남습니다."
+    },
+    {
+     "name": "HP",
+     "code": "P:0019A28C:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 9999,
+     "default": 293,
+     "note": "상태 창 HP 앞 숫자(현재 HP). 최대치보다 크게 넣으면 막대가 넘쳐 보입니다."
+    },
+    {
+     "name": "경험치",
+     "code": "P:0019A35C:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 800,
+     "note": "상태 창 EXP. NEXT 이상이면 레벨이 오릅니다. 한 번 적용을 권장합니다."
+    }
+   ]
+  },
+  {
+   "title": "영웅서기 Zero",
+   "carrier": "KTF",
+   "pid": "PD005576",
+   "files": [
+    {
+     "sha256": "df5f0261a2f9315a745d181a52eb76ea6a89a0ab4bd4554a78e19cca076f4012",
+     "size": 1326663
+    }
+   ],
+   "cheats": [
+    {
+     "name": "골드",
+     "code": "J:r.e(I):{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 99999,
+     "note": "인벤토리 아래 현재소지금. 창을 다시 열면 바뀐 숫자가 보입니다."
+    },
+    {
+     "name": "HP",
+     "code": "J:r.a(Laj).a([I)[0]:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 9999,
+     "default": 130,
+     "note": "캐릭터 창 HP 앞 숫자(현재 HP). 최대치보다 크게 넣으면 막대가 넘쳐 보입니다."
+    },
+    {
+     "name": "SP",
+     "code": "J:r.a(Laj).a([I)[1]:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999,
+     "default": 105,
+     "note": "캐릭터 창 SP 앞 숫자(현재 SP)."
+    },
+    {
+     "name": "경험치",
+     "code": "J:r.a(Laj).a([I)[2]:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 1000,
+     "note": "캐릭터 창 EXP. 한 번 적용을 권장합니다."
+    }
+   ]
+  },
+  {
+   "title": "이노티아 연대기 1",
+   "carrier": "KTF",
+   "pid": "PD005362",
+   "files": [
+    {
+     "sha256": "93d5b6b8ceb5cf4ce15784e369a7af9cd8ef7a49d6f15816d665aedadc487a4a",
+     "size": 985530
+    }
+   ],
+   "cheats": [
+    {
+     "name": "HP",
+     "code": "P:0017108C:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 9999,
+     "default": 400,
+     "note": "캐릭터 정보(LSK) HP 앞 숫자. 최대치보다 크게 넣으면 막대가 넘쳐 보입니다."
+    },
+    {
+     "name": "MP",
+     "code": "P:00171090:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999,
+     "default": 300,
+     "note": "캐릭터 정보 MP 앞 숫자."
+    },
+    {
+     "name": "STR",
+     "code": "P:00171050:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 999,
+     "default": 50,
+     "note": "캐릭터 정보(LSK)에서 5 를 누르면 나오는 상세 창의 STR."
+    },
+    {
+     "name": "DEX",
+     "code": "P:00171054:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 999,
+     "default": 50,
+     "note": "상세 정보 DEX."
+    },
+    {
+     "name": "CON",
+     "code": "P:00171058:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 999,
+     "default": 50,
+     "note": "상세 정보 CON."
+    }
+   ]
+  },
+  {
+   "title": "질주쾌감스케쳐 1",
+   "carrier": "KTF",
+   "pid": "PD004547",
+   "files": [
+    {
+     "sha256": "e159b9727dbdbfab7d69bea44df52ffc822db0c291a670faa9e5024eddbc09a7",
+     "size": 288130
+    }
+   ],
+   "cheats": [
+    {
+     "name": "속도(km/h)",
+     "code": "P:0014F498:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 300,
+     "default": 150,
+     "note": "달리는 중 오른쪽 아래 속도. 400 이상은 화면이 특수 연출 상태로 굳으니 300 이하로."
+    }
+   ]
+  },
+  {
+   "title": "질주쾌감스케쳐 2",
+   "carrier": "KTF",
+   "pid": "PD006714",
+   "files": [
+    {
+     "sha256": "04159045a7eaf257328ac1b2fb9e83fc5aadf5fbc2aba19cabaf24438a390c3c",
+     "size": 848935
+    }
+   ],
+   "cheats": [
+    {
+     "name": "음표(TOTAL)",
+     "code": "P:001B8680:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 99999,
+     "note": "스테이지 선택 화면 TOTAL 음표. 펜/펫 구매에 쓰이며 구매하면 세이브에 남습니다."
+    },
+    {
+     "name": "타임(라이프)",
+     "code": "P:001BAF20:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 300,
+     "default": 300,
+     "note": "달리는 중 위쪽 분홍 숫자. 게임이 300으로 잘라서 그 이상은 의미 없습니다. 한 번만 쓰기는 달리기 시작한 뒤에 적용하세요."
+    }
+   ]
+  },
+  {
+   "title": "크로노스윙",
+   "carrier": "KTF",
+   "pid": "PD007589",
+   "files": [
+    {
+     "sha256": "1fe6c1c897d708dbb587a083dc450727c12de152de5e9e6458af75294a3061bb",
+     "size": 2240884
+    }
+   ],
+   "cheats": [
+    {
+     "name": "골드",
+     "code": "P:001B1070:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 99999,
+     "note": "메뉴(CLR) 아래 소지금. 저장하기 후 이어하기에도 남습니다."
+    },
+    {
+     "name": "HP",
+     "code": "P:001B0F44:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 9999,
+     "default": 500,
+     "note": "화면 아래 HP 막대 앞 숫자(현재 HP). 최대치보다 크게 넣으면 막대가 넘쳐 보입니다."
+    },
+    {
+     "name": "MP",
+     "code": "P:001B0F6C:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999,
+     "default": 300,
+     "note": "화면 아래 MP 막대 앞 숫자(현재 MP)."
+    }
+   ]
+  },
+  {
+   "title": "크아bnb2007",
+   "carrier": "KTF",
+   "pid": "PD004541",
+   "files": [
+    {
+     "sha256": "3ccc6cf147d2d537a27b60e151732c2bed0144127bd1b93944591b0e4169373b",
+     "size": 505022
+    }
+   ],
+   "cheats": [
+    {
+     "name": "루찌",
+     "code": "J:BnB/MasterCard.m_Instance.g_SaveInfo.nLucci:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999999,
+     "default": 999999,
+     "note": "상단 LUCCI. 스테이지 클리어 시 저장됨. 결과창은 6자리까지만 표시"
+    },
+    {
+     "name": "레벨",
+     "code": "J:BnB/MasterCard.m_Instance.g_SaveInfo.nLevel:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 10,
+     "default": 10,
+     "note": "상단 LV 마크. 11 이상은 마크 이미지가 없어 표시가 깨짐"
+    },
+    {
+     "name": "남은 시간",
+     "code": "J:BnB/MasterCard.m_Instance.m_CGameScene.m_nTimer:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 5999,
+     "default": 600,
+     "note": "초 단위(600=10:00, 5999=99:59). 스테이지 중에만 적용"
+    },
+    {
+     "name": "물줄기",
+     "code": "J:BnB/MasterCard.m_Instance.m_CGameScene.m_stPlayer.m_nPower:{v}",
+     "type": "i32",
+     "min": 1,
+     "max": 7,
+     "default": 7,
+     "note": "물풍선 폭발 길이. 새로 놓는 풍선부터 적용, 스테이지 시작 시 초기화되므로 고정 권장"
+    }
+   ]
+  },
+  {
+   "title": "2010슈퍼사커",
+   "carrier": "LGT",
+   "pid": "PD140600",
+   "files": [
+    {
+     "sha256": "c9b287e3edcf5647e530b706723c720f6210629c8369067bc5f3d49599c406de",
+     "size": 1535977
+    }
+   ],
+   "cheats": [
+    {
+     "name": "G포인트",
+     "code": "P:0150CEFC:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 99999,
+     "note": "스페셜 → G포인트 구입 화면의 '보유G포인트'. 환경설정을 한 번 바꾸면 세이브에 저장됩니다."
+    }
+   ]
+  },
+  {
+   "title": "2010프로야구",
+   "carrier": "LGT",
+   "pid": "PD135777",
+   "files": [
+    {
+     "sha256": "3725d42082105a387d0a6e12a9b4f9da2f7163b4e8e032e915ebc3b2a38d3905",
+     "size": 1766945
+    }
+   ],
+   "cheats": [
+    {
+     "name": "G포인트",
+     "code": "P:015096D4:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999,
+     "default": 99999,
+     "note": "메뉴 화면 오른쪽 위 G 옆 숫자. 6자리부터 G 아이콘과 겹칩니다. 환경설정을 한 번 바꾸면 세이브에 저장됩니다."
+    }
+   ]
+  },
+  {
+   "title": "놈ZERO",
+   "carrier": "LGT",
+   "pid": "PD129126",
+   "files": [
+    {
+     "sha256": "2a8a3dcd07eb3fe804707b0fe50cca42f4efdefcb8f8233a54c22f98521f2d3c",
+     "size": 1086595
+    }
+   ],
+   "cheats": [
+    {
+     "name": "전(동전)",
+     "code": "P:01505C94:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999999,
+     "default": 99999,
+     "note": "스토리 모드 화면 아래 동전 개수. 7자리까지 표시. 먹고하자(보약)에서 사면 저장됩니다."
+    }
+   ]
+  },
+  {
+   "title": "리얼사커매니저2009",
+   "carrier": "LGT",
+   "pid": "PD120967",
+   "files": [
+    {
+     "sha256": "b7699c10dfd1992814d26294e32c1376820802532eb5f70ba959a71ebd31ea45",
+     "size": 1336897
+    }
+   ],
+   "cheats": [
+    {
+     "name": "이적 예산",
+     "code": "P:01500008>5C>14>9F4:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999999,
+     "default": 500000,
+     "note": "단위 €1,000 (51000 = €51M). 시즌 리포트 '재정 현황'의 이적 예산(선수 영입 자금). 게임이 저장하면 세이브에 남습니다."
+    }
+   ]
+  },
+  {
+   "title": "메이플스토리 시그너스기사단",
+   "carrier": "LGT",
+   "pid": "PD144800",
+   "files": [
+    {
+     "sha256": "7857506333bdea137109a8148bcf8b8f9b55dbb16afe067770990227e9f72803",
+     "size": 2759624
+    }
+   ],
+   "cheats": [
+    {
+     "name": "메소",
+     "code": "P:01500038>70>28C:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 9999999,
+     "note": "정보창(취소키) item 탭 아래 금액. 8자리까지 표시. option 탭 저장하기 후 재시작해도 유지됩니다."
+    },
+    {
+     "name": "능력치 포인트",
+     "code": "P:01500038>70>274:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "정보창 status 탭 ABILITY POINT."
+    },
+    {
+     "name": "스킬 포인트",
+     "code": "P:01500038>70>278:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "정보창 skill 탭 SKILL POINT."
+    }
+   ]
+  },
+  {
+   "title": "메이플스토리 해적편",
+   "carrier": "LGT",
+   "pid": "PD127143",
+   "files": [
+    {
+     "sha256": "e675bbafa361c8b207692dec0e5e1dbe068fa242033058083ec13cf058fe6380",
+     "size": 1600373
+    }
+   ],
+   "cheats": [
+    {
+     "name": "메소",
+     "code": "P:01500484>154>134:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 9999999,
+     "note": "정보창(취소키) 아이템 탭 아래 금액. 8자리까지 표시됩니다."
+    },
+    {
+     "name": "능력치 포인트",
+     "code": "P:01500484>154>118:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "정보창 status 탭 ABILITY POINT."
+    },
+    {
+     "name": "스킬 포인트",
+     "code": "P:01500484>154>120:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "정보창 skill 탭 SKILL POINT. 초반 튜토리얼 섬에서는 게임 저장이 막혀 있어 재시작 유지는 확인하지 못했습니다."
+    }
+   ]
+  },
+  {
+   "title": "슈퍼액션히어로 1",
+   "carrier": "LGT",
+   "pid": "PD140617",
+   "files": [
+    {
+     "sha256": "c046d43d429b3671b316655b77e0e8d760c866e63017f0c85448be8291fa49bf",
+     "size": 402959
+    }
+   ],
+   "cheats": [
+    {
+     "name": "HERO POINT (만 단위)",
+     "code": "J:i.$117:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999,
+     "default": 99,
+     "note": "화면 위 HERO POINT 앞자리: 이 값 × 10000 + 아래 항목. 8자리가 되면 라벨과 살짝 겹칩니다. 스테이지 결과 후 세이브에 저장."
+    },
+    {
+     "name": "HERO POINT (끝 4자리)",
+     "code": "J:i.$118:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999,
+     "default": 9999,
+     "note": "HERO POINT 끝 4자리(0~9999). 넘치면 게임이 만 단위로 올립니다."
+    }
+   ]
+  },
+  {
    "title": "슈퍼액션히어로 3",
    "carrier": "LGT",
    "pid": "PD121120",
@@ -26,24 +948,295 @@
    ]
   },
   {
-   "title": "영웅서기 1",
-   "carrier": "KTF",
-   "pid": "PD002678",
+   "title": "액션퍼즐패밀리 1",
+   "carrier": "LGT",
+   "pid": "",
    "files": [
     {
-     "sha256": "ead25bc6ffa7777862328ba6fa057911645d69ad47c2e8d922a1d545a1728d2d",
-     "size": 1044629
+     "sha256": "1b26ca4ac1e532a389c9bea667bf50559fd3e14b2ed2140130e8ec70a1bb2528",
+     "size": 1106085
+    }
+   ],
+   "cheats": [
+    {
+     "name": "별",
+     "code": "J:k.$115[29]:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999999,
+     "default": 99999,
+     "note": "게임선택 화면 아래 ★ 숫자(새 게임 2400). 게임 열기(800개)·복장 구매에 씁니다. 7자리부터 글자와 겹칩니다. 구매 등으로 게임이 저장하면 세이브에 남습니다."
+    }
+   ]
+  },
+  {
+   "title": "액션퍼즐패밀리 3",
+   "carrier": "LGT",
+   "pid": "PD137085",
+   "files": [
+    {
+     "sha256": "953dff25ba9442de116eb4c1d8e9f5f09a0d2517007024981bdb23069752c16c",
+     "size": 768082
+    }
+   ],
+   "cheats": [
+    {
+     "name": "별",
+     "code": "P:0150FAA8:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999,
+     "default": 9999,
+     "note": "아이템샵(탈의실에서 #)에서 아이템 구매에 쓰는 별(선물 50개). 세이브에 저장됩니다."
+    },
+    {
+     "name": "만능열쇠",
+     "code": "P:0150FC40:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99,
+     "default": 9,
+     "note": "잠긴 게임을 무료로 여는 열쇠(처음 3개). '만능열쇠 남은갯수'에 표시."
+    }
+   ]
+  },
+  {
+   "title": "액션퍼즐패밀리 4",
+   "carrier": "LGT",
+   "pid": "PD149574",
+   "files": [
+    {
+     "sha256": "0e6575c16be76c41320f097792e2ceb2ba6385c1a0831cdec95752ecb1b5aebf",
+     "size": 1298814
+    }
+   ],
+   "cheats": [
+    {
+     "name": "별",
+     "code": "P:01508F08:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999999,
+     "default": 99999,
+     "note": "메뉴 화면 왼쪽 아래 ★ 숫자. 세이브에 저장됩니다."
+    },
+    {
+     "name": "게임 열쇠",
+     "code": "P:01508F10:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99,
+     "default": 9,
+     "note": "잠긴 게임을 여는 열쇠(처음 3개). '게임열쇠의 남은 갯수'에 표시."
+    }
+   ]
+  },
+  {
+   "title": "와일드프론티어",
+   "carrier": "LGT",
+   "pid": "PD137061",
+   "files": [
+    {
+     "sha256": "393d359d081593e3927d2c7d84a5df26863ecd4d476c869778af9a06f0009787",
+     "size": 1891703
+    }
+   ],
+   "cheats": [
+    {
+     "name": "골드(R)",
+     "code": "P:01417518:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 99999999,
+     "default": 999999,
+     "note": "메뉴(취소키) 아이템 탭 캐릭터 아래 'R' 금액. 99,999,999까지 표시됩니다."
+    },
+    {
+     "name": "스탯 포인트",
+     "code": "P:01417534:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "메뉴 스탯 탭 STAT POINT."
+    },
+    {
+     "name": "스킬 포인트",
+     "code": "P:01417538:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "메뉴 스킬 탭 SKILL POINT."
+    }
+   ]
+  },
+  {
+   "title": "제노니아 1",
+   "carrier": "LGT",
+   "pid": "PD116132",
+   "files": [
+    {
+     "sha256": "a947f46eebb25552043c750ac1c2f78182994ec15664f7a277797c3e6f050b98",
+     "size": 1549005
     }
    ],
    "cheats": [
     {
      "name": "골드",
-     "code": "J:p.a(Lcs).a(Lbr).a(I):{v}",
+     "code": "P:01400084>4:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999999999,
+     "default": 999999,
+     "note": "아이템 창 오른쪽 아래 금액. 게임 최대치 999,999,999. 게임 안에서 저장하면 세이브에 남습니다."
+    },
+    {
+     "name": "스탯 포인트",
+     "code": "P2:01400174>8>584:{v}",
+     "type": "u16",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "상태 창 POINT. 근력·민첩 등 + 버튼으로 분배합니다."
+    },
+    {
+     "name": "스킬 포인트",
+     "code": "P2:01400174>8>586:{v}",
+     "type": "u16",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "기술 창 SKILL POINT."
+    },
+    {
+     "name": "경험치",
+     "code": "P:01400174>8>578:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999999,
+     "default": 100000,
+     "note": "상태 창 EXP. 필요 경험치를 넘게 넣으면 다음에 경험치를 얻을 때 레벨이 오릅니다. '한 번 적용'을 권장합니다."
+    }
+   ]
+  },
+  {
+   "title": "제노니아 2",
+   "carrier": "LGT",
+   "pid": "PD134155",
+   "files": [
+    {
+     "sha256": "e24d57118a9c2487cdb62ecee1012843b81e2c7e9841df3dbc9a10563c76cfc1",
+     "size": 2498172
+    }
+   ],
+   "cheats": [
+    {
+     "name": "골드",
+     "code": "P:014000D0>4:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999999999,
+     "default": 999999,
+     "note": "아이템 창 오른쪽 아래 금액. 게임 최대치 999,999,999. 게임 안에서 저장하면 세이브에 남습니다."
+    },
+    {
+     "name": "스탯 포인트",
+     "code": "P2:0151C8F0>6D0:{v}",
+     "type": "u16",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "상태 창 POINT. 근력·민첩 등 + 버튼으로 분배합니다."
+    },
+    {
+     "name": "스킬 포인트",
+     "code": "P2:0151C8F0>6D2:{v}",
+     "type": "u16",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "기술 창 SKILL POINT."
+    },
+    {
+     "name": "경험치",
+     "code": "P:0151C8F0>6C4:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999999,
+     "default": 100000,
+     "note": "상태 창 EXP. 필요 경험치를 넘게 넣으면 다음에 경험치를 얻을 때 레벨이 오릅니다. '한 번 적용'을 권장합니다."
+    }
+   ]
+  },
+  {
+   "title": "제노니아 3",
+   "carrier": "LGT",
+   "pid": "PD147468",
+   "files": [
+    {
+     "sha256": "fc1a60e68ea0e9845d4a0f0051abbe3381f4d2cde0e15c9ed1ea0d593ef3cb56",
+     "size": 3289008
+    }
+   ],
+   "cheats": [
+    {
+     "name": "골드",
+     "code": "P:014000F8>4:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 999999999,
+     "default": 999999,
+     "note": "아이템 창 오른쪽 아래 금액. 게임 최대치 999,999,999. 게임 안에서 저장하면 세이브에 남습니다."
+    },
+    {
+     "name": "스탯 포인트",
+     "code": "P2:01515CE0>CB0:{v}",
+     "type": "u16",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "상태 창 POINT. 근력·민첩 등 + 버튼으로 분배합니다."
+    },
+    {
+     "name": "스킬 포인트",
+     "code": "P2:01515CE0>CB2:{v}",
+     "type": "u16",
+     "min": 0,
+     "max": 999,
+     "default": 99,
+     "note": "기술 창 SKILL POINT."
+    },
+    {
+     "name": "경험치",
+     "code": "P:01515CE0>CA4:{v}",
+     "type": "i32",
+     "min": 0,
+     "max": 9999999,
+     "default": 100000,
+     "note": "상태 창 EXP. 필요 경험치를 넘게 넣으면 다음에 경험치를 얻을 때 레벨이 오릅니다. '한 번 적용'을 권장합니다."
+    }
+   ]
+  },
+  {
+   "title": "학교가는길",
+   "carrier": "LGT",
+   "pid": "PD098387",
+   "files": [
+    {
+     "sha256": "be08d047cbaef52f458ccdf4739ea5314b73e7ec9f5eb3ee0537c7b34f815e96",
+     "size": 1034148
+    }
+   ],
+   "cheats": [
+    {
+     "name": "코인",
+     "code": "P:01400010>8>214:{v}",
      "type": "i32",
      "min": 0,
      "max": 999999,
      "default": 99999,
-     "note": "상태 창 오른쪽 위 금액. 상태 창을 다시 열면 바뀐 숫자가 보입니다."
+     "note": "매점 화면 아래 '코인'. 매점에 있을 때 적용하세요: 판(등교) 도중에 바꾸면 판이 끝날 때 저장된 값으로 돌아갑니다. 코인으로 아이템을 사면 그 값이 저장됩니다."
     }
    ]
   }

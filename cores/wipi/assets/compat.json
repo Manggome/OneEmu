@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "updated": "2026-10-04",
+ "updated": "2026-10-05",
  "_comment": "피처폰(WIPI) 게임 호환 목록. 파일 단위(SHA-256)로 판정하고, 같은 PID 의 다른 파일은 '다른 판본'으로 표시한다. status: perfect(완벽 호환: 끝까지·저장·재실행 확인) > playable > menu > intro > broken. verified: manual(사람이 실기기에서 확인) | auto(wipi_headless 자동 테스트). 게임 파일은 포함하지 않는다.",
  "games": [
   {
@@ -300,10 +300,10 @@
    "carrier": "KTF",
    "pid": "PD007974",
    "aid": "010100D5",
-   "status": "intro",
-   "tested": "2026-09-30",
+   "status": "playable",
+   "tested": "2026-10-05",
    "verified": "auto",
-   "note": "타이틀 뒤 확인을 누르면 게임이 오류 화면을 띄웁니다.",
+   "note": "첫 실행: 인증오류(3001) 후 종료(게임이 맞지 않는 인증서를 지움). 다음 실행에서 \"인증서가 없습니다\" 창에 왼쪽 키로 \"예\" → 임시인증으로 시작. 필드까지 확인.",
    "files": [
     {
      "sha256": "974e0df9ab1e51751efdef21a0fe324ad79917f41cd049fcfaf7c46c14f9e324",

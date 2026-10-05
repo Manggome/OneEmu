@@ -17,7 +17,8 @@ class WipiCheatCatalogTest {
         val catalog = json.decodeFromString<WipiCheatCatalog.Catalog>(file.readText())
         assertTrue(catalog.games.isNotEmpty())
         for (game in catalog.games) {
-            assertTrue(game.pid, game.pid.isNotBlank() && game.cheats.isNotEmpty())
+            // a dump without a descriptor has no PID and is found by its file instead
+            assertTrue(game.title, (game.pid.isNotBlank() || game.files.isNotEmpty()) && game.cheats.isNotEmpty())
             for (preset in game.cheats) {
                 assertTrue(preset.code, preset.code.contains(WipiCheatCatalog.VALUE))
                 assertTrue(preset.name, preset.lowest <= preset.highest)
