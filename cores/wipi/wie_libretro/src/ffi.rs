@@ -6,6 +6,7 @@ use core::ffi::{c_char, c_int, c_uint, c_void};
 pub const RETRO_API_VERSION: c_uint = 1;
 
 pub const RETRO_ENVIRONMENT_EXPERIMENTAL: c_uint = 0x10000;
+pub const RETRO_ENVIRONMENT_SET_ROTATION: c_uint = 1;
 pub const RETRO_ENVIRONMENT_SET_MESSAGE: c_uint = 6;
 pub const RETRO_ENVIRONMENT_SHUTDOWN: c_uint = 7;
 pub const RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: c_uint = 9;

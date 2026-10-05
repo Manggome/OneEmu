@@ -309,13 +309,14 @@ fn run() -> anyhow::Result<()> {
         options: RawOptions { values: options },
     })?;
     println!(
-        "loaded: {} [{}] {}x{} soundfont={} quirks={:?}",
+        "loaded: {} [{}] {}x{} soundfont={} quirks={:?} rotation={}",
         info.title,
         info.carrier.name(),
         info.width,
         info.height,
         info.has_soundfont,
-        info.quirk_name
+        info.quirk_name,
+        info.rotation
     );
 
     let mut next_cheat = 0u32;

@@ -65,23 +65,42 @@ fn lower(s: &str) -> String {
     s.to_ascii_lowercase()
 }
 
-/// Strips one folder that wraps every entry ("Game/__adf__" → "__adf__").
-fn strip_common_folder(files: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Vec<u8>> {
+/// Pictures and notes a dump may carry beside the app folder (an install guide image, a readme).
+fn is_loose_note(name: &str) -> bool {
+    let name = lower(name);
+    [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".txt", ".url", ".htm", ".html", ".md", ".pdf"]
+        .iter()
+        .any(|ext| name.ends_with(ext))
+}
+
+/// Strips one folder that wraps every entry ("Game/__adf__" → "__adf__"), dropping pictures/notes beside it.
+fn strip_common_folder(mut files: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Vec<u8>> {
+    let has_folder = files.keys().any(|k| k.contains('/'));
+    let loose: Vec<String> = files.keys().filter(|k| !k.contains('/')).cloned().collect();
+    if has_folder && !loose.is_empty() && loose.iter().all(|k| is_loose_note(k)) {
+        let kept: BTreeMap<String, Vec<u8>> = files.iter().filter(|(k, _)| k.contains('/')).map(|(k, v)| (k.clone(), v.clone())).collect();
+        if let Some(stripped) = strip_single_folder(&kept) {
+            return stripped;
+        }
+    }
+    if let Some(stripped) = strip_single_folder(&files) {
+        files = stripped;
+    }
+    files
+}
+
+fn strip_single_folder(files: &BTreeMap<String, Vec<u8>>) -> Option<BTreeMap<String, Vec<u8>>> {
     let mut prefix: Option<&str> = None;
     for name in files.keys() {
-        let Some((first, _)) = name.split_once('/') else {
-            return files;
-        };
+        let (first, _) = name.split_once('/')?;
         match prefix {
             None => prefix = Some(first),
             Some(p) if p == first => {}
-            _ => return files,
+            _ => return None,
         }
     }
-    let Some(prefix) = prefix.map(|p| format!("{p}/")) else {
-        return files;
-    };
-    files.into_iter().map(|(k, v)| (k[prefix.len()..].to_string(), v)).collect()
+    let prefix = format!("{}/", prefix?);
+    Some(files.iter().map(|(k, v)| (k[prefix.len()..].to_string(), v.clone())).collect())
 }
 
 fn text_field(data: &[u8], key: &str) -> Option<String> {
@@ -393,6 +412,19 @@ mod tests {
         assert!(files.contains_key("__adf__"));
         assert!(files.contains_key("P/i_pack.dat"));
         assert!(!files.contains_key("p/i_pack.dat"));
+    }
+
+    #[test]
+    fn drops_guide_picture_beside_the_app_folder() {
+        let files = normalize(map(&[
+            ("설치법.png", b"png"),
+            ("Game-wipi1.2/__adf__", b"AID:010100D2\n"),
+            ("Game-wipi1.2/010100D2.jar", b"x"),
+            ("Game-wipi1.2/p/i_pack.dat", b"data"),
+        ]));
+        assert!(files.contains_key("__adf__"));
+        assert!(files.contains_key("P/i_pack.dat"));
+        assert!(!files.contains_key("설치법.png"));
     }
 
     #[test]

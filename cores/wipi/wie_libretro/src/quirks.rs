@@ -35,6 +35,9 @@ pub struct Quirk {
     pub midi_volume: Option<u32>,
     pub pcm_volume: Option<u32>,
     pub key_repeat_ms: Option<u32>,
+    /// Quarter turns counter-clockwise for the display: landscape games that draw sideways on a
+    /// portrait LCD (the phone was held on its side) show upright with 1.
+    pub rotation: Option<u32>,
     pub note: Option<String>,
 }
 

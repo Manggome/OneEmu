@@ -14,6 +14,7 @@
 #   midi_volume    = 100                               배경음악 볼륨 %
 #   pcm_volume     = 100                               효과음 볼륨 %
 #   key_repeat_ms  = 100                               키 반복 간격 (0 = 반복 없음)
+#   rotation       = 1                                 화면을 반시계 방향으로 90°×N 회전 (폰을 옆으로 들고 하는 가로 게임 = 1)
 #   cpu            = "jit" | "interpreter"              CPU 실행 방식 (JIT 가 틀리는 게임만 interpreter)
 #   system_properties = { PHONENUMBER = "01000000000" } MC_knlGetSystemProperty 값 (기본: 전화번호 없음)
 #   note           = "메모"
@@ -39,3 +40,9 @@ name = "테일즈위버 루시안칼츠편 (LGT)"
 pid = "PD145765"
 system_properties = { PHONENUMBER = "01000000000" }
 note = "시작 시 memcpy(dst, 번호, strlen(번호) - 4): 번호가 비어 있으면 4GB 복사로 메모리 오류, 첫 화면도 안 나옴"
+
+[[game]]
+name = "영웅서기5 칠흑의계약 (LGT)"
+pid = "PD151088"
+rotation = 1
+note = "240x400 화면에 가로로 누운 그림을 그린다 (폰을 옆으로 들고 하는 게임). 방향키는 가로 화면 기준."

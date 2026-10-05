@@ -43,6 +43,8 @@ pub struct LoadInfo {
     pub carrier: Carrier,
     pub has_soundfont: bool,
     pub quirk_name: Option<String>,
+    /// Quarter turns counter-clockwise the frontend should show the picture with.
+    pub rotation: u32,
     pub pad_profile: PadProfile,
     pub deadzone: f32,
 }
@@ -140,6 +142,7 @@ impl Session {
             carrier,
             has_soundfont: mixer.has_soundfont(),
             quirk_name: quirk.as_ref().and_then(|q| q.name.clone().or(q.title.clone())),
+            rotation: quirk.as_ref().and_then(|q| q.rotation).unwrap_or(0) & 3,
             pad_profile: config.pad_profile,
             deadzone: config.deadzone,
         };
