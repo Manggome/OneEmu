@@ -863,22 +863,6 @@
    ]
   },
   {
-   "title": "액션퍼즐패밀리 2",
-   "carrier": "LGT",
-   "pid": "PD116528",
-   "aid": "00027D2D",
-   "status": "broken",
-   "tested": "2026-10-04",
-   "verified": "auto",
-   "note": "원래 폰의 인증 파일(ap2data.dat)이 없는 덤프라 인증 오류 4000 후 타이틀로 돌아갑니다.",
-   "files": [
-    {
-     "sha256": "ac562d201012442e1ff481500fd74ab10c609b753c8d04f0db22e4e92a9104de",
-     "size": 611356
-    }
-   ]
-  },
-  {
    "title": "영웅서기 5",
    "carrier": "LGT",
    "pid": "PD151088",
