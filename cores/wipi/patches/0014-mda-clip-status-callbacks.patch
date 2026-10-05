@@ -1,0 +1,515 @@
+diff --git a/wie-backend/src/system/audio.rs b/wie-backend/src/system/audio.rs
+index 3885abad..0bcbb4ee 100644
+--- a/wie-backend/src/system/audio.rs
++++ b/wie-backend/src/system/audio.rs
+@@ -193,6 +193,14 @@ impl Audio {
+         self.master_volume
+     }
+ 
++    /// How long one playback of the sound lasts in milliseconds: until its last event, or until the last of its
++    /// sampled waves has played out, whichever is later.
++    pub fn length(&self, audio_handle: AudioHandle) -> Result<u64, AudioError> {
++        let sound = self.files.get(&audio_handle).ok_or(AudioError::InvalidHandle)?;
++
++        Ok(sequence_length(&sound.sequence))
++    }
++
+     /// Number of loaded sounds (handles not closed yet).
+     pub fn loaded_count(&self) -> usize {
+         self.files.len()
+@@ -205,6 +213,24 @@ impl Audio {
+     }
+ }
+ 
++fn sequence_length(sequence: &AudioSequence) -> u64 {
++    sequence
++        .events
++        .iter()
++        .map(|event| match &event.data {
++            AudioEventData::Wave {
++                channels,
++                sampling_rate,
++                samples,
++            } if *channels > 0 && *sampling_rate > 0 => {
++                let frames = (samples.len() / *channels as usize) as u64;
++                event.time + (frames * 1000).div_ceil(*sampling_rate as u64)
++            }
++            _ => event.time,
++        })
++        .fold(sequence.duration, u64::max)
++}
++
+ fn fnv1a(data: &[u8]) -> u64 {
+     data.iter()
+         .fold(0xcbf2_9ce4_8422_2325, |hash, byte| (hash ^ *byte as u64).wrapping_mul(0x0100_0000_01b3))
+@@ -487,6 +513,34 @@ mod tests {
+         assert!(audio.set_volume(handle + 1, 10).is_err());
+     }
+ 
++    #[test]
++    fn length_lasts_until_the_last_event_or_wave_end() {
++        let mut audio = Audio::new(Box::new(RecordingSink(Arc::new(Mutex::new(Vec::new())))));
++        let midi = audio.insert(Arc::new(AudioSequence {
++            duration: 1200,
++            events: vec![TimedAudioEvent {
++                time: 100,
++                data: AudioEventData::Midi(vec![0x90, 60, 100]),
++            }],
++        }));
++        // 2 channels x 4000 frames at 8 kHz = 500 ms, starting at 900 ms
++        let wave = audio.insert(Arc::new(AudioSequence {
++            duration: 1000,
++            events: vec![TimedAudioEvent {
++                time: 900,
++                data: AudioEventData::Wave {
++                    channels: 2,
++                    sampling_rate: 8000,
++                    samples: vec![0; 8000],
++                },
++            }],
++        }));
++
++        assert_eq!(audio.length(midi).unwrap(), 1200);
++        assert_eq!(audio.length(wave).unwrap(), 1400);
++        assert!(audio.length(wave + 1).is_err());
++    }
++
+     #[test]
+     fn equal_data_shares_one_decoded_sequence_until_closed() {
+         let commands = Arc::new(Mutex::new(Vec::new()));
+diff --git a/wie-wipi-c/src/api/media.rs b/wie-wipi-c/src/api/media.rs
+index 43b0209c..5ddc6569 100644
+--- a/wie-wipi-c/src/api/media.rs
++++ b/wie-wipi-c/src/api/media.rs
+@@ -1,13 +1,13 @@
+-use alloc::vec;
++use alloc::{boxed::Box, collections::BTreeMap, vec, vec::Vec};
+ 
+ use bytemuck::{Pod, Zeroable};
+ 
+ use wipi_types::wipic::WIPICWord;
+ 
+-use wie_backend::MAX_AUDIO_VOLUME;
+-use wie_util::{Result, read_generic, write_generic};
++use wie_backend::{Instant, MAX_AUDIO_VOLUME};
++use wie_util::{Result, WieError, read_generic, write_generic};
+ 
+-use crate::context::WIPICContext;
++use crate::{WIPICResult, context::WIPICContext, method::MethodBody};
+ 
+ #[repr(C)]
+ #[derive(Clone, Copy, Pod, Zeroable)]
+@@ -82,6 +82,83 @@ struct MdaClip {
+ /// `MdaClip::handle` of a clip without data (the backend never hands out 0).
+ const NO_SOUND: u32 = 0;
+ 
++// Statuses the clip callback `MEDIACB(MC_MdaClip *clip, M_Int32 status)` given to MC_mdaClipCreate receives.
++const MC_MDA_STATUS_END_OF_DATA: i32 = 1;
++const MC_MDA_STATUS_STARTED: i32 = 2;
++const MC_MDA_STATUS_STOPP: i32 = 3;
++
++/// The callbacks of the live clips that have one, by clip address.
++///
++/// Sound managers run on these: Gamevil's (하이브리드 1/2, 제노니아, 2010프로야구) keeps one clip and makes the
++/// next one only after the callback reported that the last one ended or stopped and the game freed it there.
++/// Without the reports such a game plays its first sound and nothing after it.
++#[derive(Default)]
++struct ClipCallbacks {
++    clips: BTreeMap<WIPICWord, ClipCallback>,
++    last_generation: u64,
++}
++
++struct ClipCallback {
++    callback: WIPICWord,
++    /// Renewed on every change of the clip's playback (play, stop, new data) and for every clip made: a report
++    /// queued for an earlier playback, or for a freed clip, is dropped instead of reaching the game late.
++    generation: u64,
++    /// Played since it was last stopped, also after it reached its end: stopping it reports STOPP (하이브리드 stops
++    /// its clip from the END_OF_DATA callback and frees it on the STOPP that follows).
++    active: bool,
++}
++
++impl ClipCallbacks {
++    /// Starts a new generation of `clip`, optionally changing whether it is active.
++    fn renew(&mut self, clip: WIPICWord, active: Option<bool>) -> Option<(WIPICWord, u64)> {
++        let entry = self.clips.get_mut(&clip)?;
++        self.last_generation += 1;
++        entry.generation = self.last_generation;
++        if let Some(active) = active {
++            entry.active = active;
++        }
++
++        Some((entry.callback, entry.generation))
++    }
++}
++
++/// Reports `status` to the clip's callback on the game's thread at `due`, the way timers fire, unless the clip
++/// changed or was freed by then.
++fn report_status(context: &mut dyn WIPICContext, due: Instant, clip: WIPICWord, callback: WIPICWord, generation: u64, status: i32) {
++    struct StatusReport {
++        clip: WIPICWord,
++        callback: WIPICWord,
++        generation: u64,
++        status: i32,
++    }
++
++    #[async_trait::async_trait]
++    impl MethodBody<WieError> for StatusReport {
++        #[tracing::instrument(name = "clip_callback", skip_all)]
++        async fn call(&self, context: &mut dyn WIPICContext, _: Box<[WIPICWord]>) -> Result<WIPICResult> {
++            let current = context
++                .system()
++                .with_state(|clips: &mut ClipCallbacks| clips.clips.get(&self.clip).map(|entry| entry.generation));
++            if current == Some(self.generation) {
++                tracing::debug!("MC_mda clip {:#x} callback {:#x}(status {})", self.clip, self.callback, self.status);
++                context.call_function(self.callback, &[self.clip, self.status as _]).await?;
++            }
++
++            Ok(WIPICResult { results: Vec::new() })
++        }
++    }
++
++    context.set_timer(
++        due,
++        Box::new(StatusReport {
++            clip,
++            callback,
++            generation,
++            status,
++        }),
++    );
++}
++
+ pub async fn clip_create(context: &mut dyn WIPICContext, ptr_type: WIPICWord, buf_size: WIPICWord, callback: WIPICWord) -> Result<WIPICWord> {
+     tracing::debug!("MC_mdaClipCreate({ptr_type:#x}, {buf_size:#x}, {callback:#x})");
+ 
+@@ -97,6 +174,21 @@ pub async fn clip_create(context: &mut dyn WIPICContext, ptr_type: WIPICWord, bu
+         },
+     )?;
+ 
++    context.system().with_state(|clips: &mut ClipCallbacks| {
++        clips.clips.remove(&clip);
++        if callback != 0 {
++            clips.clips.insert(
++                clip,
++                ClipCallback {
++                    callback,
++                    generation: 0,
++                    active: false,
++                },
++            );
++            clips.renew(clip, None);
++        }
++    });
++
+     Ok(clip)
+ }
+ 
+@@ -113,6 +205,7 @@ pub async fn clip_free(context: &mut dyn WIPICContext, clip: WIPICWord) -> Resul
+     if data.handle != NO_SOUND && context.system().audio().close(data.handle).is_err() {
+         tracing::warn!("MC_mdaClipFree({clip:#x}): sound handle {} was already closed", data.handle);
+     }
++    context.system().with_state(|clips: &mut ClipCallbacks| clips.clips.remove(&clip));
+ 
+     context.free_raw(clip, size_of::<MdaClip>() as u32)?;
+ 
+@@ -171,6 +264,8 @@ pub async fn clip_put_data(context: &mut dyn WIPICContext, ptr_clip: WIPICWord,
+     drop(audio);
+     clip.handle = handle;
+     write_generic(context, ptr_clip, clip)?;
++    // the end of the sound it replaces is not reported
++    context.system().with_state(|clips: &mut ClipCallbacks| clips.renew(ptr_clip, None));
+ 
+     Ok(buf_size as _)
+ }
+@@ -247,10 +342,25 @@ pub async fn play(context: &mut dyn WIPICContext, ptr_clip: WIPICWord, repeat: W
+         return Ok(0);
+     }
+ 
+-    let result = context.system().audio().play(clip.handle, repeat != 0);
++    let mut audio = context.system().audio();
++    let result = audio.play(clip.handle, repeat != 0).and_then(|_| audio.length(clip.handle));
++    drop(audio);
+ 
+-    if let Err(x) = result {
+-        tracing::error!("Failed to load audio: {x:?}");
++    let length = match result {
++        Ok(length) => length,
++        Err(x) => {
++            tracing::error!("Failed to load audio: {x:?}");
++            return Ok(0);
++        }
++    };
++
++    // STARTED now, END_OF_DATA once a single play has played out; a repeating clip does not end.
++    if let Some((callback, generation)) = context.system().with_state(|clips: &mut ClipCallbacks| clips.renew(ptr_clip, Some(true))) {
++        let now = context.system().platform().now();
++        report_status(context, now, ptr_clip, callback, generation, MC_MDA_STATUS_STARTED);
++        if repeat == 0 {
++            report_status(context, now + length, ptr_clip, callback, generation, MC_MDA_STATUS_END_OF_DATA);
++        }
+     }
+ 
+     Ok(0)
+@@ -309,6 +419,21 @@ pub async fn stop(context: &mut dyn WIPICContext, ptr_clip: WIPICWord) -> Result
+ 
+     system.audio().stop(clip.handle);
+ 
++    // A clip that was played reports STOPP once, before this returns; stopping it again reports nothing.
++    // 하이브리드 2 frees an ended clip with MC_mdaStop + MC_mdaClipFree and resumes its music only after the
++    // callback saw STOPP: the report cannot wait until after the free.
++    let stopped = system.with_state(|clips: &mut ClipCallbacks| {
++        if clips.clips.get(&ptr_clip).is_some_and(|entry| entry.active) {
++            clips.renew(ptr_clip, Some(false))
++        } else {
++            None
++        }
++    });
++    if let Some((callback, _)) = stopped {
++        tracing::debug!("MC_mda clip {ptr_clip:#x} callback {callback:#x}(status {MC_MDA_STATUS_STOPP})");
++        context.call_function(callback, &[ptr_clip, MC_MDA_STATUS_STOPP as _]).await?;
++    }
++
+     Ok(0)
+ }
+ 
+@@ -338,20 +463,153 @@ pub async fn unk18(_context: &mut dyn WIPICContext, clip: WIPICWord) -> Result<W
+ 
+ #[cfg(test)]
+ mod tests {
+-    use alloc::boxed::Box;
++    use alloc::{boxed::Box, vec, vec::Vec};
+ 
+-    use test_utils::TestPlatform;
+-    use wie_backend::{DefaultTaskRunner, System};
++    use test_utils::{TestClock, TestPlatform};
++    use wie_backend::{DefaultTaskRunner, Instant, System};
+     use wie_util::{ByteWrite, Result, read_generic};
+ 
+     use crate::{WIPICContext, context::test::TestContext};
+ 
+-    use super::{MdaClip, NO_SOUND, clip_create, clip_free, clip_get_volume, clip_put_data, clip_set_volume, get_volume, set_volume};
++    use super::{
++        MC_MDA_STATUS_END_OF_DATA, MC_MDA_STATUS_STARTED, MC_MDA_STATUS_STOPP, MdaClip, NO_SOUND, clip_create, clip_free, clip_get_volume,
++        clip_put_data, clip_set_volume, get_volume, play, set_volume, stop,
++    };
+ 
+     fn media_test_context() -> TestContext {
+         TestContext::with_system(System::new(Box::new(TestPlatform::new()), "test-pid", "test-aid", DefaultTaskRunner))
+     }
+ 
++    const CALLBACK: u32 = 0x1235;
++
++    /// SMAF with one ADPCM audio track (mono, 8 kHz, 4 bit) that plays a wave of `wave_len` bytes at time 0:
++    /// `wave_len` / 4 ms long.
++    fn adpcm_smaf(wave_len: usize) -> Vec<u8> {
++        let sequence = [0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00];
++        let mut track = vec![0x00, 0x00, 0x11, 0x00, 0x02, 0x02];
++        track.extend_from_slice(b"Atsq");
++        track.extend_from_slice(&(sequence.len() as u32).to_be_bytes());
++        track.extend_from_slice(&sequence);
++        track.extend_from_slice(b"Awa\x01");
++        track.extend_from_slice(&(wave_len as u32).to_be_bytes());
++        track.extend(core::iter::repeat_n(0x11, wave_len));
++
++        let mut body = b"ATR\x00".to_vec();
++        body.extend_from_slice(&(track.len() as u32).to_be_bytes());
++        body.extend_from_slice(&track);
++        let mut file = b"MMMD".to_vec();
++        file.extend_from_slice(&(body.len() as u32 + 2).to_be_bytes());
++        file.extend_from_slice(&body);
++        file.extend_from_slice(&[0, 0]);
++        file
++    }
++
++    /// A context whose clock is at 1000 ms.
++    fn clocked_context() -> (TestContext, TestClock) {
++        let clock = TestClock::new();
++        clock.set(1000);
++        let platform = TestPlatform::with_clock(clock.clone());
++
++        (
++            TestContext::with_system(System::new(Box::new(platform), "test-pid", "test-aid", DefaultTaskRunner)),
++            clock,
++        )
++    }
++
++    /// A clip with `CALLBACK` and a 500 ms sound.
++    async fn clip_with_callback(context: &mut TestContext) -> Result<u32> {
++        let smaf = adpcm_smaf(2000);
++        let data = context.alloc_raw(smaf.len() as _)?;
++        context.write_bytes(data, &smaf)?;
++
++        let clip = clip_create(context, 0, 0x400, CALLBACK).await?;
++        clip_put_data(context, clip, data, smaf.len() as _).await?;
++
++        Ok(clip)
++    }
++
++    fn statuses(context: &mut TestContext, clip: u32) -> Vec<i32> {
++        context
++            .calls
++            .drain(..)
++            .map(|(address, args)| {
++                assert_eq!((address, args[0]), (CALLBACK, clip));
++                args[1] as i32
++            })
++            .collect()
++    }
++
++    // 하이브리드 2 (LGT) plays its next sound only after the clip callback reported END_OF_DATA, stopped the clip
++    // there and saw STOPP; 하이브리드 1 frees its clip on that STOPP.
++    #[futures_test::test]
++    async fn clip_callback_reports_start_end_and_stop() -> Result<()> {
++        let (mut context, clock) = clocked_context();
++        let clip = clip_with_callback(&mut context).await?;
++
++        play(&mut context, clip, 0).await?;
++        assert!(context.calls.is_empty(), "nothing is reported from inside MC_mdaPlay");
++        context.run_timers(Instant::from_epoch_millis(1000)).await?;
++        assert_eq!(statuses(&mut context, clip), [MC_MDA_STATUS_STARTED]);
++
++        // the sound is 500 ms long
++        clock.advance(499);
++        context.run_timers(Instant::from_epoch_millis(1499)).await?;
++        assert!(context.calls.is_empty());
++        context.run_timers(Instant::from_epoch_millis(1500)).await?;
++        assert_eq!(statuses(&mut context, clip), [MC_MDA_STATUS_END_OF_DATA]);
++
++        // an ended clip still reports its stop, at once and only once
++        stop(&mut context, clip).await?;
++        assert_eq!(statuses(&mut context, clip), [MC_MDA_STATUS_STOPP]);
++        stop(&mut context, clip).await?;
++        assert!(context.calls.is_empty());
++        assert!(context.timers.is_empty());
++
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn clip_callback_skips_reports_that_are_out_of_date() -> Result<()> {
++        let (mut context, _clock) = clocked_context();
++        let clip = clip_with_callback(&mut context).await?;
++        let later = Instant::from_epoch_millis(10_000);
++
++        // stopped before its end: no END_OF_DATA
++        play(&mut context, clip, 0).await?;
++        stop(&mut context, clip).await?;
++        context.run_timers(later).await?;
++        assert_eq!(statuses(&mut context, clip), [MC_MDA_STATUS_STOPP]);
++
++        // a repeating clip does not end
++        play(&mut context, clip, 1).await?;
++        context.run_timers(later).await?;
++        assert_eq!(statuses(&mut context, clip), [MC_MDA_STATUS_STARTED]);
++
++        // played again: only the new playback reports
++        play(&mut context, clip, 0).await?;
++        play(&mut context, clip, 0).await?;
++        context.run_timers(later).await?;
++        assert_eq!(statuses(&mut context, clip), [MC_MDA_STATUS_STARTED, MC_MDA_STATUS_END_OF_DATA]);
++
++        // a freed clip reports nothing
++        play(&mut context, clip, 0).await?;
++        clip_free(&mut context, clip).await?;
++        context.run_timers(later).await?;
++        assert!(context.calls.is_empty());
++
++        // clips without a callback set no timers
++        let silent = clip_create(&mut context, 0, 0x400, 0).await?;
++        let (data, len) = (context.alloc_raw(4)?, 4);
++        context.write_bytes(data, &[0; 4])?;
++        clip_put_data(&mut context, silent, data, len).await?;
++        play(&mut context, silent, 0).await?;
++        stop(&mut context, silent).await?;
++        assert!(context.timers.is_empty());
++        assert!(context.calls.is_empty());
++
++        Ok(())
++    }
++
+     #[futures_test::test]
+     async fn clip_volume_follows_the_clip_and_its_sound() -> Result<()> {
+         let mut context = media_test_context();
+diff --git a/wie-wipi-c/src/context.rs b/wie-wipi-c/src/context.rs
+index 15bc8a4d..3df9b354 100644
+--- a/wie-wipi-c/src/context.rs
++++ b/wie-wipi-c/src/context.rs
+@@ -81,7 +81,7 @@ impl ResultConverter<()> for () {
+ 
+ #[cfg(test)]
+ pub mod test {
+-    use alloc::{boxed::Box, format, string::String, vec::Vec};
++    use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
+ 
+     use wipi_types::wipic::{WIPICIndirectPtr, WIPICWord};
+ 
+@@ -104,6 +104,10 @@ pub mod test {
+         resources: Vec<(String, Vec<u8>)>,
+         /// Every pointer passed to `free`, in order.
+         pub freed: Vec<WIPICWord>,
++        /// Every guest function called (address, arguments), in order; the calls return 0.
++        pub calls: Vec<(WIPICWord, Vec<WIPICWord>)>,
++        /// Callbacks set with `set_timer` and not run yet, in the order they were set.
++        pub timers: Vec<(Instant, WIPICMethodBody)>,
+     }
+ 
+     impl TestContext {
+@@ -116,6 +120,8 @@ pub mod test {
+                 system: None,
+                 resources: Vec::new(),
+                 freed: Vec::new(),
++                calls: Vec::new(),
++                timers: Vec::new(),
+             }
+         }
+ 
+@@ -127,6 +133,8 @@ pub mod test {
+                 system: Some(system),
+                 resources: Vec::new(),
+                 freed: Vec::new(),
++                calls: Vec::new(),
++                timers: Vec::new(),
+             }
+         }
+ 
+@@ -134,6 +142,16 @@ pub mod test {
+             self.resources.push((String::from(name), data.to_vec()));
+             self
+         }
++
++        /// Runs the timers due at `now` in the order they were set, also those they set that are due.
++        pub async fn run_timers(&mut self, now: Instant) -> Result<()> {
++            while let Some(index) = self.timers.iter().position(|(due, _)| *due <= now) {
++                let (_, callback) = self.timers.remove(index);
++                callback.call(self, vec![].into_boxed_slice()).await?;
++            }
++
++            Ok(())
++        }
+     }
+ 
+     #[async_trait::async_trait]
+@@ -162,8 +180,9 @@ pub mod test {
+             Ok(memory.0)
+         }
+ 
+-        async fn call_function(&mut self, _address: WIPICWord, _args: &[WIPICWord]) -> Result<WIPICWord> {
+-            todo!()
++        async fn call_function(&mut self, address: WIPICWord, args: &[WIPICWord]) -> Result<WIPICWord> {
++            self.calls.push((address, args.to_vec()));
++            Ok(0)
+         }
+ 
+         fn system(&mut self) -> &mut System {
+@@ -186,8 +205,8 @@ pub mod test {
+                 .ok_or_else(|| WieError::FatalError(format!("Missing test resource: {name}")))
+         }
+ 
+-        fn set_timer(&mut self, _due: Instant, _callback: WIPICMethodBody) {
+-            todo!()
++        fn set_timer(&mut self, due: Instant, callback: WIPICMethodBody) {
++            self.timers.push((due, callback));
+         }
+     }
+ 
