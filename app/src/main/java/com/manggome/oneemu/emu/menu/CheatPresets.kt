@@ -84,6 +84,11 @@ object WipiCheatCatalog {
 
         fun fill(value: Long): String = code.replace(VALUE, value.toString())
 
+        /** [fill] with every part (codes joined with '+', ';' or line breaks) written a single time. */
+        fun fillOnce(value: Long): String =
+            fill(value).split('+', ';', '\n', '\r').map { it.trim() }.filter { it.isNotEmpty() }
+                .joinToString("+") { "once:$it" }
+
         /** The number in [code] when it is this preset filled in, else null. */
         fun valueIn(code: String): Long? {
             val at = this.code.indexOf(VALUE)
@@ -211,7 +216,7 @@ fun CheatPresets(gameId: Long, gamePath: String, onChanged: suspend () -> Unit, 
                         withContext(Dispatchers.IO) { dao.upsert(existing.copy(enabled = false)) }
                         onChanged()
                     }
-                    withContext(Dispatchers.IO) { NativeBridge.setCheat(nextOnceSlot++, true, "once:" + preset.fill(value)) }
+                    withContext(Dispatchers.IO) { NativeBridge.setCheat(nextOnceSlot++, true, preset.fillOnce(value)) }
                     onMessage(context.getString(R.string.preset_applied, preset.name, value))
                 }
             },

@@ -35,6 +35,8 @@ class WipiCheatCatalogTest {
         assertEquals(5L, preset.valueIn(" P:015087C0:5 "))
         assertNull(preset.valueIn("P:015087C4:77777"))
         assertNull(preset.valueIn("once:P:015087C0:77777"))
+        assertEquals("once:P:015087C0:5", preset.fillOnce(5))
+        assertEquals("once:P:1:7+once:P:2:7", WipiCheatCatalog.Preset(name = "x", code = "P:1:{v}+ P:2:{v}").fillOnce(7))
         assertEquals(Int.MAX_VALUE.toLong(), WipiCheatCatalog.Preset(name = "x", code = "J:a.b:{v}").highest)
         assertEquals(0xFFL, WipiCheatCatalog.Preset(name = "x", code = "J:a.b:{v}", type = "u8").highest)
     }

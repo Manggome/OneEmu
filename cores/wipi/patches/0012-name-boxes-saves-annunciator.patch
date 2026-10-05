@@ -1,0 +1,1426 @@
+diff --git a/wie-backend/src/canvas.rs b/wie-backend/src/canvas.rs
+index 94362b0d..aca17b26 100644
+--- a/wie-backend/src/canvas.rs
++++ b/wie-backend/src/canvas.rs
+@@ -37,7 +37,7 @@ pub enum TextAlignment {
+     Right,
+ }
+ 
+-#[derive(Clone, Copy)]
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+ pub struct Color {
+     pub a: u8,
+     pub r: u8,
+diff --git a/wie-backend/src/system.rs b/wie-backend/src/system.rs
+index 60f05f73..74592cac 100644
+--- a/wie-backend/src/system.rs
++++ b/wie-backend/src/system.rs
+@@ -4,6 +4,7 @@ mod file_system;
+ mod input_method;
+ 
+ use alloc::{borrow::ToOwned, boxed::Box, collections::BTreeMap, string::String, sync::Arc};
++use core::any::{Any, TypeId};
+ 
+ use spin::{RwLock, RwLockWriteGuard};
+ 
+@@ -54,6 +55,7 @@ struct SystemInner {
+     random_state: RwLock<u32>,
+     timer_generations: RwLock<BTreeMap<u32, u64>>,
+     native_lcd: RwLock<Option<Arc<dyn NativeLcd>>>,
++    states: RwLock<BTreeMap<TypeId, Box<dyn Any + Send + Sync>>>,
+ }
+ 
+ impl System {
+@@ -78,6 +80,7 @@ impl System {
+                 random_state: RwLock::new(1),
+                 timer_generations: RwLock::new(BTreeMap::new()),
+                 native_lcd: RwLock::new(None),
++                states: RwLock::new(BTreeMap::new()),
+             }),
+         }
+     }
+@@ -177,4 +180,16 @@ impl System {
+     pub fn event_queue(&self) -> RwLockWriteGuard<'_, EventQueue> {
+         self.inner.event_queue.write()
+     }
++
++    /// Runs `f` on the platform state of type `T` (created with `Default` on first use). API layers keep their
++    /// own handset state here, such as WIPI-C's UI controls. `f` must not ask for another state.
++    pub fn with_state<T, R>(&self, f: impl FnOnce(&mut T) -> R) -> R
++    where
++        T: Any + Default + Send + Sync,
++    {
++        let mut states = self.inner.states.write();
++        let state = states.entry(TypeId::of::<T>()).or_insert_with(|| Box::new(T::default()));
++
++        f(state.downcast_mut().unwrap())
++    }
+ }
+diff --git a/wie-backend/src/system/input_method.rs b/wie-backend/src/system/input_method.rs
+index 2bf33910..477522da 100644
+--- a/wie-backend/src/system/input_method.rs
++++ b/wie-backend/src/system/input_method.rs
+@@ -61,6 +61,26 @@ impl InputMethod {
+         output
+     }
+ 
++    /// Takes back the last key of the character being composed (a Hangul stroke or consonant, or the pending
++    /// letter) and returns what is left of it; None when nothing is being composed.
++    pub fn backspace(&mut self) -> Option<String> {
++        match self.mode {
++            InputMode::Upper | InputMode::Lower => self.multi_tap.take().map(|_| String::new()),
++            InputMode::Digits => None,
++            InputMode::Hangul => {
++                match self.hangul.last_mut()? {
++                    Token::Vowel(strokes) if strokes.chars().count() > 1 => {
++                        strokes.pop();
++                    }
++                    _ => {
++                        self.hangul.pop();
++                    }
++                }
++                Some(render(&self.hangul).text)
++            }
++        }
++    }
++
+     fn press_multi_tap(&mut self, key: Option<char>, output: &mut InputOutput) {
+         let letters = key.map(multi_tap_letters).unwrap_or("");
+         match self.multi_tap {
+@@ -396,6 +416,25 @@ mod tests {
+         assert_eq!(type_keys(&mut input, "22>"), ("B".into(), "".into()));
+     }
+ 
++    #[test]
++    fn backspace_takes_back_the_last_key_of_the_composition() {
++        let mut input = InputMethod::default();
++        input.set_mode(InputMode::Hangul);
++        // 학 = ㅎ(88) ㅏ(12) ㄱ(4)
++        type_keys(&mut input, "88124");
++        assert_eq!(input.backspace(), Some("하".into()));
++        assert_eq!(input.backspace(), Some("히".into()));
++        assert_eq!(input.backspace(), Some("ㅎ".into()));
++        assert_eq!(input.backspace(), Some("".into()));
++        assert_eq!(input.backspace(), None);
++        assert_eq!(type_keys(&mut input, "41"), ("".into(), "기".into()));
++
++        input.set_mode(InputMode::Lower);
++        type_keys(&mut input, "44");
++        assert_eq!(input.backspace(), Some("".into()));
++        assert_eq!(input.backspace(), None);
++    }
++
+     #[test]
+     fn digits_commit_at_once() {
+         let mut input = InputMethod::default();
+diff --git a/wie-ktf/src/runtime/wipi_c/method_table.rs b/wie-ktf/src/runtime/wipi_c/method_table.rs
+index fa6a62af..e1aa4294 100644
+--- a/wie-ktf/src/runtime/wipi_c/method_table.rs
++++ b/wie-ktf/src/runtime/wipi_c/method_table.rs
+@@ -236,13 +236,20 @@ pub fn get_database_interface(core: &mut ArmCore) -> Result<WIPICDatabaseInterfa
+     })
+ }
+ 
+-/// The MC_uic* table. MC_uicCreate makes no control (it answers 0), so every call on a control fails with
+-/// M_E_ERROR the way a handset answers for a missing control, and the text getters report an empty text.
++/// The MC_uic* table. MC_uicCreate makes a text component for `MC_uicGetClass("TextComponent")` (the one class
++/// games use); a call on anything else is a call on no control and fails with M_E_ERROR the way a handset answers,
++/// while the text getters report an empty text.
+ ///
+-/// Slots follow what 액션퍼즐패밀리 1 (KTF) does on its high-score name entry (client.bin 0x117524, 0x116f0c,
+-/// 0x1186ea): 8 HandleEvent(c, type, p1, p2), 9 Configure(c, x, y, w, h, flags), 33 (c, 0, -1) clears the text,
+-/// 32 (c, 0, text, len) inserts the old name, 35 (c, 10) sets the size of its 10-byte buffer, 36 (c) -> text size
+-/// and, when that is > 0, 37 (c, 0, buf, size + 1) -> bytes copied. Names of the other slots are unconfirmed.
++/// Slots follow the games: 액션퍼즐패밀리 1 and the other Com2uS name boxes (미니게임천국 1-3, 붕어빵타이쿤3,
++/// 이노티아 연대기 1; client.bin 0x117524, 0x116f0c, 0x1186ea, 0x1170b4 in 액션퍼즐패밀리 1) call 5 (c, gc) to draw it,
++/// 8 HandleEvent(c, type, key, p2), 9 Configure(c, x, y, w, h, flags), 11 (c, 1/0) around the entry, 33 (c, 0, -1)
++/// to clear it, 32 (c, 0, text, len) to fill in the old name, 35 (c, 10) for their 10-byte buffer, 36 (c) -> text
++/// size and 37 (c, 0, buf, size + 1). 리듬스타 compares 36 with 34 (the maximum) before passing a key and deletes 34
++/// characters with 33; 크로노스윙 reads 10 GetGeometry(c, &x, &y, &w, &h); 질주쾌감스케쳐 2 asks for a
++/// DateTimeComponent (no control here), reads the date with 26 (c, struct tm *) and destroys it with 3. So from
++/// MC_uicGetTime on the KTF slots sit two higher than the WIPI-C order (LGT's 0x338 is MC_uicGetTime at 24); slots
++/// 12-25 are unconfirmed. The Com2uS boxes pass 15 (c, a function of theirs, 0x100ead in 액션퍼즐패밀리 1), which is
++/// not called: it returns at once unless a control flag (bit 2 of a word in the control) is set.
+ pub fn get_uic_method_table() -> Vec<WIPICMethodBody> {
+     const NAMES: [&str; 47] = [
+         "MC_uicCreateApplicationContext",
+@@ -257,26 +264,26 @@ pub fn get_uic_method_table() -> Vec<WIPICMethodBody> {
+         "MC_uicConfigure",
+         "MC_uicGetGeometry",
+         "MC_uicSetEnable",
+-        "MC_uicSetCallback",
+-        "MC_uicSetEventHandler",
+-        "MC_uicSetFont",
+-        "MC_uicGetFont",
+-        "MC_uicSetFgColor",
+-        "MC_uicSetBgColor",
+-        "MC_uicSetLabel",
+-        "MC_uicGetLabel",
+-        "MC_uicSetLabelAlignment",
+-        "MC_uicSetTimeMask",
+-        "MC_uicSetTime",
+-        "MC_uicSetTimeLong",
++        "MC_uicUnk12",
++        "MC_uicUnk13",
++        "MC_uicUnk14",
++        "MC_uicUnk15",
++        "MC_uicUnk16",
++        "MC_uicUnk17",
++        "MC_uicUnk18",
++        "MC_uicUnk19",
++        "MC_uicUnk20",
++        "MC_uicUnk21",
++        "MC_uicUnk22",
++        "MC_uicUnk23",
++        "MC_uicUnk24",
++        "MC_uicUnk25",
+         "MC_uicGetTime",
+         "MC_uicAddMenuItem",
+         "MC_uicGetMenuItem",
+         "MC_uicRemoveMenuItem",
+         "MC_uicSetActiveMenuItem",
+         "MC_uicGetActiveMenuItem",
+-        "MC_uicUnk30",
+-        "MC_uicUnk31",
+         "MC_uicInsertText",
+         "MC_uicDeleteText",
+         "MC_uicGetMaxTextSize",
+@@ -302,18 +309,52 @@ pub fn get_uic_method_table() -> Vec<WIPICMethodBody> {
+             1 => uic::get_class.into_body(),
+             2 => uic::create.into_body(),
+             3 => uic::destroy.into_body(),
+-            26 => uic::get_menu_item.into_body(),
++            4 => uic::repaint.into_body(),
++            5 => uic::paint.into_body(),
++            8 => uic_handle_event.into_body(),
++            9 => uic::configure.into_body(),
++            10 => uic::get_geometry.into_body(),
++            11 => uic::set_enable.into_body(),
++            26 => uic::get_time.into_body(),
++            28 => uic::get_menu_item.into_body(),
++            32 => uic::insert_text.into_body(),
++            33 => uic::delete_text.into_body(),
++            34 => uic::get_max_text_size.into_body(),
++            35 => uic::set_max_text_size.into_body(),
+             36 => uic::get_text_size.into_body(),
+             37 => uic::get_text.into_body(),
+-            _ => uic_without_control(id as WIPICWord, name),
++            _ => uic_unimplemented(id as WIPICWord, name),
+         })
+         .collect()
+ }
+ 
+-/// An MC_uic* call on a control: there is none (MC_uicCreate makes none), so M_E_ERROR.
+-fn uic_without_control(id: WIPICWord, name: &'static str) -> WIPICMethodBody {
+-    let body = move |_: &mut dyn WIPICContext, control: WIPICWord| async move {
+-        tracing::warn!("no UI control: {id}: {name}({control:#x})");
++// The clet's key press event; 액션퍼즐패밀리 1 (0x1186ea) and 리듬스타 (0x1153a0) handle keys and pass them to the
++// control on this type only.
++const KEY_PRESS_EVENT: i32 = 2;
++
++/// `MC_uicHandleEvent(control, type, param1, param2)`: key presses go to the text component, in the WIPI key codes
++/// the clet receives (keypad keys as their characters, -3/-4 left/right, -16 clear).
++async fn uic_handle_event(context: &mut dyn WIPICContext, control: WIPICWord, r#type: i32, param1: i32, param2: i32) -> Result<i32> {
++    tracing::debug!("MC_uicHandleEvent({control:#x}, {type}, {param1}, {param2})");
++
++    if r#type != KEY_PRESS_EVENT {
++        return Ok(0);
++    }
++    let key = match param1 {
++        0x30..=0x39 | 0x23 | 0x2a => uic::TextKey::Keypad(param1 as u8 as char),
++        -16 => uic::TextKey::Clear,
++        -3 => uic::TextKey::Left,
++        -4 => uic::TextKey::Right,
++        _ => uic::TextKey::Other,
++    };
++
++    uic::handle_key(context, control, key).await
++}
++
++/// An MC_uic* call not implemented: M_E_ERROR, as for a call on no control.
++fn uic_unimplemented(id: WIPICWord, name: &'static str) -> WIPICMethodBody {
++    let body = move |_: &mut dyn WIPICContext, control: WIPICWord, a1: WIPICWord, a2: WIPICWord| async move {
++        tracing::warn!("stub {id}: {name}({control:#x}, {a1:#x}, {a2:#x})");
+         Ok::<i32, WieError>(-1) // M_E_ERROR
+     };
+ 
+@@ -655,14 +696,22 @@ mod tests {
+ 
+     use wipi_types::wipic::{WIPICIndirectPtr, WIPICWord};
+ 
+-    use wie_backend::{Instant, System};
++    use test_utils::TestPlatform;
++    use wie_backend::{DefaultTaskRunner, Instant, System};
+     use wie_util::{ByteRead, ByteWrite, Result, read_generic};
+     use wie_wipi_c::{WIPICContext, WIPICMethodBody};
+ 
+     use super::{get_uic_method_table, get_unk3_method_table};
+ 
+-    /// Flat memory from address 0 with a bump allocator; enough for calls that do not need a System.
+-    struct Memory(Vec<u8>);
++    /// Flat memory from address 0 with a bump allocator, and a test System.
++    struct Memory(Vec<u8>, System);
++
++    fn memory() -> Memory {
++        Memory(
++            vec![0; 0x100],
++            System::new(Box::new(TestPlatform::new()), "test-pid", "test-aid", DefaultTaskRunner),
++        )
++    }
+ 
+     impl ByteRead for Memory {
+         fn read_bytes(&self, address: u32, result: &mut [u8]) -> Result<usize> {
+@@ -701,7 +750,7 @@ mod tests {
+             unimplemented!()
+         }
+         fn system(&mut self) -> &mut System {
+-            unimplemented!()
++            &mut self.1
+         }
+         fn spawn(&mut self, _: WIPICMethodBody) -> Result<()> {
+             unimplemented!()
+@@ -723,11 +772,49 @@ mod tests {
+         table[slot].call(memory, Box::new(raw)).await.unwrap().results[0]
+     }
+ 
+-    // 액션퍼즐패밀리 1's name box: configure, fill and read back a control MC_uicCreate did not make.
++    // 액션퍼즐패밀리 1's name box (client.bin 0x117524, 0x1186ea, 0x116f0c) through the KTF slots: the clet passes key
++    // presses (type 2) and releases (3) in WIPI key codes; OK (-5) finishes the character being composed.
++    #[futures_test::test]
++    async fn name_box_takes_typed_text_through_the_input_method() {
++        let table = get_uic_method_table();
++        let mut memory = memory();
++        let class_name = memory.alloc_raw(64).unwrap(); // string reads go past the NUL
++        memory.write_bytes(class_name, b"TextComponent\0").unwrap();
++        let old_name = memory.alloc_raw(64).unwrap();
++        memory.write_bytes(old_name, b"ABC\0").unwrap();
++
++        let class = call(&table, 1, &[class_name], &mut memory).await;
++        let control = call(&table, 2, &[0, class], &mut memory).await;
++        assert_ne!(control, 0);
++        for (slot, args) in [
++            (9, &[control, 38, 108, 100, 18, 3][..]),
++            (33, &[control, 0, u32::MAX]),
++            (32, &[control, 0, old_name, 3]),
++            (35, &[control, 10]),
++            (11, &[control, 1]),
++        ] {
++            assert_eq!(call(&table, slot, args, &mut memory).await, 0, "slot {slot}");
++        }
++        assert_eq!(call(&table, 36, &[control], &mut memory).await, 3);
++
++        let set_mode = get_unk3_method_table();
++        call(&set_mode, 1, &[3], &mut memory).await; // KO
++        for key in [-16, -16, -16].into_iter().chain(b"881254355".map(i32::from)).chain([-5]) {
++            call(&table, 8, &[control, 2, key as u32, 0], &mut memory).await;
++            assert_eq!(call(&table, 8, &[control, 3, key as u32, 0], &mut memory).await, 0); // release: ignored
++        }
++
++        let size = call(&table, 36, &[control], &mut memory).await;
++        let buffer = memory.alloc_raw(size + 1).unwrap();
++        assert_eq!(call(&table, 37, &[control, 0, buffer, size + 1], &mut memory).await, 4);
++        assert_eq!(memory.0[buffer as usize..buffer as usize + 5], [0xc7, 0xd1, 0xb1, 0xdb, 0]); // 한글 in EUC-KR
++    }
++
++    // Calls on no control (an unknown class makes none) fail without stopping the game.
+     #[futures_test::test]
+     async fn uic_calls_on_no_control_fail_without_stopping_the_game() {
+         let table = get_uic_method_table();
+-        let mut memory = Memory(vec![0; 0x100]);
++        let mut memory = memory();
+ 
+         assert_eq!(call(&table, 2, &[0, 0], &mut memory).await, 0); // MC_uicCreate: no control
+         for (slot, args) in [(9, &[0, 70, 100, 100, 18, 3][..]), (33, &[0, 0, u32::MAX]), (35, &[0, 10]), (11, &[0, 1])] {
+@@ -741,7 +828,7 @@ mod tests {
+     #[futures_test::test]
+     async fn input_method_table_lists_the_supported_modes() {
+         let table = get_unk3_method_table();
+-        let mut memory = Memory(vec![0; 0x100]);
++        let mut memory = memory();
+ 
+         let count = call(&table, 3, &[], &mut memory).await;
+         let list = call(&table, 4, &[], &mut memory).await;
+diff --git a/wie-lgt/src/runtime/wipi_c.rs b/wie-lgt/src/runtime/wipi_c.rs
+index 0b0af2dd..0869c4bf 100644
+--- a/wie-lgt/src/runtime/wipi_c.rs
++++ b/wie-lgt/src/runtime/wipi_c.rs
+@@ -13,7 +13,7 @@ use wipi_types::wipic::{WIPICIndirectPtr, WIPICWord};
+ use wie_backend::System;
+ use wie_core_arm::{ArmCore, EmulatedFunction, EmulatedFunctionParam, ResultWriter, SvcId};
+ use wie_jvm_support::JvmSupport;
+-use wie_util::{Result, WieError, read_generic, write_generic, write_null_terminated_string_bytes};
++use wie_util::{Result, WieError, read_generic, write_null_terminated_string_bytes};
+ use wie_wipi_c::{
+     MAX_METHOD_ARGS, MethodImpl, WIPICContext, WIPICMethodBody, WIPICResult,
+     api::{database, graphics as shared_graphics, im, kernel, media, misc, net, uic, util},
+@@ -112,12 +112,12 @@ async fn handle_wipic_svc(core: &mut ArmCore, platform: &mut Arc<(System, Jvm)>,
+         WIPICSvcId::GetCurrentMode => im::get_current_mode.into_body(),
+         WIPICSvcId::HandleInput => im::handle_input.into_body(),
+         WIPICSvcId::UicCreateApplicationContext => uic::create_application_context.into_body(),
+-        WIPICSvcId::UicGetClass => uic::get_class.into_body(),
++        WIPICSvcId::UicGetClass => uic_get_class.into_body(),
+         WIPICSvcId::UicCreate => uic::create.into_body(),
+         WIPICSvcId::UicDestroy => uic::destroy.into_body(),
+         WIPICSvcId::UicGetTextSize => uic::get_text_size.into_body(),
+         WIPICSvcId::UicGetText => uic::get_text.into_body(),
+-        WIPICSvcId::UicGetTime => uic_get_time.into_body(),
++        WIPICSvcId::UicGetTime => uic::get_time.into_body(),
+         WIPICSvcId::UicOther => uic_without_control(id.0),
+         WIPICSvcId::OpenDatabase => database::open_database.into_body(),
+         WIPICSvcId::ReadRecordSingle => database::stream_read.into_body(),
+@@ -338,47 +338,15 @@ fn uic_without_control(id: u32) -> WIPICMethodBody {
+     body.into_body()
+ }
+ 
+-/// `0x338(control, tm)`: writes the current time as a C `struct tm`, as the platform answered before the block was known
+-/// to be MC_uic* (MC_uicGetTime is its slot in KTF's order).
+-async fn uic_get_time(context: &mut dyn WIPICContext, control: WIPICWord, out_ptr: WIPICWord) -> Result<i32> {
+-    tracing::debug!("MC_uicGetTime({control:#x}, {out_ptr:#x})");
++/// `MC_uicGetClass(name)`: no class, so MC_uicCreate makes no control. The shared text component is not mapped to
++/// this block yet: 리얼사커매니저2009 (the one LGT title that creates one) imports slots in the WIPI-C order (0x33e/0x33f
++/// insert/delete, 0x342/0x343 GetTextSize/GetText, 0x328 HandleEvent(c, 502, key, 0)), but its name box has not been
++/// reached to check them.
++async fn uic_get_class(context: &mut dyn WIPICContext, psz: WIPICWord) -> Result<WIPICIndirectPtr> {
++    let name = wie_util::read_null_terminated_string_bytes(context, psz)?;
++    tracing::warn!("stub MC_uicGetClass({})", encoding_rs::EUC_KR.decode(&name).0);
+ 
+-    if out_ptr == 0 {
+-        return Ok(-1); // M_E_ERROR
+-    }
+-    let timestamp = context.system().platform().now().raw() / 1000;
+-    let (year, month, day, hour, minute, second) = unix_seconds_to_utc(timestamp as i64);
+-    for (index, value) in [second, minute, hour, day, month - 1, year - 1900].into_iter().enumerate() {
+-        write_generic(context, out_ptr + index as u32 * 4, value)?;
+-    }
+-
+-    Ok(0)
+-}
+-
+-fn unix_seconds_to_utc(timestamp: i64) -> (i32, i32, i32, i32, i32, i32) {
+-    let days = timestamp.div_euclid(86_400);
+-    let seconds_of_day = timestamp.rem_euclid(86_400);
+-    let (year, month, day) = civil_from_days(days);
+-    let hour = (seconds_of_day / 3600) as i32;
+-    let minute = ((seconds_of_day % 3600) / 60) as i32;
+-    let second = (seconds_of_day % 60) as i32;
+-
+-    (year, month, day, hour, minute, second)
+-}
+-
+-fn civil_from_days(days: i64) -> (i32, i32, i32) {
+-    let days = days + 719_468;
+-    let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
+-    let day_of_era = days - era * 146_097;
+-    let year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+-    let mut year = year_of_era + era * 400;
+-    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+-    let month_param = (5 * day_of_year + 2) / 153;
+-    let day = day_of_year - (153 * month_param + 2) / 5 + 1;
+-    let month = month_param + if month_param < 10 { 3 } else { -9 };
+-    year += if month <= 2 { 1 } else { 0 };
+-
+-    (year as i32, month as i32, day as i32)
++    Ok(WIPICIndirectPtr(0))
+ }
+ 
+ async fn unk10(_context: &mut dyn WIPICContext, a0: u32, a1: u32, a2: u32, a3: u32) -> Result<u32> {
+diff --git a/wie-lgt/src/runtime/wipi_c/graphics.rs b/wie-lgt/src/runtime/wipi_c/graphics.rs
+index d3741b17..0ea1c525 100644
+--- a/wie-lgt/src/runtime/wipi_c/graphics.rs
++++ b/wie-lgt/src/runtime/wipi_c/graphics.rs
+@@ -242,12 +242,9 @@ fn read_record<T: Pod>(context: &dyn WIPICContext, handle: WIPICIndirectPtr) ->
+     read_generic(context, address)
+ }
+ 
+-/// `slack_rows` extra rows follow the pixels without being part of the framebuffer.
+-fn create_backing(context: &mut dyn WIPICContext, width: u32, height: u32, slack_rows: u32) -> Result<WIPICIndirectPtr> {
++fn create_backing(context: &mut dyn WIPICContext, width: u32, height: u32) -> Result<WIPICIndirectPtr> {
+     let bpl = width.checked_mul(2).ok_or(WieError::AllocationFailure)?;
+-    let size = bpl
+-        .checked_mul(height.checked_add(slack_rows).ok_or(WieError::AllocationFailure)?)
+-        .ok_or(WieError::AllocationFailure)?;
++    let size = bpl.checked_mul(height).ok_or(WieError::AllocationFailure)?;
+     let pixels = context.alloc(size)?;
+     let pixels_address = context.data_ptr(pixels)?;
+     context.write_bytes(pixels_address, &vec![0; size as usize])?;
+@@ -381,11 +378,7 @@ pub async fn get_screen_framebuffer(context: &mut dyn WIPICContext, kind: WIPICW
+         return Ok(WIPICIndirectPtr(state.ptr_screen_wrapper));
+     }
+ 
+-    // Apps that request the annunciator offset the raw screen pointer by its height themselves and
+-    // can still clear a full physical height from there: 액션퍼즐패밀리3 clears `width * 320` pixels
+-    // from row 24, 24 rows past the end, which corrupted the next heap block. Those rows are never
+-    // shown, so give the screen backing that much slack.
+-    let ptr_backing = create_backing(context, state.physical_width, state.physical_height, requested_application_y(&state))?;
++    let ptr_backing = create_backing(context, state.physical_width, state.physical_height)?;
+     let ptr_screen_view = create_view(context, ptr_backing, 0, 0, state.physical_width, state.physical_height)?;
+     let ptr_wrapper = alloc_record(
+         context,
+@@ -402,6 +395,13 @@ pub async fn get_screen_framebuffer(context: &mut dyn WIPICContext, kind: WIPICW
+     state.ptr_annunciator_view = 0;
+     state.ptr_screen_wrapper = ptr_wrapper.0;
+     write_generic(context, ptr_state, state)?;
++    // The annunciator is requested at clet registration, before the screen exists, so the screen
++    // reports the application area below it from the first query on. Apps that draw into the raw
++    // screen offset its pointer by the annunciator rows themselves and fill as many rows as they
++    // were told: 액션퍼즐패밀리3 asks for the height before the raw pointer, lays its UI out on it
++    // and clears `width * height` pixels from row 24, so a full physical height there cut off its
++    // bottom 24 rows and wrote past the backing.
++    activate_application_view(context, ptr_wrapper)?;
+     resize_presentation(context, state.physical_width, state.physical_height)?;
+ 
+     Ok(ptr_wrapper)
+@@ -413,7 +413,7 @@ pub async fn create_offscreen_framebuffer(context: &mut dyn WIPICContext, width:
+         return Err(WieError::AllocationFailure);
+     }
+ 
+-    let ptr_backing = create_backing(context, width as u32, height as u32, 0)?;
++    let ptr_backing = create_backing(context, width as u32, height as u32)?;
+     let ptr_view = create_view(context, ptr_backing, 0, 0, width as u32, height as u32)?;
+     alloc_record(
+         context,
+@@ -1012,7 +1012,7 @@ pub async fn create_image(
+     let (width, height) = (image.width(), image.height());
+     let colors = image.colors();
+ 
+-    let ptr_backing = create_backing(context, width, height, 0)?;
++    let ptr_backing = create_backing(context, width, height)?;
+     let pixels = colors.iter().map(|&color| Rgb565Pixel::from_color(color)).collect::<Vec<_>>();
+     let backing: WIPICFramebuffer = read_record(context, ptr_backing)?;
+     context.write_bytes(context.data_ptr(backing.buf)?, bytemuck::cast_slice(&pixels))?;
+@@ -1165,7 +1165,7 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn annunciator_request_only_changes_application_geometry_after_raw_screen_access() {
++    fn annunciator_request_only_changes_application_geometry_once_the_application_view_is_active() {
+         let mut state = LgtGraphicsState {
+             physical_width: 240,
+             physical_height: 320,
+diff --git a/wie-wipi-c/src/api/database.rs b/wie-wipi-c/src/api/database.rs
+index 1a1416f5..87be3468 100644
+--- a/wie-wipi-c/src/api/database.rs
++++ b/wie-wipi-c/src/api/database.rs
+@@ -50,7 +50,7 @@ const DATABASE_HANDLE_MAGIC: u32 = 0x4D434442;
+ const MAX_NAME_LEN: usize = 31; // leave a byte for null terminator inside the 32-byte field
+ 
+ pub async fn open_database(context: &mut dyn WIPICContext, ptr_name: WIPICWord, mode: i32, r#type: i32) -> Result<i32> {
+-    open_database_impl(context, ptr_name, mode, r#type, false).await
++    open_database_impl(context, ptr_name, mode, r#type, false, false).await
+ }
+ 
+ /// KTF's `MC_dbOpenDataBase` opens a missing database as an empty one even in
+@@ -58,11 +58,23 @@ pub async fn open_database(context: &mut dyn WIPICContext, ptr_name: WIPICWord,
+ /// open(mode 1), and uses the returned handle without checking for an error —
+ /// so on real handsets that call must have succeeded. Keep the strict NOENT
+ /// behaviour for LGT (제노니아-family games probe with open and handle the -12).
++///
++/// KTF open flag 8 creates a missing file: 던전앤파이터 귀검사편/거너편 save by "create" (exists must fail,
++/// then open with 8 and close) followed by "open for writing" (exists must succeed, open with 8, write).
+ pub async fn open_database_ktf(context: &mut dyn WIPICContext, ptr_name: WIPICWord, mode: i32, r#type: i32) -> Result<i32> {
+-    open_database_impl(context, ptr_name, mode, r#type, false).await
++    open_database_impl(context, ptr_name, mode, r#type, false, mode == KTF_OPEN_CREATE).await
+ }
+ 
+-async fn open_database_impl(context: &mut dyn WIPICContext, ptr_name: WIPICWord, mode: i32, r#type: i32, open_missing: bool) -> Result<i32> {
++const KTF_OPEN_CREATE: i32 = 8;
++
++async fn open_database_impl(
++    context: &mut dyn WIPICContext,
++    ptr_name: WIPICWord,
++    mode: i32,
++    r#type: i32,
++    open_missing: bool,
++    create_missing: bool,
++) -> Result<i32> {
+     tracing::debug!("MC_dbOpenDataBase({ptr_name:#x}, {mode}, {type})");
+ 
+     // Guest-provided C string — invalid UTF-8 must not bring down the
+@@ -114,7 +126,7 @@ async fn open_database_impl(context: &mut dyn WIPICContext, ptr_name: WIPICWord,
+         let mut db = system.platform().database_repository().open(&name, &pid).await;
+         db.set(1, &data).await;
+         data
+-    } else if mode == 4 {
++    } else if mode == 4 || create_missing {
+         system.platform().database_repository().open(&name, &pid).await;
+         Vec::new()
+     } else {
+@@ -824,8 +836,8 @@ mod tests {
+     use crate::context::test::TestContext;
+ 
+     use super::{
+-        KTF_DATABASE_STORAGE_LIMIT, delete_database, exists_database, list_databases, list_record_info, open_database, select_record,
+-        select_record_ktf, stream_read, stream_write, tell_record_single, update_record,
++        KTF_DATABASE_STORAGE_LIMIT, close_database, delete_database, exists_database, list_databases, list_record_info, open_database,
++        open_database_ktf, select_record, select_record_ktf, stream_read, stream_write, tell_record_single, update_record,
+     };
+ 
+     #[futures_test::test]
+@@ -876,6 +888,18 @@ mod tests {
+         assert_eq!(exists_database(&mut context, 0x1000, 1).await.unwrap(), 0);
+     }
+ 
++    #[futures_test::test]
++    async fn ktf_open_flag_8_creates_a_missing_file() {
++        let mut context = database_test_context();
++        context.write_bytes(0x1000, b"save.txt\0").unwrap();
++
++        assert_eq!(exists_database(&mut context, 0x1000, 1).await.unwrap(), -12);
++        let db_id = open_database_ktf(&mut context, 0x1000, 8, 1).await.unwrap();
++        assert!(db_id > 0);
++        assert_eq!(close_database(&mut context, db_id).await.unwrap(), 0);
++        assert_eq!(exists_database(&mut context, 0x1000, 1).await.unwrap(), 0);
++    }
++
+     #[futures_test::test]
+     async fn lgt_create_mode_materializes_empty_database() {
+         let mut context = database_test_context();
+diff --git a/wie-wipi-c/src/api/graphics.rs b/wie-wipi-c/src/api/graphics.rs
+index 423d440a..f1d269c9 100644
+--- a/wie-wipi-c/src/api/graphics.rs
++++ b/wie-wipi-c/src/api/graphics.rs
+@@ -23,7 +23,7 @@ use crate::context::WIPICContext;
+ use self::{grp_context::WIPICGraphicsContextIdx, image::create_wipi_image};
+ 
+ const FRAMEBUFFER_DEPTH: u32 = 16; // XXX hardcode to 16bpp as some game requires 16bpp framebuffer
+-const SCREEN_FRAMEBUFFER_PTR: u32 = 0x7fff1000;
++pub(crate) const SCREEN_FRAMEBUFFER_PTR: u32 = 0x7fff1000;
+ 
+ /// `MC_GrpContext.mask` bit of a field index: set by `MC_grpSetContext`, so only fields a game set apply.
+ const fn context_bit(index: WIPICGraphicsContextIdx) -> u32 {
+@@ -33,7 +33,7 @@ const fn context_bit(index: WIPICGraphicsContextIdx) -> u32 {
+ /// Narrows a draw call's own clip to the graphics context's clip (`MC_GRP_CONTEXT_CLIP_IDX`, {x1, y1, x2, y2}
+ /// with x2/y2 exclusive, as LGT's platform reads it) when the game set one. Games draw one glyph out of a
+ /// sprite strip this way: 메이플스토리 도적편 draws its whole 320 px digit strip for every digit.
+-fn with_context_clip(gctx: Option<&WIPICGraphicsContext>, clip: Clip) -> Clip {
++pub(crate) fn with_context_clip(gctx: Option<&WIPICGraphicsContext>, clip: Clip) -> Clip {
+     match gctx {
+         Some(gctx) if gctx.mask & context_bit(WIPICGraphicsContextIdx::ClipIdx) != 0 => {
+             let [x1, y1, x2, y2] = gctx.clip.map(|value| i32::from(value as i16));
+@@ -48,7 +48,7 @@ fn with_context_clip(gctx: Option<&WIPICGraphicsContext>, clip: Clip) -> Clip {
+     }
+ }
+ 
+-fn read_context(context: &dyn WIPICContext, p_gctx: WIPICWord) -> Result<Option<WIPICGraphicsContext>> {
++pub(crate) fn read_context(context: &dyn WIPICContext, p_gctx: WIPICWord) -> Result<Option<WIPICGraphicsContext>> {
+     Ok(if p_gctx == 0 { None } else { Some(read_generic(context, p_gctx)?) })
+ }
+ 
+@@ -552,8 +552,8 @@ pub async fn get_font(_: &mut dyn WIPICContext, face: i32, size: i32, style: i32
+ /// WIPI's default font is 12px tall. `MC_grpGetFontHeight` reports that number and
+ /// games lay out text lines with it, so we must render at the same height: ab_glyph
+ /// scales a point size to `pt * 96 / 72` pixels, making 9pt exactly 12px.
+-const FONT_SIZE: f32 = 9.0;
+-const FONT_HEIGHT: i32 = 12;
++pub(crate) const FONT_SIZE: f32 = 9.0;
++pub(crate) const FONT_HEIGHT: i32 = 12;
+ const FONT_ASCENT: i32 = 9;
+ 
+ pub async fn get_font_height(_: &mut dyn WIPICContext, font: i32) -> Result<i32> {
+diff --git a/wie-wipi-c/src/api/uic.rs b/wie-wipi-c/src/api/uic.rs
+index 9b47648c..0a155ea1 100644
+--- a/wie-wipi-c/src/api/uic.rs
++++ b/wie-wipi-c/src/api/uic.rs
+@@ -1,8 +1,189 @@
+-use wie_util::{Result, read_null_terminated_string_bytes};
++//! `MC_uic*`: the handset's UI controls. Only the text component is implemented: games use it for name entry, with
++//! keys fed through `MC_uicHandleEvent` into the handset input method, and draw it with `MC_uicPaint`.
++
++use alloc::{collections::BTreeMap, string::String, vec::Vec};
++
++use wie_backend::{
++    InputMethod, InputMode,
++    canvas::{Clip, Color, string_width},
++};
++use wie_util::{Result, read_generic, read_null_terminated_string_bytes, write_generic};
+ 
+ use wipi_types::wipic::{WIPICIndirectPtr, WIPICWord};
+ 
+-use crate::context::WIPICContext;
++use crate::{
++    api::graphics::{self, FONT_HEIGHT, FONT_SIZE, FrameBuffer, primitives},
++    context::WIPICContext,
++};
++
++/// What `MC_uicGetClass("TextComponent")` answers; any other class is unknown (0) and makes no control.
++pub const TEXT_COMPONENT_CLASS: WIPICWord = 1;
++
++const M_E_ERROR: i32 = -1;
++
++/// A key given to a text component, decoded from the platform's key event numbering.
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++pub enum TextKey {
++    /// A keypad key (`'0'..='9'`, `'*'`, `'#'`): text through the input method.
++    Keypad(char),
++    /// Takes back the last key of the character being composed, or else deletes the character before the cursor.
++    Clear,
++    Left,
++    Right,
++    /// Any other key: finishes the character being composed (OK does this before the game reads the text).
++    Other,
++}
++
++#[derive(Default)]
++struct Controls(BTreeMap<WIPICWord, TextComponent>);
++
++struct TextComponent {
++    x: i32,
++    y: i32,
++    width: i32,
++    height: i32,
++    enabled: bool,
++    text: Vec<char>,
++    /// Character index the next character is inserted at.
++    cursor: usize,
++    /// Maximum text size in bytes of the handset encoding (`MC_uicSetMaxTextSize`).
++    max_size: Option<usize>,
++    /// The character the input method is still composing, shown at the cursor, and the mode it was typed in.
++    composing: String,
++    composing_mode: InputMode,
++}
++
++impl TextComponent {
++    fn new() -> Self {
++        Self {
++            x: 0,
++            y: 0,
++            width: 0,
++            height: 0,
++            enabled: false,
++            text: Vec::new(),
++            cursor: 0,
++            max_size: None,
++            composing: String::new(),
++            composing_mode: InputMode::default(),
++        }
++    }
++
++    /// The text as shown: the composed text with the character being composed at the cursor.
++    fn shown_text(&self) -> String {
++        let mut text: String = self.text[..self.cursor].iter().collect();
++        text.push_str(&self.composing);
++        text.extend(&self.text[self.cursor..]);
++
++        text
++    }
++
++    fn size(text: impl IntoIterator<Item = char>) -> usize {
++        text.into_iter().map(encoded_len).sum()
++    }
++
++    fn fits(&self, size: usize) -> bool {
++        self.max_size.is_none_or(|max| size <= max)
++    }
++
++    /// Inserts `text` at the cursor, as much of it as fits the maximum size.
++    fn insert(&mut self, text: &str) {
++        let mut size = Self::size(self.text.iter().copied());
++        for c in text.chars() {
++            size += encoded_len(c);
++            if !self.fits(size) {
++                break;
++            }
++            self.text.insert(self.cursor, c);
++            self.cursor += 1;
++        }
++    }
++
++    /// Drops the character being composed, and the input method's state for it.
++    fn drop_composing(&mut self, input_method: &mut InputMethod) {
++        self.composing.clear();
++        let mode = input_method.mode();
++        input_method.set_mode(mode);
++    }
++
++    /// Finishes the character being composed: it becomes text.
++    fn commit(&mut self, input_method: &mut InputMethod) {
++        let output = input_method.press(None);
++        let composing = core::mem::take(&mut self.composing);
++        self.insert(if output.committed.is_empty() { &composing } else { &output.committed });
++    }
++
++    /// Feeds one key; true when the control used it.
++    fn press(&mut self, input_method: &mut InputMethod, key: TextKey) -> bool {
++        // The game switched the input mode (MC_imSetCurrentMode, which drops the input method's state) since the last
++        // key: that ends the composition, so what was shown becomes text.
++        if !self.composing.is_empty() && input_method.mode() != self.composing_mode {
++            let composing = core::mem::take(&mut self.composing);
++            self.insert(&composing);
++        }
++
++        match key {
++            TextKey::Keypad(key) => {
++                if self.composing.is_empty() && !self.fits(Self::size(self.text.iter().copied()) + 1) {
++                    return false; // full
++                }
++                let output = input_method.press(Some(key));
++                self.insert(&output.committed);
++                self.composing = output.composing;
++                self.composing_mode = input_method.mode();
++                // a new character that no longer fits is dropped
++                if !self.fits(Self::size(self.text.iter().copied().chain(self.composing.chars()))) {
++                    self.drop_composing(input_method);
++                }
++                true
++            }
++            TextKey::Clear => {
++                if !self.composing.is_empty() {
++                    match input_method.backspace() {
++                        Some(composing) => self.composing = composing,
++                        None => self.drop_composing(input_method),
++                    }
++                    true
++                } else if self.cursor > 0 {
++                    self.cursor -= 1;
++                    self.text.remove(self.cursor);
++                    true
++                } else {
++                    false
++                }
++            }
++            TextKey::Left | TextKey::Right => {
++                self.commit(input_method);
++                self.cursor = match key {
++                    TextKey::Left => self.cursor.saturating_sub(1),
++                    _ => (self.cursor + 1).min(self.text.len()),
++                };
++                true
++            }
++            TextKey::Other => {
++                let composing = !self.composing.is_empty();
++                self.commit(input_method);
++                composing
++            }
++        }
++    }
++}
++
++fn encoded_len(c: char) -> usize {
++    let mut utf8 = [0; 4];
++    encoding_rs::EUC_KR.encode(c.encode_utf8(&mut utf8)).0.len()
++}
++
++/// Runs `f` on control `control`, None when there is no such control.
++fn with_control<R>(context: &mut dyn WIPICContext, control: WIPICWord, f: impl FnOnce(&mut TextComponent) -> R) -> Option<R> {
++    context.system().with_state(|controls: &mut Controls| controls.0.get_mut(&control).map(f))
++}
++
++/// Asks for a screen repaint: the handset repaints a control whose look changed, and games draw their control screen
++/// (calling `MC_uicPaint` in it) from the paint event. 액션퍼즐패밀리 1 (KTF) draws its name box only there.
++fn request_repaint(context: &mut dyn WIPICContext) {
++    let _ = context.system().platform().screen().request_redraw();
++}
+ 
+ pub async fn create_application_context(_context: &mut dyn WIPICContext) -> Result<WIPICIndirectPtr> {
+     tracing::warn!("stub MC_uicCreateApplicationContext");
+@@ -13,45 +194,592 @@ pub async fn create_application_context(_context: &mut dyn WIPICContext) -> Resu
+ pub async fn get_class(context: &mut dyn WIPICContext, psz: WIPICWord) -> Result<WIPICIndirectPtr> {
+     let name_bytes = read_null_terminated_string_bytes(context, psz)?;
+     let name = encoding_rs::EUC_KR.decode(&name_bytes).0;
+-    tracing::warn!("stub MC_uicGetClass({name})");
++    tracing::debug!("MC_uicGetClass({name})");
+ 
+-    Ok(WIPICIndirectPtr(0))
++    if name == "TextComponent" {
++        Ok(WIPICIndirectPtr(TEXT_COMPONENT_CLASS))
++    } else {
++        tracing::warn!("unsupported UI control class {name}");
++        Ok(WIPICIndirectPtr(0))
++    }
+ }
+ 
+-pub async fn create(_context: &mut dyn WIPICContext, pac: WIPICWord, cls: WIPICWord) -> Result<WIPICIndirectPtr> {
+-    tracing::warn!("stub MC_uicCreate({pac:#x}, {cls:#x})");
++/// `MC_uicCreate(applicationContext, class)`: a text component for its class, else no control (0).
++pub async fn create(context: &mut dyn WIPICContext, pac: WIPICWord, cls: WIPICWord) -> Result<WIPICIndirectPtr> {
++    if cls != TEXT_COMPONENT_CLASS {
++        tracing::warn!("stub MC_uicCreate({pac:#x}, {cls:#x})");
++        return Ok(WIPICIndirectPtr(0));
++    }
++
++    // a guest word gives each control a distinct address-like handle
++    let control = context.alloc_raw(4)?;
++    context
++        .system()
++        .with_state(|controls: &mut Controls| controls.0.insert(control, TextComponent::new()));
++    tracing::debug!("MC_uicCreate({pac:#x}, {cls:#x}) -> {control:#x}");
+ 
+-    Ok(WIPICIndirectPtr(0))
++    Ok(WIPICIndirectPtr(control))
+ }
+ 
+-pub async fn destroy(_context: &mut dyn WIPICContext, cc: WIPICWord) -> Result<()> {
+-    tracing::warn!("stub MC_uicDestroy({cc:#x})");
++pub async fn destroy(context: &mut dyn WIPICContext, cc: WIPICWord) -> Result<()> {
++    tracing::debug!("MC_uicDestroy({cc:#x})");
++
++    if context.system().with_state(|controls: &mut Controls| controls.0.remove(&cc)).is_some() {
++        context.free_raw(cc, 4)?;
++    }
+ 
+     Ok(())
+ }
+ 
+-pub async fn get_menu_item(_context: &mut dyn WIPICContext, cc: WIPICWord, idx: u32, psz: WIPICWord, buflen: i32, img: WIPICWord) -> Result<i32> {
+-    tracing::warn!("stub MC_uicGetMenuItem({cc:#x}, {idx}, {psz:#x}, {buflen}, {img:#x})");
++/// `MC_uicRepaint(control)`.
++pub async fn repaint(context: &mut dyn WIPICContext, cc: WIPICWord) -> Result<i32> {
++    tracing::debug!("MC_uicRepaint({cc:#x})");
++
++    if with_control(context, cc, |_| ()).is_none() {
++        return Ok(M_E_ERROR);
++    }
++    request_repaint(context);
+ 
+     Ok(0)
+ }
+ 
+-/// `MC_uicGetTextSize(control)`: no control holds text. 리얼사커매니저2009 adds one to the answer for the buffer it
+-/// passes to MC_uicGetText.
+-pub async fn get_text_size(_context: &mut dyn WIPICContext, cc: WIPICWord) -> Result<i32> {
+-    tracing::warn!("stub MC_uicGetTextSize({cc:#x})");
++/// `MC_uicPaint(control, gc)`: draws the control on the screen framebuffer, inside the context's clip: a white box
++/// with a black frame, the text (the character being composed underlined) and, while enabled, a cursor bar.
++pub async fn paint(context: &mut dyn WIPICContext, cc: WIPICWord, pgc: WIPICWord) -> Result<i32> {
++    tracing::debug!("MC_uicPaint({cc:#x}, {pgc:#x})");
++
++    let Some((bounds, enabled, before, composing, after)) = with_control(context, cc, |control| {
++        (
++            Clip {
++                x: control.x,
++                y: control.y,
++                width: control.width.max(0) as u32,
++                height: control.height.max(0) as u32,
++            },
++            control.enabled,
++            control.text[..control.cursor].iter().collect::<String>(),
++            control.composing.clone(),
++            control.text[control.cursor..].iter().collect::<String>(),
++        )
++    }) else {
++        return Ok(M_E_ERROR);
++    };
++    if bounds.width <= 4 || bounds.height <= 2 {
++        return Ok(0);
++    }
++    let (x, y, width, height) = (bounds.x, bounds.y, bounds.width as i32, bounds.height as i32);
++
++    let screen = graphics::get_screen_framebuffer(context, 0).await?;
++    let framebuffer = FrameBuffer(read_generic(context, context.data_ptr(screen)?)?);
++    let gctx = graphics::read_context(context, pgc)?;
++    let clip = graphics::with_context_clip(gctx.as_ref(), bounds);
++
++    let black = Color { a: 255, r: 0, g: 0, b: 0 };
++    let white = Color {
++        a: 255,
++        r: 255,
++        g: 255,
++        b: 255,
++    };
++    primitives::fill_rect(context, &framebuffer, x, y, width as u32, height as u32, white, clip)?;
++    primitives::draw_rect(context, &framebuffer, x, y, width as u32, height as u32, black, clip)?;
++
++    // the text inside a 2 px margin, scrolled left when the cursor would leave the box
++    let font = context.system().platform().font().clone();
++    let measure = |text: &str| string_width(&font, text, FONT_SIZE) as i32;
++    let inner = clip.intersect(&Clip {
++        x: x + 2,
++        y: y + 1,
++        width: (width - 4) as u32,
++        height: (height - 2) as u32,
++    });
++    let composing_x = measure(&before);
++    let cursor_x = composing_x + measure(&composing);
++    let left = x + 2 - (cursor_x - (width - 6)).max(0);
++    let top = y + (height - FONT_HEIGHT) / 2;
++
++    let text = [before, composing.clone(), after].concat();
++    primitives::draw_text(context, &framebuffer, &text, left, top, black, inner)?;
++    if !composing.is_empty() {
++        let underline = (top + FONT_HEIGHT).min(y + height - 2);
++        primitives::draw_line(
++            context,
++            &framebuffer,
++            left + composing_x,
++            underline,
++            left + cursor_x - 1,
++            underline,
++            black,
++            inner,
++        )?;
++    }
++    if enabled {
++        primitives::fill_rect(context, &framebuffer, left + cursor_x, top, 1, FONT_HEIGHT as u32, black, inner)?;
++    }
++
++    Ok(0)
++}
++
++/// Feeds a key to the control: 1 when it used the key, 0 when not, M_E_ERROR without a control.
++pub async fn handle_key(context: &mut dyn WIPICContext, cc: WIPICWord, key: TextKey) -> Result<i32> {
++    tracing::debug!("MC_uicHandleEvent({cc:#x}, {key:?})");
++
++    let system = context.system().clone();
++    let used = system.with_state(|controls: &mut Controls| {
++        let control = controls.0.get_mut(&cc)?;
++        Some(control.press(&mut system.input_method(), key))
++    });
++
++    match used {
++        None => Ok(M_E_ERROR),
++        Some(used) => {
++            if used {
++                request_repaint(context);
++            }
++            Ok(used as i32)
++        }
++    }
++}
++
++/// `MC_uicConfigure(control, x, y, width, height, flags)`.
++pub async fn configure(context: &mut dyn WIPICContext, cc: WIPICWord, x: i32, y: i32, width: i32, height: i32, flags: i32) -> Result<i32> {
++    tracing::debug!("MC_uicConfigure({cc:#x}, {x}, {y}, {width}, {height}, {flags:#x})");
++
++    let configured = with_control(context, cc, |control| {
++        control.x = x;
++        control.y = y;
++        control.width = width;
++        control.height = height;
++    });
++    if configured.is_none() {
++        return Ok(M_E_ERROR);
++    }
++    request_repaint(context);
++
++    Ok(0)
++}
++
++/// `MC_uicGetGeometry(control, &x, &y, &width, &height)`.
++pub async fn get_geometry(context: &mut dyn WIPICContext, cc: WIPICWord, px: WIPICWord, py: WIPICWord, pw: WIPICWord, ph: WIPICWord) -> Result<i32> {
++    tracing::debug!("MC_uicGetGeometry({cc:#x}, {px:#x}, {py:#x}, {pw:#x}, {ph:#x})");
++
++    let Some(geometry) = with_control(context, cc, |control| [control.x, control.y, control.width, control.height]) else {
++        return Ok(M_E_ERROR);
++    };
++    for (ptr, value) in [px, py, pw, ph].into_iter().zip(geometry) {
++        if ptr != 0 {
++            write_generic(context, ptr, value)?;
++        }
++    }
++
++    Ok(0)
++}
++
++/// `(control, enable)`: the control shows its cursor while enabled.
++pub async fn set_enable(context: &mut dyn WIPICContext, cc: WIPICWord, enable: i32) -> Result<i32> {
++    tracing::debug!("MC_uicSetEnable({cc:#x}, {enable})");
++
++    if with_control(context, cc, |control| control.enabled = enable != 0).is_none() {
++        return Ok(M_E_ERROR);
++    }
++    request_repaint(context);
++
++    Ok(0)
++}
++
++/// `MC_uicInsertText(control, position, text, length)`: `length` -1 for a NUL-terminated text; the position is a
++/// character index. Text past the maximum size is dropped.
++pub async fn insert_text(context: &mut dyn WIPICContext, cc: WIPICWord, position: i32, ptr_text: WIPICWord, length: i32) -> Result<i32> {
++    tracing::debug!("MC_uicInsertText({cc:#x}, {position}, {ptr_text:#x}, {length})");
++
++    let text = match ptr_text {
++        0 => String::new(),
++        _ => primitives::read_text(context, ptr_text, length)?.unwrap_or_default(),
++    };
++    let inserted = with_control(context, cc, |control| {
++        control.cursor = (position.max(0) as usize).min(control.text.len());
++        control.insert(text.trim_end_matches('\0'));
++    });
++    if inserted.is_none() {
++        return Ok(M_E_ERROR);
++    }
++    request_repaint(context);
+ 
+     Ok(0)
+ }
+ 
+-/// `MC_uicGetText(control, position, buffer, size)`: an empty string. The answer is a byte count: 리얼사커매니저2009
+-/// copies that many bytes out of the buffer, so it must not be an error code.
++/// `MC_uicDeleteText(control, position, count)`: characters from `position`, all of them for a negative count.
++pub async fn delete_text(context: &mut dyn WIPICContext, cc: WIPICWord, position: i32, count: i32) -> Result<i32> {
++    tracing::debug!("MC_uicDeleteText({cc:#x}, {position}, {count})");
++
++    let system = context.system().clone();
++    let deleted = with_control(context, cc, |control| {
++        let start = (position.max(0) as usize).min(control.text.len());
++        let end = match usize::try_from(count) {
++            Ok(count) => (start + count).min(control.text.len()),
++            Err(_) => control.text.len(),
++        };
++        control.text.drain(start..end);
++        if control.cursor > start {
++            control.cursor = start.max(control.cursor - (end - start));
++        }
++        if !control.composing.is_empty() {
++            control.drop_composing(&mut system.input_method());
++        }
++    });
++    if deleted.is_none() {
++        return Ok(M_E_ERROR);
++    }
++    request_repaint(context);
++
++    Ok(0)
++}
++
++pub async fn get_max_text_size(context: &mut dyn WIPICContext, cc: WIPICWord) -> Result<i32> {
++    tracing::debug!("MC_uicGetMaxTextSize({cc:#x})");
++
++    Ok(with_control(context, cc, |control| control.max_size.map_or(i32::MAX, |x| x as i32)).unwrap_or(M_E_ERROR))
++}
++
++/// `MC_uicSetMaxTextSize(control, size)`: in bytes of the handset encoding; games size their copy buffers with it.
++pub async fn set_max_text_size(context: &mut dyn WIPICContext, cc: WIPICWord, size: i32) -> Result<i32> {
++    tracing::debug!("MC_uicSetMaxTextSize({cc:#x}, {size})");
++
++    let set = with_control(context, cc, |control| {
++        control.max_size = usize::try_from(size).ok();
++        while !control.fits(TextComponent::size(control.text.iter().copied())) {
++            control.text.pop();
++        }
++        control.cursor = control.cursor.min(control.text.len());
++    });
++
++    Ok(if set.is_some() { 0 } else { M_E_ERROR })
++}
++
++/// `MC_uicGetTextSize(control)`: bytes of the text as shown. Without a control, 0: 리얼사커매니저2009 adds one to the
++/// answer for the buffer it passes to MC_uicGetText.
++pub async fn get_text_size(context: &mut dyn WIPICContext, cc: WIPICWord) -> Result<i32> {
++    let size = with_control(context, cc, |control| TextComponent::size(control.shown_text().chars()) as i32).unwrap_or(0);
++    tracing::debug!("MC_uicGetTextSize({cc:#x}) -> {size}");
++
++    Ok(size)
++}
++
++/// `MC_uicGetText(control, position, buffer, size)`: copies the text as shown from character `position`, whole
++/// characters up to `size` - 1 bytes, NUL-terminated, and answers the byte count. It must not be an error code
++/// (리얼사커매니저2009 copies that many bytes out of the buffer), so no control reads as an empty text.
+ pub async fn get_text(context: &mut dyn WIPICContext, cc: WIPICWord, position: i32, ptr_buf: WIPICWord, size: i32) -> Result<i32> {
+-    tracing::warn!("stub MC_uicGetText({cc:#x}, {position}, {ptr_buf:#x}, {size})");
++    tracing::debug!("MC_uicGetText({cc:#x}, {position}, {ptr_buf:#x}, {size})");
++
++    if ptr_buf == 0 || size <= 0 {
++        return Ok(0);
++    }
++    let text = with_control(context, cc, |control| control.shown_text()).unwrap_or_default();
++
++    let mut bytes = Vec::new();
++    for c in text.chars().skip(position.max(0) as usize) {
++        let mut utf8 = [0; 4];
++        let encoded = encoding_rs::EUC_KR.encode(c.encode_utf8(&mut utf8)).0;
++        if bytes.len() + encoded.len() > size as usize - 1 {
++            break;
++        }
++        bytes.extend_from_slice(&encoded);
++    }
++    context.write_bytes(ptr_buf, &bytes)?;
++    context.write_bytes(ptr_buf + bytes.len() as u32, &[0])?;
++
++    Ok(bytes.len() as i32)
++}
++
++pub async fn get_menu_item(_context: &mut dyn WIPICContext, cc: WIPICWord, idx: u32, psz: WIPICWord, buflen: i32, img: WIPICWord) -> Result<i32> {
++    tracing::warn!("stub MC_uicGetMenuItem({cc:#x}, {idx}, {psz:#x}, {buflen}, {img:#x})");
++
++    Ok(0)
++}
++
++/// `MC_uicGetTime(control, tm)`: writes the current time (UTC, as the kernel's clock) as a C `struct tm`: seconds,
++/// minutes, hours, day of month, month 0-11, years since 1900 and day of week. Games make a date control just to read
++/// the date: 질주쾌감스케쳐 2 (KTF) asks for a DateTimeComponent, which is no control here, and reads the year, month,
++/// day and weekday, so it answers on any control.
++pub async fn get_time(context: &mut dyn WIPICContext, control: WIPICWord, out_ptr: WIPICWord) -> Result<i32> {
++    tracing::debug!("MC_uicGetTime({control:#x}, {out_ptr:#x})");
+ 
+-    if ptr_buf != 0 && size > 0 {
+-        context.write_bytes(ptr_buf, &[0])?;
++    if out_ptr == 0 {
++        return Ok(M_E_ERROR);
++    }
++    let timestamp = (context.system().platform().now().raw() / 1000) as i64;
++    let days = timestamp.div_euclid(86_400);
++    let seconds_of_day = timestamp.rem_euclid(86_400);
++    let (year, month, day) = civil_from_days(days);
++    let (hour, minute, second) = (seconds_of_day / 3600, (seconds_of_day % 3600) / 60, seconds_of_day % 60);
++    let weekday = (days + 4).rem_euclid(7); // 1970-01-01 was a Thursday
++
++    for (index, value) in [second, minute, hour, day, month - 1, year - 1900, weekday].into_iter().enumerate() {
++        write_generic(context, out_ptr + index as u32 * 4, value as i32)?;
+     }
+ 
+     Ok(0)
+ }
++
++fn civil_from_days(days: i64) -> (i64, i64, i64) {
++    let days = days + 719_468;
++    let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
++    let day_of_era = days - era * 146_097;
++    let year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
++    let mut year = year_of_era + era * 400;
++    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
++    let month_param = (5 * day_of_year + 2) / 153;
++    let day = day_of_year - (153 * month_param + 2) / 5 + 1;
++    let month = month_param + if month_param < 10 { 3 } else { -9 };
++    year += if month <= 2 { 1 } else { 0 };
++
++    (year, month, day)
++}
++
++#[cfg(test)]
++mod tests {
++    use alloc::{boxed::Box, vec, vec::Vec};
++    use core::mem::size_of;
++
++    use test_utils::{TestClock, TestPlatform};
++    use wie_backend::{DefaultTaskRunner, InputMode, System};
++    use wie_util::{ByteRead, ByteWrite, Result, read_generic, write_generic};
++    use wipi_types::wipic::{WIPICFramebuffer, WIPICWord};
++
++    use crate::{
++        api::graphics::{FrameBuffer, SCREEN_FRAMEBUFFER_PTR},
++        context::{WIPICContext, test::TestContext},
++    };
++
++    use super::*;
++
++    fn context_with(platform: TestPlatform) -> TestContext {
++        TestContext::with_system(System::new(Box::new(platform), "test-pid", "test-aid", DefaultTaskRunner))
++    }
++
++    async fn text_component(context: &mut TestContext) -> Result<WIPICWord> {
++        let name = context.alloc_raw(16)?;
++        context.write_bytes(name, b"TextComponent\0")?;
++        let class = get_class(context, name).await?;
++        assert_eq!(class.0, TEXT_COMPONENT_CLASS);
++        let control = create(context, 0, class.0).await?.0;
++        assert_ne!(control, 0);
++
++        Ok(control)
++    }
++
++    /// GetTextSize, then GetText with one more byte, as the games read it.
++    async fn read_text(context: &mut TestContext, control: WIPICWord) -> Result<Vec<u8>> {
++        let size = get_text_size(context, control).await?;
++        let buffer = context.alloc_raw(size as u32 + 1)?;
++        let copied = get_text(context, control, 0, buffer, size + 1).await?;
++        assert_eq!(copied, size);
++        let mut bytes = vec![0; size as usize + 1];
++        context.read_bytes(buffer, &mut bytes)?;
++        assert_eq!(bytes.pop(), Some(0));
++
++        Ok(bytes)
++    }
++
++    /// Keypad characters; `<` is CLR, `>` any other key (OK).
++    async fn keys(context: &mut TestContext, control: WIPICWord, keys: &str) -> Result<()> {
++        for key in keys.chars() {
++            let key = match key {
++                '<' => TextKey::Clear,
++                '>' => TextKey::Other,
++                key => TextKey::Keypad(key),
++            };
++            handle_key(context, control, key).await?;
++        }
++
++        Ok(())
++    }
++
++    fn euc_kr(text: &str) -> Vec<u8> {
++        encoding_rs::EUC_KR.encode(text).0.into_owned()
++    }
++
++    // 액션퍼즐패밀리 1's name box: clear, fill in the old name, cap at 10 bytes, type in Hangul, OK, read.
++    #[futures_test::test]
++    async fn name_box_types_hangul_and_reads_it_back() -> Result<()> {
++        let mut context = context_with(TestPlatform::new());
++        let control = text_component(&mut context).await?;
++        let old_name = context.alloc_raw(16)?;
++        context.write_bytes(old_name, &euc_kr("액션퍼즐"))?;
++
++        assert_eq!(configure(&mut context, control, 38, 108, 100, 18, 3).await?, 0);
++        assert_eq!(delete_text(&mut context, control, 0, -1).await?, 0);
++        assert_eq!(insert_text(&mut context, control, 0, old_name, 8).await?, 0);
++        assert_eq!(set_max_text_size(&mut context, control, 10).await?, 0);
++        assert_eq!(set_enable(&mut context, control, 1).await?, 0);
++        assert_eq!(read_text(&mut context, control).await?, euc_kr("액션퍼즐"));
++
++        context.system().input_method().set_mode(InputMode::Hangul);
++        keys(&mut context, control, "<<<<").await?;
++        assert_eq!(read_text(&mut context, control).await?, b"");
++
++        // 한글 = ㅎ(88) ㅏ(12) ㄴ(5) ㄱ(4) ㅡ(3) ㄹ(55); 글 is still being composed until OK
++        keys(&mut context, control, "881254355").await?;
++        assert_eq!(read_text(&mut context, control).await?, euc_kr("한글"));
++        assert_eq!(handle_key(&mut context, control, TextKey::Other).await?, 1);
++        assert_eq!(read_text(&mut context, control).await?, euc_kr("한글"));
++
++        // the next key starts a new character
++        keys(&mut context, control, "41>").await?;
++        assert_eq!(read_text(&mut context, control).await?, euc_kr("한글기"));
++
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn text_stops_at_the_maximum_size() -> Result<()> {
++        let mut context = context_with(TestPlatform::new());
++        let control = text_component(&mut context).await?;
++        set_max_text_size(&mut context, control, 5).await?;
++        assert_eq!(get_max_text_size(&mut context, control).await?, 5);
++
++        context.system().input_method().set_mode(InputMode::Hangul);
++        keys(&mut context, control, "4141412>").await?; // 기기가: the third does not fit
++        assert_eq!(read_text(&mut context, control).await?, euc_kr("기기"));
++
++        context.system().input_method().set_mode(InputMode::Digits);
++        keys(&mut context, control, "123").await?;
++        assert_eq!(read_text(&mut context, control).await?, [euc_kr("기기"), b"1".to_vec()].concat());
++        assert_eq!(handle_key(&mut context, control, TextKey::Keypad('2')).await?, 0);
++
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn clear_takes_back_a_stroke_then_deletes_characters() -> Result<()> {
++        let mut context = context_with(TestPlatform::new());
++        let control = text_component(&mut context).await?;
++        context.system().input_method().set_mode(InputMode::Hangul);
++
++        keys(&mut context, control, "4188124").await?; // 기 + 학 being composed
++        assert_eq!(read_text(&mut context, control).await?, euc_kr("기학"));
++        keys(&mut context, control, "<").await?;
++        assert_eq!(read_text(&mut context, control).await?, euc_kr("기하"));
++        keys(&mut context, control, "><").await?;
++        assert_eq!(read_text(&mut context, control).await?, euc_kr("기"));
++        keys(&mut context, control, "<").await?;
++        assert_eq!(read_text(&mut context, control).await?, b"");
++        // nothing left: the key is the game's own (액션퍼즐패밀리 1 closes the box)
++        assert_eq!(handle_key(&mut context, control, TextKey::Clear).await?, 0);
++
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn switching_the_input_mode_finishes_the_composition() -> Result<()> {
++        let mut context = context_with(TestPlatform::new());
++        let control = text_component(&mut context).await?;
++
++        context.system().input_method().set_mode(InputMode::Lower);
++        keys(&mut context, control, "22").await?;
++        // the game sets the mode (MC_imSetCurrentMode), then passes its own key (-99) to the control
++        context.system().input_method().set_mode(InputMode::Hangul);
++        keys(&mut context, control, ">41>").await?;
++        assert_eq!(read_text(&mut context, control).await?, [b"b".to_vec(), euc_kr("기")].concat());
++
++        // the cursor moves over whole characters; text goes in at the cursor
++        handle_key(&mut context, control, TextKey::Left).await?;
++        context.system().input_method().set_mode(InputMode::Digits);
++        keys(&mut context, control, "7").await?;
++        assert_eq!(read_text(&mut context, control).await?, [b"b7".to_vec(), euc_kr("기")].concat());
++
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn calls_on_no_control_fail_and_read_as_empty() -> Result<()> {
++        let mut context = context_with(TestPlatform::new());
++        let buffer = context.alloc_raw(4)?;
++        context.write_bytes(buffer, b"xyz\0")?;
++
++        assert_eq!(configure(&mut context, 0, 0, 0, 10, 10, 0).await?, -1);
++        assert_eq!(handle_key(&mut context, 0, TextKey::Keypad('1')).await?, -1);
++        assert_eq!(get_text_size(&mut context, 0).await?, 0);
++        assert_eq!(get_text(&mut context, 0, 0, buffer, 4).await?, 0);
++        assert_eq!(read_generic::<u8, _>(&context, buffer)?, 0);
++
++        // an unknown class makes no control
++        assert_eq!(create(&mut context, 0, 0).await?.0, 0);
++
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn destroyed_controls_are_gone() -> Result<()> {
++        let mut context = context_with(TestPlatform::new());
++        let control = text_component(&mut context).await?;
++        destroy(&mut context, control).await?;
++
++        assert_eq!(set_enable(&mut context, control, 1).await?, -1);
++
++        Ok(())
++    }
++
++    // 크로노스윙 lays out its own text with the control's geometry.
++    #[futures_test::test]
++    async fn geometry_reads_back_the_configured_rectangle() -> Result<()> {
++        let mut context = context_with(TestPlatform::new());
++        let control = text_component(&mut context).await?;
++        configure(&mut context, control, 10, 20, 100, 20, 3).await?;
++
++        let out = context.alloc_raw(16)?;
++        assert_eq!(get_geometry(&mut context, control, out, out + 4, out + 8, out + 12).await?, 0);
++        assert_eq!(read_generic::<[i32; 4], _>(&context, out)?, [10, 20, 100, 20]);
++
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn paint_draws_a_box_with_the_text_and_cursor_on_the_screen() -> Result<()> {
++        let mut context = context_with(TestPlatform::new());
++        let framebuffer = FrameBuffer::new(&mut context, 64, 32, 16)?;
++        let screen = context.alloc_raw(size_of::<WIPICFramebuffer>() as u32)?;
++        write_generic(&mut context, screen, framebuffer.0)?;
++        write_generic(&mut context, SCREEN_FRAMEBUFFER_PTR, screen)?;
++
++        let control = text_component(&mut context).await?;
++        configure(&mut context, control, 4, 4, 50, 18, 3).await?;
++        set_enable(&mut context, control, 1).await?;
++        context.system().input_method().set_mode(InputMode::Upper);
++        keys(&mut context, control, "4>").await?;
++        assert_eq!(paint(&mut context, control, 0).await?, 0);
++
++        let image = framebuffer.image(&mut context)?;
++        let black = Color { a: 255, r: 0, g: 0, b: 0 };
++        let white = Color {
++            a: 255,
++            r: 255,
++            g: 255,
++            b: 255,
++        };
++        assert_eq!(image.get_pixel(4, 4), black); // frame
++        assert_eq!(image.get_pixel(53, 21), black);
++        assert_eq!(image.get_pixel(45, 12), white); // inside, right of the text
++        let ink = (6..20)
++            .flat_map(|x| (7..19).map(move |y| (x, y)))
++            .filter(|&(x, y)| image.get_pixel(x, y) == black)
++            .count();
++        assert!(ink > 8, "{ink} text pixels"); // "G" and the cursor
++
++        Ok(())
++    }
++
++    // 질주쾌감스케쳐 2 reads the date through a control.
++    #[futures_test::test]
++    async fn get_time_writes_a_struct_tm() -> Result<()> {
++        let clock = TestClock::new();
++        clock.set(1_759_658_096_000); // 2025-10-05 09:54:56 UTC, a Sunday
++        let mut context = context_with(TestPlatform::with_clock(clock));
++        let out = context.alloc_raw(36)?;
++
++        assert_eq!(get_time(&mut context, 0, out).await?, 0);
++        assert_eq!(read_generic::<[i32; 7], _>(&context, out)?, [56, 54, 9, 5, 9, 125, 0]);
++
++        Ok(())
++    }
++}
