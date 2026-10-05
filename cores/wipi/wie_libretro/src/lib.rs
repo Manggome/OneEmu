@@ -401,6 +401,10 @@ unsafe fn load_game(game: *const retro_game_info) -> bool {
                 note.push_str(" (사운드폰트 없음: 배경음악이 나오지 않습니다)");
             }
             show_message(&note, 180);
+            let mut rotation = info.rotation as c_uint;
+            if rotation != 0 && !unsafe { env(RETRO_ENVIRONMENT_SET_ROTATION, &mut rotation as *mut c_uint as *mut c_void) } {
+                tracing::warn!("frontend refused rotation {rotation}");
+            }
             if let Ok(mut core) = CORE.lock() {
                 *core = Some(Core {
                     worker,
