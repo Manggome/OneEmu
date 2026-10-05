@@ -1,0 +1,263 @@
+diff --git a/wie-ktf/src/runtime/wipi_c/method_table.rs b/wie-ktf/src/runtime/wipi_c/method_table.rs
+index e1aa4294..26ce852f 100644
+--- a/wie-ktf/src/runtime/wipi_c/method_table.rs
++++ b/wie-ktf/src/runtime/wipi_c/method_table.rs
+@@ -444,13 +444,14 @@ fn gen_unk_stub(id: u32, index: u32) -> WIPICMethodBody {
+ /// The input-method table (`MC_im*`). 액션퍼즐패밀리 1 picks the input mode of its name box (client.bin 0x116fec):
+ /// slot 4() -> the supported mode codes, slot 3() -> how many, then slot 1(index) for the first wanted code
+ /// ("KO", "EN/S", "EN/L", "N123", "EN") the list holds. It retries the next code forever while none matches, so
+-/// answering 0 modes hung the game. Slots 0 and 2 (HandleInput / GetCurrentMode in the WIPI-C order) are
+-/// unconfirmed and stay stubs.
++/// answering 0 modes hung the game. 크로노스윙's text field (client.bin 0x104eec) feeds keypad keys to slot 0
++/// (key, 2, committed, &length, composing, &length) = HandleInput and finishes the composition with key 0x9d before
++/// a cursor move, a mode change or CLR; UP/DOWN step the mode index with slot 2() = GetCurrentMode, then slot 1.
+ pub fn get_unk3_method_table() -> Vec<WIPICMethodBody> {
+     vec![
+-        gen_unk_stub(3, 0),
++        im::handle_input_ktf.into_body(),
+         im::set_current_mode.into_body(),
+-        gen_unk_stub(3, 2),
++        im::get_current_mode.into_body(),
+         im::get_supported_mode_count.into_body(),
+         im::get_supported_modes.into_body(),
+     ]
+@@ -824,6 +825,35 @@ mod tests {
+         assert_eq!(call(&table, 37, &[0, 0, 0x10, 11], &mut memory).await, 0);
+     }
+ 
++    // 크로노스윙's name field (client.bin 0x104eec): keypad keys go to slot 0 with zeroed 5-byte buffers and unset size
++    // words; UP/DOWN read the mode index from slot 2 and set the next one with slot 1.
++    #[futures_test::test]
++    async fn input_method_table_composes_hangul_for_the_name_field() {
++        let table = get_unk3_method_table();
++        let mut memory = memory();
++        let buffers = memory.alloc_raw(0x20).unwrap();
++        let (committed, composing, committed_size, composing_size) = (buffers, buffers + 8, buffers + 16, buffers + 20);
++
++        assert_eq!(call(&table, 1, &[3], &mut memory).await, 1);
++        assert_eq!(call(&table, 2, &[], &mut memory).await, 3);
++        memory.write_bytes(committed_size, &[0xa5; 8]).unwrap(); // stack garbage in both size words
++        call(
++            &table,
++            0,
++            &[b'4' as u32, 2, committed, committed_size, composing, composing_size],
++            &mut memory,
++        )
++        .await;
++        assert_eq!(memory.0[composing as usize..composing as usize + 3], [0xa4, 0xa1, 0]); // ㄱ
++        assert_eq!(read_generic::<u32, _>(&memory, composing_size).unwrap(), 2);
++
++        call(&table, 0, &[0x9d, 2, committed, committed_size, composing, composing_size], &mut memory).await;
++        assert_eq!(memory.0[committed as usize..committed as usize + 3], [0xa4, 0xa1, 0]);
++        assert_eq!(read_generic::<u32, _>(&memory, committed_size).unwrap(), 2);
++        assert_eq!(memory.0[composing as usize], 0);
++        assert_eq!(read_generic::<u32, _>(&memory, composing_size).unwrap(), 0);
++    }
++
+     // The game loops over its wanted modes until one is in the list: an empty list hung it.
+     #[futures_test::test]
+     async fn input_method_table_lists_the_supported_modes() {
+diff --git a/wie-wipi-c/src/api/im.rs b/wie-wipi-c/src/api/im.rs
+index 2dac172e..c47d784a 100644
+--- a/wie-wipi-c/src/api/im.rs
++++ b/wie-wipi-c/src/api/im.rs
+@@ -4,13 +4,16 @@ use alloc::vec::Vec;
+ 
+ use wipi_types::wipic::WIPICWord;
+ 
+-use wie_backend::InputMode;
++use wie_backend::{InputMode, InputOutput};
+ 
+ use crate::context::WIPICContext;
+ 
+ // Key release, in the numbering LGT clets receive key events with (press = 502).
+ const KEY_RELEASE_EVENT: i32 = 503;
+ 
++// Key release, in the numbering KTF clets receive key events with (press = 2).
++const KTF_KEY_RELEASE_EVENT: i32 = 3;
++
+ /// `MC_imHandleInput(key, type, committed, committedSize, composing, composingSize)`: feeds one key to
+ /// the handset input method. Both sizes are buffer capacities on entry and text lengths on return.
+ /// A digit, `*` or `#` enters text in the current mode; any other key finishes the composition, which
+@@ -28,38 +31,77 @@ pub async fn handle_input(
+         "MC_imHandleInput({key:#x}, {event_type}, {ptr_committed:#x}, {ptr_committed_size:#x}, {ptr_composing:#x}, {ptr_composing_size:#x})"
+     );
+ 
+-    let output = if event_type == KEY_RELEASE_EVENT {
+-        Default::default()
+-    } else {
+-        let key = u8::try_from(key)
+-            .ok()
+-            .map(char::from)
+-            .filter(|x| x.is_ascii_digit() || *x == '*' || *x == '#');
+-        context.system().input_method().press(key)
+-    };
++    let output = press(context, key, event_type == KEY_RELEASE_EVENT);
++    let committed = encode(&output.committed);
++    let composing = encode(&output.composing);
++    write_sized(context, &committed, ptr_committed, ptr_committed_size)?;
++    write_sized(context, &composing, ptr_composing, ptr_composing_size)?;
+ 
+-    write_text(context, &output.committed, ptr_committed, ptr_committed_size)?;
+-    write_text(context, &output.composing, ptr_composing, ptr_composing_size)?;
++    Ok(0)
++}
++
++/// The KTF `MC_imHandleInput` (slot 0 of the input-method table), with the same arguments. KTF callers
++/// leave both size words unset (크로노스윙's name field, client.bin 0x104fc0: uninitialised stack words, 0
++/// at 0x104b7e) and pass zeroed 5-byte buffers, so the sizes are lengths out only and each text is
++/// NUL-terminated; the field reads the texts back with strlen after finishing a composition (0x1050da).
++/// One key commits at most one character and composes at most one, which fits those buffers.
++pub async fn handle_input_ktf(
++    context: &mut dyn WIPICContext,
++    key: i32,
++    event_type: i32,
++    ptr_committed: WIPICWord,
++    ptr_committed_size: WIPICWord,
++    ptr_composing: WIPICWord,
++    ptr_composing_size: WIPICWord,
++) -> Result<i32> {
++    tracing::debug!(
++        "MC_imHandleInput({key:#x}, {event_type}, {ptr_committed:#x}, {ptr_committed_size:#x}, {ptr_composing:#x}, {ptr_composing_size:#x})"
++    );
++
++    let output = press(context, key, event_type == KTF_KEY_RELEASE_EVENT);
++    let committed = encode(&output.committed);
++    let composing = encode(&output.composing);
++    write_terminated(context, &committed, ptr_committed, ptr_committed_size)?;
++    write_terminated(context, &composing, ptr_composing, ptr_composing_size)?;
+ 
+     Ok(0)
+ }
+ 
+-/// Writes as many whole characters of `text` as fit, in the handset encoding, and NUL-terminates
+-/// when there is room.
+-fn write_text(context: &mut dyn WIPICContext, text: &str, ptr_buf: WIPICWord, ptr_size: WIPICWord) -> Result<()> {
++fn press(context: &mut dyn WIPICContext, key: i32, release: bool) -> InputOutput {
++    if release {
++        return Default::default();
++    }
++    let key = u8::try_from(key)
++        .ok()
++        .map(char::from)
++        .filter(|x| x.is_ascii_digit() || *x == '*' || *x == '#');
++    context.system().input_method().press(key)
++}
++
++/// `text` in the handset encoding, one encoded slice per character.
++fn encode(text: &str) -> Vec<Vec<u8>> {
++    text.chars()
++        .map(|c| {
++            let mut utf8 = [0; 4];
++            encoding_rs::EUC_KR.encode(c.encode_utf8(&mut utf8)).0.into_owned()
++        })
++        .collect()
++}
++
++/// Writes as many whole characters as fit the capacity in `*ptr_size`, NUL-terminates when there is room
++/// and stores the length written.
++fn write_sized(context: &mut dyn WIPICContext, chars: &[Vec<u8>], ptr_buf: WIPICWord, ptr_size: WIPICWord) -> Result<()> {
+     if ptr_buf == 0 || ptr_size == 0 {
+         return Ok(());
+     }
+ 
+     let capacity = read_generic::<i32, _>(context, ptr_size)?.max(0) as usize;
+     let mut bytes = Vec::new();
+-    for c in text.chars() {
+-        let mut utf8 = [0; 4];
+-        let encoded = encoding_rs::EUC_KR.encode(c.encode_utf8(&mut utf8)).0;
++    for encoded in chars {
+         if bytes.len() + encoded.len() > capacity {
+             break;
+         }
+-        bytes.extend_from_slice(&encoded);
++        bytes.extend_from_slice(encoded);
+     }
+ 
+     context.write_bytes(ptr_buf, &bytes)?;
+@@ -69,6 +111,23 @@ fn write_text(context: &mut dyn WIPICContext, text: &str, ptr_buf: WIPICWord, pt
+     write_generic(context, ptr_size, bytes.len() as i32)
+ }
+ 
++/// Writes the whole text NUL-terminated and, when the caller passed a size word, the length.
++fn write_terminated(context: &mut dyn WIPICContext, chars: &[Vec<u8>], ptr_buf: WIPICWord, ptr_size: WIPICWord) -> Result<()> {
++    if ptr_buf == 0 {
++        return Ok(());
++    }
++
++    let mut bytes = chars.concat();
++    let length = bytes.len() as i32;
++    bytes.push(0);
++    context.write_bytes(ptr_buf, &bytes)?;
++    if ptr_size != 0 {
++        write_generic(context, ptr_size, length)?;
++    }
++
++    Ok(())
++}
++
+ // Input modes the platform reports, in the specification's vocabulary: an ISO 639
+ // language code, "/S" or "/L" for a script with case, and "N123" for digits.
+ // LGT titles read the first code to decide whether upper or lower case comes first
+@@ -140,7 +199,7 @@ mod tests {
+ 
+     use crate::context::test::TestContext;
+ 
+-    use super::{handle_input, set_current_mode};
++    use super::{get_current_mode, handle_input, handle_input_ktf, set_current_mode};
+ 
+     const COMMITTED: u32 = 0x1000;
+     const COMPOSING: u32 = 0x1010;
+@@ -176,4 +235,52 @@ mod tests {
+         assert_eq!(press(&mut context, b'2' as i32).await, (vec![], vec![0xb0, 0xa1]));
+         assert_eq!(press(&mut context, 0x9d).await, (vec![0xb0, 0xa1], vec![]));
+     }
++
++    /// One KTF call the way 크로노스윙's name field makes it (client.bin 0x104fc0): zeroed 5-byte buffers and size
++    /// words left as whatever was on the stack. Returns both buffers (up to their NUL) and both lengths.
++    async fn press_ktf(context: &mut TestContext, key: i32, event_type: i32) -> (Vec<u8>, i32, Vec<u8>, i32) {
++        context.write_bytes(COMMITTED, &[0; 5]).unwrap();
++        context.write_bytes(COMPOSING, &[0; 5]).unwrap();
++        context.write_bytes(COMMITTED_SIZE, &(-0x5a5a_5a5ai32).to_le_bytes()).unwrap();
++        context.write_bytes(COMPOSING_SIZE, &0x7fffi32.to_le_bytes()).unwrap();
++        handle_input_ktf(context, key, event_type, COMMITTED, COMMITTED_SIZE, COMPOSING, COMPOSING_SIZE)
++            .await
++            .unwrap();
++
++        let read = |context: &TestContext, buf: u32| {
++            let mut bytes = vec![0; 5];
++            context.read_bytes(buf, &mut bytes).unwrap();
++            bytes.into_iter().take_while(|&x| x != 0).collect::<Vec<_>>()
++        };
++        (
++            read(context, COMMITTED),
++            read_generic(context, COMMITTED_SIZE).unwrap(),
++            read(context, COMPOSING),
++            read_generic(context, COMPOSING_SIZE).unwrap(),
++        )
++    }
++
++    #[futures_test::test]
++    async fn ktf_sizes_are_lengths_out_and_texts_nul_terminated() {
++        let system = System::new(Box::new(TestPlatform::new()), "test-pid", "test-aid", DefaultTaskRunner);
++        let mut context = TestContext::with_system(system);
++        assert_eq!(set_current_mode(&mut context, 3).await.unwrap(), 1);
++        assert_eq!(get_current_mode(&mut context).await.unwrap(), 3);
++
++        // 한 = ㅎ(8 8) ㅏ(1 2) ㄴ(5); the release of a key (type 3) changes nothing.
++        for key in *b"8812" {
++            press_ktf(&mut context, key as i32, 2).await;
++        }
++        assert_eq!(press_ktf(&mut context, b'5' as i32, 2).await, (vec![], 0, vec![0xc7, 0xd1], 2));
++        assert_eq!(press_ktf(&mut context, b'5' as i32, 3).await, (vec![], 0, vec![], 0));
++        // 글 starts with ㄱ: 한 is committed and ㄱ composed.
++        assert_eq!(press_ktf(&mut context, b'4' as i32, 2).await, (vec![0xc7, 0xd1], 2, vec![0xa4, 0xa1], 2));
++        // The field finishes the composition with 0x9d before moving the cursor or switching modes.
++        assert_eq!(press_ktf(&mut context, 0x9d, 2).await, (vec![0xa4, 0xa1], 2, vec![], 0));
++
++        // Mode 2 (N123): one committed digit per key.
++        assert_eq!(set_current_mode(&mut context, 2).await.unwrap(), 1);
++        assert_eq!(get_current_mode(&mut context).await.unwrap(), 2);
++        assert_eq!(press_ktf(&mut context, b'7' as i32, 2).await, (vec![b'7'], 1, vec![], 0));
++    }
+ }
