@@ -128,7 +128,10 @@ object WipiCheatCatalog {
         val games = catalog(context).games
         if (games.isEmpty()) return null
         val id = WipiCompat.get(context).resolve(path).identity ?: return null
-        val game = games.firstOrNull { it.pid.isNotEmpty() && it.pid.equals(id.pid, ignoreCase = true) } ?: return null
+        // By PID, or by the exact file for dumps without a descriptor (no PID, e.g. a bare jar in a zip).
+        val game = games.firstOrNull { it.pid.isNotEmpty() && it.pid.equals(id.pid, ignoreCase = true) }
+            ?: games.firstOrNull { g -> g.files.any { it.sha256.equals(id.sha256, ignoreCase = true) } }
+            ?: return null
         if (game.cheats.isEmpty()) return null
         val verified = game.files.isEmpty() || game.files.any { it.sha256.equals(id.sha256, ignoreCase = true) }
         return Match(game, verified)

@@ -1,0 +1,668 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index bb1d4e46..8bcf8c19 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -6964,6 +6964,7 @@ dependencies = [
+  "bytemuck",
+  "encoding_rs",
+  "futures",
++ "futures-test",
+  "jvm",
+  "jvm-class-proto",
+  "jvm-types",
+diff --git a/wie-ktf/Cargo.toml b/wie-ktf/Cargo.toml
+index 53a147e8..1ebb10fd 100644
+--- a/wie-ktf/Cargo.toml
++++ b/wie-ktf/Cargo.toml
+@@ -31,4 +31,5 @@ wie-wipi-c = { workspace = true }
+ wie-wipi-java = { workspace = true }
+ 
+ [dev-dependencies]
++futures-test = { workspace = true }
+ test-utils = { workspace = true }
+diff --git a/wie-ktf/src/runtime/wipi_c/method_table.rs b/wie-ktf/src/runtime/wipi_c/method_table.rs
+index b66d1749..fa6a62af 100644
+--- a/wie-ktf/src/runtime/wipi_c/method_table.rs
++++ b/wie-ktf/src/runtime/wipi_c/method_table.rs
+@@ -236,54 +236,88 @@ pub fn get_database_interface(core: &mut ArmCore) -> Result<WIPICDatabaseInterfa
+     })
+ }
+ 
++/// The MC_uic* table. MC_uicCreate makes no control (it answers 0), so every call on a control fails with
++/// M_E_ERROR the way a handset answers for a missing control, and the text getters report an empty text.
++///
++/// Slots follow what 액션퍼즐패밀리 1 (KTF) does on its high-score name entry (client.bin 0x117524, 0x116f0c,
++/// 0x1186ea): 8 HandleEvent(c, type, p1, p2), 9 Configure(c, x, y, w, h, flags), 33 (c, 0, -1) clears the text,
++/// 32 (c, 0, text, len) inserts the old name, 35 (c, 10) sets the size of its 10-byte buffer, 36 (c) -> text size
++/// and, when that is > 0, 37 (c, 0, buf, size + 1) -> bytes copied. Names of the other slots are unconfirmed.
+ pub fn get_uic_method_table() -> Vec<WIPICMethodBody> {
+-    vec![
+-        uic::create_application_context.into_body(),
+-        uic::get_class.into_body(),
+-        uic::create.into_body(),
+-        uic::destroy.into_body(),
+-        gen_stub(4, "MC_uicRepaint"),
+-        gen_stub(5, "MC_uicPaint"),
+-        gen_stub(6, "MC_uicGetClassName"),
+-        gen_stub(7, "MC_uicIsInstance"),
+-        gen_stub(8, "MC_uicHandleEvent"),
+-        gen_stub(9, "MC_uicConfigure"),
+-        gen_stub(10, "MC_uicGetGeometry"),
+-        gen_stub(11, "MC_uicSetEnable"),
+-        gen_stub(12, "MC_uicSetCallback"),
+-        gen_stub(13, "MC_uicSetEventHandler"),
+-        gen_stub(14, "MC_uicSetFont"),
+-        gen_stub(15, "MC_uicGetFont"),
+-        gen_stub(16, "MC_uicSetFgColor"),
+-        gen_stub(17, "MC_uicSetBgColor"),
+-        gen_stub(18, "MC_uicSetLabel"),
+-        gen_stub(19, "MC_uicGetLabel"),
+-        gen_stub(20, "MC_uicSetLabelAlignment"),
+-        gen_stub(21, "MC_uicSetTimeMask"),
+-        gen_stub(22, "MC_uicSetTime"),
+-        gen_stub(23, "MC_uicSetTimeLong"),
+-        gen_stub(24, "MC_uicGetTime"),
+-        gen_stub(25, "MC_uicAddMenuItem"),
+-        uic::get_menu_item.into_body(),
+-        gen_stub(27, "MC_uicRemoveMenuItem"),
+-        gen_stub(28, "MC_uicSetActiveMenuItem"),
+-        gen_stub(29, "MC_uicGetActiveMenuItem"),
+-        gen_stub(30, "MC_uicInsertText"),
+-        gen_stub(31, "MC_uicDeleteText"),
+-        gen_stub(32, "MC_uicGetMaxTextSize"),
+-        gen_stub(33, "MC_uicSetMaxTextSize"),
+-        gen_stub(34, "MC_uicGetTextSize"),
+-        gen_stub(35, "MC_uicGetText"),
+-        gen_stub(36, "MC_uicAddListItem"),
+-        gen_stub(37, "MC_uicGetListItem"),
+-        gen_stub(38, "MC_uicRemoveListItem"),
+-        gen_stub(39, "MC_uicSetActiveListItem"),
+-        gen_stub(40, "MC_uicGetActiveListItem"),
+-        gen_stub(41, "OEMC_uicGetCursorPosition"),
+-        gen_stub(42, "OEMC_uicSetCursorPosition"),
+-        gen_stub(43, "OEMC_uicSetLineGap"),
+-        gen_stub(44, "OEMC_uicGetLineGap"),
+-    ]
++    const NAMES: [&str; 47] = [
++        "MC_uicCreateApplicationContext",
++        "MC_uicGetClass",
++        "MC_uicCreate",
++        "MC_uicDestroy",
++        "MC_uicRepaint",
++        "MC_uicPaint",
++        "MC_uicGetClassName",
++        "MC_uicIsInstance",
++        "MC_uicHandleEvent",
++        "MC_uicConfigure",
++        "MC_uicGetGeometry",
++        "MC_uicSetEnable",
++        "MC_uicSetCallback",
++        "MC_uicSetEventHandler",
++        "MC_uicSetFont",
++        "MC_uicGetFont",
++        "MC_uicSetFgColor",
++        "MC_uicSetBgColor",
++        "MC_uicSetLabel",
++        "MC_uicGetLabel",
++        "MC_uicSetLabelAlignment",
++        "MC_uicSetTimeMask",
++        "MC_uicSetTime",
++        "MC_uicSetTimeLong",
++        "MC_uicGetTime",
++        "MC_uicAddMenuItem",
++        "MC_uicGetMenuItem",
++        "MC_uicRemoveMenuItem",
++        "MC_uicSetActiveMenuItem",
++        "MC_uicGetActiveMenuItem",
++        "MC_uicUnk30",
++        "MC_uicUnk31",
++        "MC_uicInsertText",
++        "MC_uicDeleteText",
++        "MC_uicGetMaxTextSize",
++        "MC_uicSetMaxTextSize",
++        "MC_uicGetTextSize",
++        "MC_uicGetText",
++        "MC_uicAddListItem",
++        "MC_uicGetListItem",
++        "MC_uicRemoveListItem",
++        "MC_uicSetActiveListItem",
++        "MC_uicGetActiveListItem",
++        "OEMC_uicGetCursorPosition",
++        "OEMC_uicSetCursorPosition",
++        "OEMC_uicSetLineGap",
++        "OEMC_uicGetLineGap",
++    ];
++
++    NAMES
++        .iter()
++        .enumerate()
++        .map(|(id, &name)| match id {
++            0 => uic::create_application_context.into_body(),
++            1 => uic::get_class.into_body(),
++            2 => uic::create.into_body(),
++            3 => uic::destroy.into_body(),
++            26 => uic::get_menu_item.into_body(),
++            36 => uic::get_text_size.into_body(),
++            37 => uic::get_text.into_body(),
++            _ => uic_without_control(id as WIPICWord, name),
++        })
++        .collect()
++}
++
++/// An MC_uic* call on a control: there is none (MC_uicCreate makes none), so M_E_ERROR.
++fn uic_without_control(id: WIPICWord, name: &'static str) -> WIPICMethodBody {
++    let body = move |_: &mut dyn WIPICContext, control: WIPICWord| async move {
++        tracing::warn!("no UI control: {id}: {name}({control:#x})");
++        Ok::<i32, WieError>(-1) // M_E_ERROR
++    };
++
++    body.into_body()
+ }
+ 
+ pub fn get_media_method_table() -> Vec<WIPICMethodBody> {
+@@ -366,13 +400,18 @@ fn gen_unk_stub(id: u32, index: u32) -> WIPICMethodBody {
+     body.into_body()
+ }
+ 
++/// The input-method table (`MC_im*`). 액션퍼즐패밀리 1 picks the input mode of its name box (client.bin 0x116fec):
++/// slot 4() -> the supported mode codes, slot 3() -> how many, then slot 1(index) for the first wanted code
++/// ("KO", "EN/S", "EN/L", "N123", "EN") the list holds. It retries the next code forever while none matches, so
++/// answering 0 modes hung the game. Slots 0 and 2 (HandleInput / GetCurrentMode in the WIPI-C order) are
++/// unconfirmed and stay stubs.
+ pub fn get_unk3_method_table() -> Vec<WIPICMethodBody> {
+     vec![
+         gen_unk_stub(3, 0),
+-        gen_unk_stub(3, 1),
++        im::set_current_mode.into_body(),
+         gen_unk_stub(3, 2),
+-        gen_unk_stub(3, 3),
+-        gen_unk_stub(3, 4),
++        im::get_supported_mode_count.into_body(),
++        im::get_supported_modes.into_body(),
+     ]
+ }
+ 
+@@ -609,3 +648,110 @@ pub fn get_method_body(table_id: WIPICTableId, function_id: u16) -> Option<WIPIC
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use alloc::{boxed::Box, vec, vec::Vec};
++
++    use wipi_types::wipic::{WIPICIndirectPtr, WIPICWord};
++
++    use wie_backend::{Instant, System};
++    use wie_util::{ByteRead, ByteWrite, Result, read_generic};
++    use wie_wipi_c::{WIPICContext, WIPICMethodBody};
++
++    use super::{get_uic_method_table, get_unk3_method_table};
++
++    /// Flat memory from address 0 with a bump allocator; enough for calls that do not need a System.
++    struct Memory(Vec<u8>);
++
++    impl ByteRead for Memory {
++        fn read_bytes(&self, address: u32, result: &mut [u8]) -> Result<usize> {
++            result.copy_from_slice(&self.0[address as usize..address as usize + result.len()]);
++            Ok(result.len())
++        }
++    }
++
++    impl ByteWrite for Memory {
++        fn write_bytes(&mut self, address: u32, data: &[u8]) -> Result<()> {
++            self.0[address as usize..address as usize + data.len()].copy_from_slice(data);
++            Ok(())
++        }
++    }
++
++    #[async_trait::async_trait]
++    impl WIPICContext for Memory {
++        fn alloc_raw(&mut self, size: WIPICWord) -> Result<WIPICWord> {
++            let address = self.0.len() as WIPICWord;
++            self.0.resize(self.0.len() + size as usize, 0);
++            Ok(address)
++        }
++        fn alloc(&mut self, size: WIPICWord) -> Result<WIPICIndirectPtr> {
++            Ok(WIPICIndirectPtr(self.alloc_raw(size)?))
++        }
++        fn free(&mut self, _: WIPICIndirectPtr) -> Result<()> {
++            Ok(())
++        }
++        fn free_raw(&mut self, _: WIPICWord, _: WIPICWord) -> Result<()> {
++            Ok(())
++        }
++        fn data_ptr(&self, memory: WIPICIndirectPtr) -> Result<WIPICWord> {
++            Ok(memory.0)
++        }
++        async fn call_function(&mut self, _: WIPICWord, _: &[WIPICWord]) -> Result<WIPICWord> {
++            unimplemented!()
++        }
++        fn system(&mut self) -> &mut System {
++            unimplemented!()
++        }
++        fn spawn(&mut self, _: WIPICMethodBody) -> Result<()> {
++            unimplemented!()
++        }
++        async fn get_resource_size(&self, _: &str) -> Result<Option<usize>> {
++            unimplemented!()
++        }
++        async fn read_resource(&self, _: &str) -> Result<Vec<u8>> {
++            unimplemented!()
++        }
++        fn set_timer(&mut self, _: Instant, _: WIPICMethodBody) {
++            unimplemented!()
++        }
++    }
++
++    async fn call(table: &[WIPICMethodBody], slot: usize, args: &[WIPICWord], memory: &mut Memory) -> WIPICWord {
++        let mut raw = [0; 8];
++        raw[..args.len()].copy_from_slice(args);
++        table[slot].call(memory, Box::new(raw)).await.unwrap().results[0]
++    }
++
++    // 액션퍼즐패밀리 1's name box: configure, fill and read back a control MC_uicCreate did not make.
++    #[futures_test::test]
++    async fn uic_calls_on_no_control_fail_without_stopping_the_game() {
++        let table = get_uic_method_table();
++        let mut memory = Memory(vec![0; 0x100]);
++
++        assert_eq!(call(&table, 2, &[0, 0], &mut memory).await, 0); // MC_uicCreate: no control
++        for (slot, args) in [(9, &[0, 70, 100, 100, 18, 3][..]), (33, &[0, 0, u32::MAX]), (35, &[0, 10]), (11, &[0, 1])] {
++            assert_eq!(call(&table, slot, args, &mut memory).await, u32::MAX, "slot {slot}"); // M_E_ERROR
++        }
++        assert_eq!(call(&table, 36, &[0], &mut memory).await, 0); // no text
++        assert_eq!(call(&table, 37, &[0, 0, 0x10, 11], &mut memory).await, 0);
++    }
++
++    // The game loops over its wanted modes until one is in the list: an empty list hung it.
++    #[futures_test::test]
++    async fn input_method_table_lists_the_supported_modes() {
++        let table = get_unk3_method_table();
++        let mut memory = Memory(vec![0; 0x100]);
++
++        let count = call(&table, 3, &[], &mut memory).await;
++        let list = call(&table, 4, &[], &mut memory).await;
++        let codes: Vec<Vec<u8>> = (0..count)
++            .map(|index| {
++                let ptr: u32 = read_generic(&memory, list + index * 4).unwrap();
++                let end = memory.0[ptr as usize..].iter().position(|&x| x == 0).unwrap();
++                memory.0[ptr as usize..ptr as usize + end].to_vec()
++            })
++            .collect();
++        assert!(codes.contains(&b"KO".to_vec()), "{codes:?}");
++    }
++}
+diff --git a/wie-wipi-c/src/api/graphics.rs b/wie-wipi-c/src/api/graphics.rs
+index 9d04e917..423d440a 100644
+--- a/wie-wipi-c/src/api/graphics.rs
++++ b/wie-wipi-c/src/api/graphics.rs
+@@ -25,6 +25,33 @@ use self::{grp_context::WIPICGraphicsContextIdx, image::create_wipi_image};
+ const FRAMEBUFFER_DEPTH: u32 = 16; // XXX hardcode to 16bpp as some game requires 16bpp framebuffer
+ const SCREEN_FRAMEBUFFER_PTR: u32 = 0x7fff1000;
+ 
++/// `MC_GrpContext.mask` bit of a field index: set by `MC_grpSetContext`, so only fields a game set apply.
++const fn context_bit(index: WIPICGraphicsContextIdx) -> u32 {
++    1 << (index as u32)
++}
++
++/// Narrows a draw call's own clip to the graphics context's clip (`MC_GRP_CONTEXT_CLIP_IDX`, {x1, y1, x2, y2}
++/// with x2/y2 exclusive, as LGT's platform reads it) when the game set one. Games draw one glyph out of a
++/// sprite strip this way: 메이플스토리 도적편 draws its whole 320 px digit strip for every digit.
++fn with_context_clip(gctx: Option<&WIPICGraphicsContext>, clip: Clip) -> Clip {
++    match gctx {
++        Some(gctx) if gctx.mask & context_bit(WIPICGraphicsContextIdx::ClipIdx) != 0 => {
++            let [x1, y1, x2, y2] = gctx.clip.map(|value| i32::from(value as i16));
++            clip.intersect(&Clip {
++                x: x1,
++                y: y1,
++                width: (x2 - x1).max(0) as u32,
++                height: (y2 - y1).max(0) as u32,
++            })
++        }
++        _ => clip,
++    }
++}
++
++fn read_context(context: &dyn WIPICContext, p_gctx: WIPICWord) -> Result<Option<WIPICGraphicsContext>> {
++    Ok(if p_gctx == 0 { None } else { Some(read_generic(context, p_gctx)?) })
++}
++
+ pub async fn get_screen_framebuffer(context: &mut dyn WIPICContext, a0: WIPICWord) -> Result<WIPICIndirectPtr> {
+     tracing::debug!("MC_grpGetScreenFrameBuffer({a0:#x})");
+ 
+@@ -119,8 +146,10 @@ pub async fn set_context(context: &mut dyn WIPICContext, p_grp_ctx: WIPICWord, o
+         }
+         _ => {
+             tracing::warn!("MC_grpSetContext({p_grp_ctx:#x}, {op:?}, {pv:#x}): ignoring invalid op");
++            return Ok(());
+         }
+     }
++    grp_ctx.mask |= context_bit(op);
+     write_generic(context, p_grp_ctx, grp_ctx)?;
+ 
+     Ok(())
+@@ -160,12 +189,15 @@ pub async fn put_pixel(context: &mut dyn WIPICContext, dst_fb: WIPICIndirectPtr,
+         x as _,
+         y as _,
+         color,
+-        Clip {
+-            x: 0,
+-            y: 0,
+-            width: framebuffer.0.width,
+-            height: framebuffer.0.height,
+-        },
++        with_context_clip(
++            Some(&gctx),
++            Clip {
++                x: 0,
++                y: 0,
++                width: framebuffer.0.width,
++                height: framebuffer.0.height,
++            },
++        ),
+     )
+ }
+ 
+@@ -184,6 +216,7 @@ pub async fn fill_rect(context: &mut dyn WIPICContext, dst_fb: WIPICIndirectPtr,
+         width: w as _,
+         height: h as _,
+     };
++    let clip = with_context_clip(Some(&gctx), clip);
+ 
+     let color = framebuffer.pixel_to_color(gctx.fgpxl);
+     primitives::fill_rect(context, &framebuffer, x, y, w as u32, h as u32, color, clip)
+@@ -215,6 +248,7 @@ pub async fn draw_arc(
+         width: w as _,
+         height: h as _,
+     };
++    let clip = with_context_clip(Some(&gctx), clip);
+ 
+     let color = framebuffer.pixel_to_color(gctx.fgpxl);
+     primitives::draw_arc(context, &framebuffer, x, y, w as u32, h as u32, start_angle, arc_angle, color, clip)
+@@ -246,6 +280,7 @@ pub async fn fill_arc(
+         width: w as _,
+         height: h as _,
+     };
++    let clip = with_context_clip(Some(&gctx), clip);
+ 
+     let color = framebuffer.pixel_to_color(gctx.fgpxl);
+     primitives::fill_arc(context, &framebuffer, x, y, w as u32, h as u32, start_angle, arc_angle, color, clip)
+@@ -269,14 +304,38 @@ pub async fn create_image(
+     Ok(1) // MC_GRP_IMAGE_DONE
+ }
+ 
++/// `MC_grpDestroyImage`: frees the image and the pixels MC_grpCreateImage decoded into it. Freeing only the
++/// image record leaked every decoded picture: 겟앰프드 loads its stage sprites again for every fight and ran
++/// out of heap ("Allocation failure") after about three minutes of play.
+ pub async fn destroy_image(context: &mut dyn WIPICContext, image: WIPICIndirectPtr) -> Result<()> {
+     tracing::debug!("MC_grpDestroyImage({:#x})", image.0);
+ 
++    if image.0 == 0 {
++        return Ok(());
++    }
++
++    let ptr_data = context.data_ptr(image)?;
++    let mut data: WIPICImage = read_generic(context, ptr_data)?;
++    free_framebuffer_pixels(context, &mut data.img)?;
++    free_framebuffer_pixels(context, &mut data.mask)?;
++    write_generic(context, ptr_data, data)?;
++
+     context.free(image)?;
+ 
+     Ok(())
+ }
+ 
++/// Frees a framebuffer's pixel buffer and clears the pointer, so destroying the same record twice (a game bug
++/// handsets survive) does not free the pixels again.
++fn free_framebuffer_pixels(context: &mut dyn WIPICContext, framebuffer: &mut WIPICFramebuffer) -> Result<()> {
++    if framebuffer.buf.0 != 0 {
++        context.free(framebuffer.buf)?;
++        framebuffer.buf = WIPICIndirectPtr(0);
++    }
++
++    Ok(())
++}
++
+ #[allow(clippy::too_many_arguments)]
+ pub async fn draw_image(
+     context: &mut dyn WIPICContext,
+@@ -305,6 +364,7 @@ pub async fn draw_image(
+         width: w as _,
+         height: h as _,
+     };
++    let clip = with_context_clip(read_context(context, graphics_context)?.as_ref(), clip);
+ 
+     primitives::draw_framebuffer(context, &framebuffer, dx, dy, w as u32, h as u32, &FrameBuffer(image.img), sx, sy, clip)
+ }
+@@ -412,6 +472,7 @@ pub async fn copy_area(
+         width: w as _,
+         height: h as _,
+     };
++    let clip = with_context_clip(read_context(context, pgc)?.as_ref(), clip);
+ 
+     primitives::copy_area(context, &framebuffer, dx, dy, w as u32, h as u32, x, y, clip)
+ }
+@@ -428,9 +489,22 @@ pub async fn create_offscreen_framebuffer(context: &mut dyn WIPICContext, w: i32
+     Ok(memory)
+ }
+ 
++/// `MC_grpDestroyOffScreenFrameBuffer`: frees the framebuffer and its pixels (MC_grpCreateOffScreenFrameBuffer
++/// allocated both). The screen framebuffer stays: it is the LCD for the rest of the run.
+ pub async fn destroy_offscreen_framebuffer(context: &mut dyn WIPICContext, framebuffer: WIPICIndirectPtr) -> Result<()> {
+     tracing::debug!("MC_grpDestroyOffScreenFrameBuffer({:#x})", framebuffer.0);
+ 
++    let screen_framebuffer: u32 = read_generic(context, SCREEN_FRAMEBUFFER_PTR)?;
++    if framebuffer.0 == 0 || framebuffer.0 == screen_framebuffer {
++        tracing::warn!("MC_grpDestroyOffScreenFrameBuffer({:#x}): not an off-screen framebuffer", framebuffer.0);
++        return Ok(());
++    }
++
++    let ptr_data = context.data_ptr(framebuffer)?;
++    let mut data: WIPICFramebuffer = read_generic(context, ptr_data)?;
++    free_framebuffer_pixels(context, &mut data)?;
++    write_generic(context, ptr_data, data)?;
++
+     context.free(framebuffer)?;
+ 
+     Ok(())
+@@ -464,6 +538,7 @@ pub async fn copy_frame_buffer(
+         width: w as _,
+         height: h as _,
+     };
++    let clip = with_context_clip(read_context(context, pgc)?.as_ref(), clip);
+ 
+     primitives::copy_framebuffer(context, &dst_framebuffer, dx, dy, w as u32, h as u32, &src_framebuffer, sx, sy, clip)
+ }
+@@ -532,6 +607,7 @@ pub async fn draw_string(
+         width: framebuffer.0.width,
+         height: framebuffer.0.height,
+     };
++    let clip = with_context_clip(Some(&gctx), clip);
+ 
+     let color = framebuffer.pixel_to_color(gctx.fgpxl);
+     // KTF's platform takes `y` as the text baseline: 메이플스토리 도적편 (KTF) hardcodes
+@@ -638,6 +714,7 @@ pub async fn draw_rect(context: &mut dyn WIPICContext, dst: WIPICIndirectPtr, x:
+         width: w as _,
+         height: h as _,
+     };
++    let clip = with_context_clip(Some(&gctx), clip);
+ 
+     let color = framebuffer.pixel_to_color(gctx.fgpxl);
+     primitives::draw_rect(context, &framebuffer, x, y, w as u32, h as u32, color, clip)
+@@ -654,6 +731,7 @@ pub async fn draw_line(context: &mut dyn WIPICContext, dst: WIPICIndirectPtr, x1
+         width: framebuffer.0.width as _,
+         height: framebuffer.0.height as _,
+     };
++    let clip = with_context_clip(Some(&gctx), clip);
+ 
+     let color = framebuffer.pixel_to_color(gctx.fgpxl);
+     primitives::draw_line(context, &framebuffer, x1, y1, x2, y2, color, clip)
+@@ -720,12 +798,50 @@ pub async fn get_framebuffer_bpp(context: &mut dyn WIPICContext, framebuffer: WI
+ 
+ #[cfg(test)]
+ mod tests {
+-    use alloc::boxed::Box;
++    use alloc::{boxed::Box, vec};
+ 
+     use crate::{MethodImpl, context::test::TestContext};
+ 
+     use super::*;
+ 
++    #[futures_test::test]
++    async fn destroy_image_frees_its_pixels_once() -> Result<()> {
++        let mut context = TestContext::new();
++        let pixels = context.alloc(64)?;
++        let mask = context.alloc(16)?;
++        let image = context.alloc(size_of::<WIPICImage>() as WIPICWord)?;
++        let mut data: WIPICImage = read_generic(&context, image.0)?;
++        data.img.buf = pixels;
++        data.mask.buf = mask;
++        write_generic(&mut context, image.0, data)?;
++
++        destroy_image(&mut context, image).await?;
++        assert_eq!(context.freed, vec![pixels.0, mask.0, image.0]);
++
++        // a second destroy of the same (stale) image does not free the pixels again
++        destroy_image(&mut context, image).await?;
++        assert_eq!(context.freed, vec![pixels.0, mask.0, image.0, image.0]);
++
++        Ok(())
++    }
++
++    #[futures_test::test]
++    async fn destroy_offscreen_framebuffer_frees_its_pixels_but_keeps_the_screen() -> Result<()> {
++        let mut context = TestContext::new();
++        let framebuffer = create_offscreen_framebuffer(&mut context, 4, 4).await?;
++        let data: WIPICFramebuffer = read_generic(&context, framebuffer.0)?;
++
++        destroy_offscreen_framebuffer(&mut context, framebuffer).await?;
++        assert_eq!(context.freed, vec![data.buf.0, framebuffer.0]);
++
++        let screen = context.alloc(size_of::<WIPICFramebuffer>() as WIPICWord)?;
++        write_generic(&mut context, SCREEN_FRAMEBUFFER_PTR, screen.0)?;
++        destroy_offscreen_framebuffer(&mut context, screen).await?;
++        assert_eq!(context.freed, vec![data.buf.0, framebuffer.0]);
++
++        Ok(())
++    }
++
+     #[futures_test::test]
+     async fn context_values_are_written_to_the_output_pointer() -> Result<()> {
+         let mut context = TestContext::new();
+diff --git a/wie-wipi-c/src/api/kernel.rs b/wie-wipi-c/src/api/kernel.rs
+index c8f4ba52..ed9d6611 100644
+--- a/wie-wipi-c/src/api/kernel.rs
++++ b/wie-wipi-c/src/api/kernel.rs
+@@ -59,6 +59,10 @@ pub async fn get_system_property(context: &mut dyn WIPICContext, ptr_id: WIPICWo
+             "AIRPLANE_MODE" => "0",
+             "ROAMING_AREA" => "0",
+             "DS_LOCK" => "0",
++            // The KTF SDK's C library adds this offset to MC_knlCurrentTime (UTC) for time()/localtime: it reads the
++            // sign at [3], hours at [4..6] and minutes at [7..9] (이노티아 연대기2 client.bin 0x183e00; 겟앰프드 and
++            // 메이플스토리 도적편 link the same code). Korean handsets: UTC+9, like the LGT localtime.
++            "TIMEZONE" => "GMT+09:00",
+             _ => {
+                 tracing::warn!("unknown system property id: {id}");
+                 return Ok(-9); // M_E_INVALID
+@@ -431,6 +435,22 @@ mod test {
+         Ok(())
+     }
+ 
++    #[futures_test::test]
++    async fn test_get_system_property_timezone() -> Result<()> {
++        let mut context = system_test_context();
++        let id = context.alloc_raw(16).unwrap();
++        let out = context.alloc_raw(16).unwrap();
++
++        write_null_terminated_string_bytes(&mut context, id, b"TIMEZONE").unwrap();
++
++        // sign at [3], hours at [4..6], minutes at [7..9] (the KTF SDK's time())
++        assert_eq!(get_system_property(&mut context, id, out, 16).await.unwrap(), 0);
++        let result = read_null_terminated_string_bytes(&context, out).unwrap();
++        assert_eq!(&result[3..], b"+09:00");
++
++        Ok(())
++    }
++
+     #[futures_test::test]
+     async fn test_zero_size_memory_returns_null() -> Result<()> {
+         let mut context = TestContext::new();
+diff --git a/wie-wipi-c/src/context.rs b/wie-wipi-c/src/context.rs
+index 31151d9e..15bc8a4d 100644
+--- a/wie-wipi-c/src/context.rs
++++ b/wie-wipi-c/src/context.rs
+@@ -92,12 +92,18 @@ pub mod test {
+ 
+     const TEST_MEMORY_SIZE: usize = 0x20000;
+     const TEST_ALLOC_START: usize = 0x10000;
++    const TEST_HIGH_START: u32 = 0x7fff0000;
++    const TEST_HIGH_SIZE: usize = 0x2000;
+ 
+     pub struct TestContext {
+         memory: [u8; TEST_MEMORY_SIZE],
++        /// The platform words at `TEST_HIGH_START..` (e.g. the screen framebuffer pointer at 0x7fff1000).
++        high: [u8; TEST_HIGH_SIZE],
+         last_alloc: usize,
+         system: Option<System>,
+         resources: Vec<(String, Vec<u8>)>,
++        /// Every pointer passed to `free`, in order.
++        pub freed: Vec<WIPICWord>,
+     }
+ 
+     impl TestContext {
+@@ -105,18 +111,22 @@ pub mod test {
+         pub fn new() -> Self {
+             Self {
+                 memory: [0; TEST_MEMORY_SIZE],
++                high: [0; TEST_HIGH_SIZE],
+                 last_alloc: TEST_ALLOC_START,
+                 system: None,
+                 resources: Vec::new(),
++                freed: Vec::new(),
+             }
+         }
+ 
+         pub fn with_system(system: System) -> Self {
+             Self {
+                 memory: [0; TEST_MEMORY_SIZE],
++                high: [0; TEST_HIGH_SIZE],
+                 last_alloc: TEST_ALLOC_START,
+                 system: Some(system),
+                 resources: Vec::new(),
++                freed: Vec::new(),
+             }
+         }
+ 
+@@ -139,7 +149,8 @@ pub mod test {
+             Ok(WIPICIndirectPtr(Self::alloc_raw(self, size)?))
+         }
+ 
+-        fn free(&mut self, _memory: WIPICIndirectPtr) -> Result<()> {
++        fn free(&mut self, memory: WIPICIndirectPtr) -> Result<()> {
++            self.freed.push(memory.0);
+             Ok(())
+         }
+ 
+@@ -182,6 +193,10 @@ pub mod test {
+ 
+     impl ByteWrite for TestContext {
+         fn write_bytes(&mut self, address: u32, data: &[u8]) -> wie_util::Result<()> {
++            if let Some(offset) = address.checked_sub(TEST_HIGH_START) {
++                self.high[offset as usize..offset as usize + data.len()].copy_from_slice(data);
++                return Ok(());
++            }
+             self.memory[address as usize..(address + data.len() as u32) as usize].copy_from_slice(data);
+ 
+             Ok(())
+@@ -190,6 +205,10 @@ pub mod test {
+ 
+     impl ByteRead for TestContext {
+         fn read_bytes(&self, address: u32, result: &mut [u8]) -> wie_util::Result<usize> {
++            if let Some(offset) = address.checked_sub(TEST_HIGH_START) {
++                result.copy_from_slice(&self.high[offset as usize..offset as usize + result.len()]);
++                return Ok(result.len());
++            }
+             result.copy_from_slice(&self.memory[address as usize..(address as usize + result.len())]);
+ 
+             Ok(result.len())
