@@ -858,12 +858,16 @@
    "status": "playable",
    "tested": "2026-10-04",
    "verified": "auto",
-   "note": "해외 J2ME판. 첫 화면에서 언어 선택(ENGLISH 등). 본게임 확인.",
+   "note": "해외 J2ME판. 첫 화면에서 언어 선택(ENGLISH 등). 본게임 확인. 한글판(놈 (한글).jar): 데이터 파일만 바꾼 번역본, 첫 화면에서 \"한국어\" 선택.",
    "orientation": "portrait",
    "files": [
     {
      "sha256": "bd92119dfdb2e31655f0ba9fe6f82a8bbb88c3cf0b9792b426ab9ddee6d995b2",
      "size": 129210
+    },
+    {
+     "sha256": "1e1378e2c4b30371aa5dbc3c275cf83f64d8cf972a50b928ca065eec4a95a274",
+     "size": 140986
     }
    ]
   },
