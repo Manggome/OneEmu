@@ -88,10 +88,11 @@ class BoxArtFetcher(
 
     /**
      * Downloads the box art for [game] and returns the file it was written to, or null when the
-     * server has no picture under any of the names we can guess.
+     * server has no picture under any of the names we can guess. The file is marked as found
+     * automatically ([isAutoFetched]), so a picture in the box art folder may later replace it.
      */
     suspend fun fetch(game: GameEntity, searchName: String? = null): File? =
-        locate(game, searchName)?.let { fetchChosen(game, it, BoxArtKind.BOXART) }
+        locate(game, searchName)?.let { fetchChosen(game, it, BoxArtKind.BOXART, auto = true) }
 
     /**
      * Every release the server has for one folder, read from its directory listing and cached on
@@ -162,11 +163,14 @@ class BoxArtFetcher(
     fun url(candidate: BoxArtCandidate, kind: BoxArtKind = BoxArtKind.BOXART): String =
         "$BASE/${Uri.encode(candidate.systemFolder)}/${kind.folder}/${Uri.encode(candidate.name)}.png"
 
-    /** Downloads the picture the user chose and stores it as [game]'s thumbnail file. */
-    suspend fun fetchChosen(game: GameEntity, candidate: BoxArtCandidate, kind: BoxArtKind): File? =
+    /**
+     * Downloads the picture the user chose and stores it as [game]'s thumbnail file. [auto] marks a
+     * picture nobody picked by hand (see [fetch]).
+     */
+    suspend fun fetchChosen(game: GameEntity, candidate: BoxArtCandidate, kind: BoxArtKind, auto: Boolean = false): File? =
         withContext(Dispatchers.IO) {
             val bytes = download(url(candidate, kind)) ?: return@withContext null
-            write(game, bytes)
+            write(game, bytes, auto)
         }
 
     private fun fileUrl(folder: String, name: String): String =
@@ -185,9 +189,9 @@ class BoxArtFetcher(
     }.onFailure { Log.w(TAG, "box art download failed: $url", it) }.getOrNull()
 
     /** Stored the same way a hand-picked thumbnail is, so the library's cleanup finds it. */
-    private fun write(game: GameEntity, bytes: ByteArray): File? {
+    private fun write(game: GameEntity, bytes: ByteArray, auto: Boolean): File? {
         val bmp = decodeScaled(bytes, MAX_PX) ?: return null
-        val out = File(dirs.thumbnails, "${game.id}_${System.currentTimeMillis()}.jpg")
+        val out = File(dirs.thumbnails, thumbnailName(game.id, auto))
         val ok = runCatching { out.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) } }.isSuccess
         bmp.recycle()
         if (!ok) { out.delete(); return null }
@@ -241,6 +245,26 @@ class BoxArtFetcher(
             SystemId.PS2 to listOf("Sony - PlayStation 2"),
             SystemId.ARCADE to listOf("MAME"),
         )
+
+        /** Marks box art found by name rather than picked by the user: "<id>_net_<time>.jpg". */
+        private const val AUTO_TAG = "net_"
+
+        /**
+         * File name for a downloaded thumbnail. Every one starts with "<id>_", which is how the library
+         * knows the file is its own to delete; [auto] ones also carry [AUTO_TAG].
+         */
+        fun thumbnailName(gameId: Long, auto: Boolean, now: Long = System.currentTimeMillis()): String =
+            "${gameId}_${if (auto) AUTO_TAG else ""}$now.jpg"
+
+        /**
+         * True when [path] is box art [fetch] found for game [gameId] on its own, as opposed to a
+         * picture the user chose. Older downloads carry no mark and count as chosen, which only ever
+         * errs on the side of keeping a picture.
+         */
+        fun isAutoFetched(path: String, gameId: Long, thumbnailsDir: File): Boolean {
+            val f = File(path)
+            return f.parentFile?.absoluteFile == thumbnailsDir.absoluteFile && f.name.startsWith("${gameId}_$AUTO_TAG")
+        }
 
         /** True when we could even try: a system with no thumbnail set is skipped silently. */
         fun isSupported(game: GameEntity): Boolean = SystemId.fromId(game.system)?.let { it in FOLDERS } == true

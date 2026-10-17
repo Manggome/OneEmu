@@ -441,7 +441,16 @@ private fun LibraryTopBar(
                         onClick = { moreMenu = false; onShowHidden() },
                     )
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.lib_menu_boxart_all)) },
+                        text = {
+                            Column {
+                                Text(stringResource(R.string.lib_menu_boxart_all))
+                                Text(
+                                    stringResource(R.string.lib_menu_boxart_all_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
                         onClick = { moreMenu = false; vm.fetchAllBoxArt() },
                     )
                     HorizontalDivider()
