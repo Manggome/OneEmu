@@ -373,11 +373,12 @@ pub fn create_emulator(game: Game, platform: Box<dyn Platform>, options: Options
 }
 
 /// The jar's name as the VM's classpath entry. It becomes a `file:` URL that the VM can't parse with spaces or
-/// URL-special characters in it (a bare "NOM (J2ME).jar" died on the first resource lookup), so those become `_`.
+/// URL-special or non-ASCII characters in it (a bare "NOM (J2ME).jar" died on the first resource lookup, "놈 (영어).jar"
+/// before the first frame), so anything but ASCII letters, digits and `.-_()` becomes `_`.
 fn classpath_name(filename: &str) -> String {
     filename
         .chars()
-        .map(|c| if c.is_whitespace() || matches!(c, '#' | '%' | '?') { '_' } else { c })
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '(' | ')') { c } else { '_' })
         .collect()
 }
 
@@ -393,6 +394,7 @@ mod tests {
     fn classpath_names_have_no_spaces() {
         assert_eq!(super::classpath_name("NOM (J2ME).jar"), "NOM_(J2ME).jar");
         assert_eq!(super::classpath_name("plain.jar"), "plain.jar");
+        assert_eq!(super::classpath_name("놈 (영어).jar"), "__(__).jar");
     }
 
     #[test]
