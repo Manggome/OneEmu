@@ -66,6 +66,8 @@ WIPI-X(비공개 앱)가 지원한다고 밝힌 목록입니다. 확인한 결�
 
 상태: `perfect`(완벽 호환 - 끝까지 플레이·게임 안 저장·재실행을 실기기에서 확인) > `playable` > `menu` > `intro` > `broken`.
 `verified` 는 `manual`(사람이 실기기에서 확인) / `auto`(wipi_headless). `perfect` 는 `manual` 로만 준다.
+`orientation`(선택): 사용자가 고르지 않았을 때 이 게임의 화면 방향 기본값. `portrait`(세로 고정) / `landscape`(가로 고정) /
+`system`(폰 설정 따르기) / `auto`(자동 회전). 없으면 자동 회전. 폰을 돌려 가며 하는 NOM(J2ME)은 `portrait`.
 
 앱은 이 파일을 APK 에 넣고, main 브랜치의 최신본을 하루 한 번 받아 `updated` 가 더 새로우면 바꿔 쓴다.
 그래서 호환 결과는 앱 업데이트 없이 이 파일만 고쳐 main 에 올리면 퍼진다.

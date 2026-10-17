@@ -183,6 +183,8 @@ fun GameDetailScreen(nav: NavHostController, gameId: Long, vm: LibraryViewModel 
                 WiiControllerCard(g, onEditWiiLayout = { nav.navigate(Routes.layoutEditor(PadProfile.WIIMOTE.key)) })
             }
             Spacer(Modifier.height(16.dp))
+            GameOrientationCard(g)
+            Spacer(Modifier.height(16.dp))
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(vertical = 12.dp)) {
                     Text(

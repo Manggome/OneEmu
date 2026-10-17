@@ -49,6 +49,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,7 +61,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
+import com.manggome.oneemu.data.db.GameEntity
 import com.manggome.oneemu.emu.EmulatorSession.Buttons
+import com.manggome.oneemu.emu.GameOrientation
 import com.manggome.oneemu.ui.theme.OneEmuColors
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -97,7 +100,7 @@ private fun SectionTitle(text: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WipiSettingsSheet(
-    gameId: Long,
+    game: GameEntity,
     padConnected: String?,
     padVendor: Int?,
     padId: String?,
@@ -109,6 +112,10 @@ fun WipiSettingsSheet(
     val settings = remember { OneEmuApp.get().settings }
     val scope = rememberCoroutineScope()
     val state by remember { WipiPrefs.observe(settings) }.collectAsState(WipiPrefs.State())
+    val gameId = game.id
+    val context = LocalContext.current
+    val orientation by remember(gameId) { GameOrientation.observe(context.applicationContext, settings, game) }
+        .collectAsState(GameOrientation.Effective(GameOrientation.DEFAULT))
     var mappingOpen by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -121,6 +128,23 @@ fun WipiSettingsSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = OneEmuColors.Surface) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
             Text(stringResource(R.string.wipi_settings_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+
+            // 화면 방향, for this game only: two rows of two so the longer labels fit on a phone.
+            SectionTitle(stringResource(R.string.orient_title))
+            val orientations = GameOrientation.entries.map { it to stringResource(it.labelRes) }
+            for (pair in orientations.chunked(2)) {
+                ChoiceRow(pair, orientation.orientation) { v -> scope.launch { GameOrientation.set(settings, gameId, v) } }
+                Spacer(Modifier.height(8.dp))
+            }
+            Text(
+                if (orientation.fromCatalog) {
+                    stringResource(R.string.orient_catalog_default, stringResource(orientation.orientation.labelRes))
+                } else {
+                    stringResource(orientation.orientation.descRes)
+                },
+                fontSize = 12.sp,
+                color = OneEmuColors.OnSurfaceMuted,
+            )
 
             SectionTitle(stringResource(R.string.wipi_settings_portrait))
             ChoiceRow(arrangements, state.portrait) { v -> scope.launch { settings.set(WipiPrefs.ARRANGEMENT_PORTRAIT, v.name) } }

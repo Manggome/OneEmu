@@ -859,6 +859,7 @@
    "tested": "2026-10-04",
    "verified": "auto",
    "note": "해외 J2ME판. 첫 화면에서 언어 선택(ENGLISH 등). 본게임 확인.",
+   "orientation": "portrait",
    "files": [
     {
      "sha256": "bd92119dfdb2e31655f0ba9fe6f82a8bbb88c3cf0b9792b426ab9ddee6d995b2",

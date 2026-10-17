@@ -472,6 +472,7 @@ class LibraryViewModel : ViewModel() {
         deleteOwnedThumbnail(game)
         settings.remove(Settings.Keys.gameOptions(game.id))
         settings.remove(Settings.Keys.videoRotation(game.id))
+        com.manggome.oneemu.emu.GameOrientation.forget(settings, game.id)
     }
 
     /** Copies the picked image into the thumbnails folder (max 512px, JPEG) and stores its path. */

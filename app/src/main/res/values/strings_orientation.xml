@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 게임별 화면 방향 (EmulatorActivity 의 requestedOrientation). "화면 회전"(그림 돌리기)과는 별개. -->
+    <string name="orient_title">화면 방향</string>
+    <string name="orient_auto">자동 회전</string>
+    <string name="orient_system">폰 설정 따르기</string>
+    <string name="orient_portrait">세로 고정</string>
+    <string name="orient_landscape">가로 고정</string>
+    <string name="orient_auto_desc">폰을 돌리면 화면도 돕니다. 폰의 회전 잠금과 상관없이 돕니다.</string>
+    <string name="orient_system_desc">폰의 자동 회전 설정을 따릅니다. 회전 잠금을 켜 두면 돌지 않습니다.</string>
+    <string name="orient_portrait_desc">폰을 어느 쪽으로 돌려도 세로 화면 그대로입니다. 폰을 돌려 가며 하는 게임(NOM 등)에 맞습니다.</string>
+    <string name="orient_landscape_desc">가로로만 보여 줍니다. 폰을 반대로 눕히면 그쪽으로 뒤집힙니다.</string>
+    <string name="orient_card_desc">이 게임에만 적용됩니다. 게임 중 메뉴의 설정에서도 바로 바꿀 수 있습니다.</string>
+    <string name="orient_catalog_default">호환 목록에 따라 이 게임은 기본이 \'%1$s\'입니다.</string>
+</resources>
