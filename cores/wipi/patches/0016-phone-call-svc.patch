@@ -1,0 +1,161 @@
+diff --git a/wie-ktf/src/runtime/wipi_c/method_table.rs b/wie-ktf/src/runtime/wipi_c/method_table.rs
+index 26ce852f..d442d8e1 100644
+--- a/wie-ktf/src/runtime/wipi_c/method_table.rs
++++ b/wie-ktf/src/runtime/wipi_c/method_table.rs
+@@ -6,10 +6,10 @@ use wipi_types::{
+ };
+ 
+ use wie_core_arm::ArmCore;
+-use wie_util::{Result, WieError, read_null_terminated_string_bytes};
++use wie_util::{Result, WieError};
+ use wie_wipi_c::{
+     MethodImpl, WIPICContext, WIPICMethodBody,
+-    api::{database, graphics, im, kernel, media, misc, net, record_database, uic, util},
++    api::{database, graphics, im, kernel, media, misc, net, phone, record_database, uic, util},
+ };
+ 
+ use crate::runtime::{
+@@ -34,16 +34,6 @@ fn gen_net_error(id: WIPICWord, name: &'static str) -> WIPICMethodBody {
+     body.into_body()
+ }
+ 
+-/// Interface 11, slot 0: place a voice call to the NUL-terminated number in the first argument. 영웅서기 4's
+-/// Help -> 게임 문의 -> "전화를 거시겠습니까?" -> 예 calls it with "025598700" (client.bin 0x12cff4) and goes on
+-/// when it fails; an emulator cannot place calls, so report failure instead of stopping the game.
+-async fn phone_call(context: &mut dyn WIPICContext, ptr_number: WIPICWord) -> Result<i32> {
+-    let number = read_null_terminated_string_bytes(context, ptr_number)?;
+-    tracing::warn!("cannot place a call to {:?}", alloc::string::String::from_utf8_lossy(&number));
+-
+-    Ok(-1) // M_E_ERROR
+-}
+-
+ pub fn get_kernel_interface(core: &mut ArmCore) -> Result<WIPICKnlInterface> {
+     let table_id = WIPICTableId::Kernel;
+ 
+@@ -651,8 +641,10 @@ pub fn get_method_body(table_id: WIPICTableId, function_id: u16) -> Option<WIPIC
+         WIPICTableId::Media => get_media_method_table().into_iter().nth(function_id as usize),
+         WIPICTableId::Net => get_net_method_table().into_iter().nth(function_id as usize),
+         WIPICTableId::Interface11 => {
++            // Slot 0 places a voice call: 영웅서기 4's Help -> 게임 문의 -> "전화를 거시겠습니까?" -> 예 calls it with
++            // "025598700" (client.bin 0x12cff4) and goes on when it fails.
+             if function_id == 0 {
+-                Some(phone_call.into_body())
++                Some(phone::call.into_body())
+             } else if function_id < 64 {
+                 Some(gen_stub(11, "stub"))
+             } else {
+diff --git a/wie-lgt/src/runtime/svc_ids.rs b/wie-lgt/src/runtime/svc_ids.rs
+index 15bd79ba..b70a2134 100644
+--- a/wie-lgt/src/runtime/svc_ids.rs
++++ b/wie-lgt/src/runtime/svc_ids.rs
+@@ -255,6 +255,12 @@ pub enum WIPICSvcId {
+     Unk10 = 0x4ce,
+     SetMuteState = 0x4d1,
+     GetMuteState = 0x4d2,
++    /// The first call of the block after media (0x514..): place a voice call to a NUL-terminated number. Every LGT
++    /// title that imports it passes its support number from a "call us" screen and checks for failure: 영웅서기 5
++    /// ("025598787", 게임문의 -> 전화를 거시겠습니까? -> 예), Gamevil's 제노니아 3 / 하이브리드 2 / 2010슈퍼사커 ("15884263",
++    /// == -1 -> "전화를 걸 수 없습니다."), 메이플스토리 시그너스기사단 ("029287623"), 하얀섬, 액션퍼즐패밀리 4 (!= 0 -> -5).
++    /// KTF's 영웅서기 4 makes the same call through interface 11 slot 0.
++    PhoneCall = 0x514,
+     ListDatabaseNames = 0x44c,
+     Htonl = 0x384,
+     Htons = 0x385,
+@@ -383,6 +389,7 @@ impl TryFrom<SvcId> for WIPICSvcId {
+             0x4ce => Self::Unk10,
+             0x4d1 => Self::SetMuteState,
+             0x4d2 => Self::GetMuteState,
++            0x514 => Self::PhoneCall,
+             0x44c => Self::ListDatabaseNames,
+             0x384 => Self::Htonl,
+             0x385 => Self::Htons,
+@@ -436,3 +443,17 @@ impl From<StdlibSvcId> for u32 {
+         value as u32
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use wie_core_arm::SvcId;
++
++    use super::WIPICSvcId;
++
++    #[test]
++    fn phone_call_is_the_first_call_after_media() {
++        assert!(matches!(WIPICSvcId::try_from(SvcId(0x514)), Ok(WIPICSvcId::PhoneCall)));
++        // The rest of the block stays unknown until a game shows what it is.
++        assert!(WIPICSvcId::try_from(SvcId(0x515)).is_err());
++    }
++}
+diff --git a/wie-lgt/src/runtime/wipi_c.rs b/wie-lgt/src/runtime/wipi_c.rs
+index 0869c4bf..5cea0b9c 100644
+--- a/wie-lgt/src/runtime/wipi_c.rs
++++ b/wie-lgt/src/runtime/wipi_c.rs
+@@ -16,7 +16,7 @@ use wie_jvm_support::JvmSupport;
+ use wie_util::{Result, WieError, read_generic, write_null_terminated_string_bytes};
+ use wie_wipi_c::{
+     MAX_METHOD_ARGS, MethodImpl, WIPICContext, WIPICMethodBody, WIPICResult,
+-    api::{database, graphics as shared_graphics, im, kernel, media, misc, net, uic, util},
++    api::{database, graphics as shared_graphics, im, kernel, media, misc, net, phone, uic, util},
+ };
+ 
+ use context::LgtWIPICContext;
+@@ -158,6 +158,7 @@ async fn handle_wipic_svc(core: &mut ArmCore, platform: &mut Arc<(System, Jvm)>,
+         WIPICSvcId::Unk10 => unk10.into_body(),
+         WIPICSvcId::SetMuteState => media::set_mute_state.into_body(),
+         WIPICSvcId::GetMuteState => media::get_mute_state.into_body(),
++        WIPICSvcId::PhoneCall => phone::call.into_body(),
+         WIPICSvcId::BackLight => misc::back_light.into_body(),
+         WIPICSvcId::Unk16 => unk16.into_body(),
+         WIPICSvcId::ListDatabaseNames => database::list_database_names.into_body(),
+diff --git a/wie-wipi-c/src/api.rs b/wie-wipi-c/src/api.rs
+index f7d5f2c8..a95ee543 100644
+--- a/wie-wipi-c/src/api.rs
++++ b/wie-wipi-c/src/api.rs
+@@ -5,6 +5,7 @@ pub mod kernel;
+ pub mod media;
+ pub mod misc;
+ pub mod net;
++pub mod phone;
+ pub mod record_database;
+ pub mod uic;
+ pub mod util;
+diff --git a/wie-wipi-c/src/api/phone.rs b/wie-wipi-c/src/api/phone.rs
+new file mode 100644
+index 00000000..58ee46e8
+--- /dev/null
++++ b/wie-wipi-c/src/api/phone.rs
+@@ -0,0 +1,33 @@
++use wie_util::{Result, read_null_terminated_string_bytes};
++
++use wipi_types::wipic::WIPICWord;
++
++use crate::context::WIPICContext;
++
++/// Places a voice call to the NUL-terminated number. Games reach it from their customer-support screen ("게임문의 ->
++/// 전화를 거시겠습니까? -> 예") with the publisher's number and treat any non-zero result as "전화를 걸 수 없습니다";
++/// an emulator cannot place calls, so it fails with M_E_ERROR.
++pub async fn call(context: &mut dyn WIPICContext, ptr_number: WIPICWord) -> Result<i32> {
++    let number = read_null_terminated_string_bytes(context, ptr_number)?;
++    tracing::warn!("cannot place a call to {:?}", alloc::string::String::from_utf8_lossy(&number));
++
++    Ok(-1) // M_E_ERROR
++}
++
++#[cfg(test)]
++mod tests {
++    use wie_util::ByteWrite;
++
++    use crate::context::test::TestContext;
++
++    use super::call;
++
++    #[futures_test::test]
++    async fn call_fails_without_stopping_the_game() {
++        let mut context = TestContext::new();
++        // 영웅서기 5 (LGT) copies its support number into a 10-byte stack buffer and passes that.
++        context.write_bytes(0x1000, b"025598787\0").unwrap();
++
++        assert_eq!(call(&mut context, 0x1000).await.unwrap(), -1);
++    }
++}
