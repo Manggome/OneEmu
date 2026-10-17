@@ -49,6 +49,7 @@ import com.manggome.oneemu.OneEmuApp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.emu.EmulatorSession
+import com.manggome.oneemu.emu.GameOrientation
 import com.manggome.oneemu.emu.PerGameOptions
 import com.manggome.oneemu.emu.NativeBridge
 import com.manggome.oneemu.ui.theme.OneEmuColors
@@ -70,6 +71,9 @@ fun QuickSettingsSheet(session: EmulatorSession, onEditLayout: () -> Unit, onDis
     val aspect by settings.observe(Settings.Keys.videoAspect, 0).collectAsState(0)
     val rotationKey = remember(session.game.id) { Settings.Keys.videoRotation(session.game.id) }
     val rotation by settings.observe(rotationKey, 0).collectAsState(0)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val orientation by remember(session.game.id) { GameOrientation.observe(context.applicationContext, settings, session.game) }
+        .collectAsState(GameOrientation.Effective(GameOrientation.DEFAULT))
     val opacity by settings.observe(Settings.Keys.padOpacity, Settings.DEFAULT_PAD_OPACITY).collectAsState(Settings.DEFAULT_PAD_OPACITY)
     val padScale by settings.observe(Settings.Keys.padScale, Settings.DEFAULT_PAD_SCALE).collectAsState(Settings.DEFAULT_PAD_SCALE)
     val vibration by settings.observe(Settings.Keys.padVibration, true).collectAsState(true)
@@ -147,6 +151,15 @@ fun QuickSettingsSheet(session: EmulatorSession, onEditLayout: () -> Unit, onDis
                 DropdownRow(stringResource(R.string.qs_rotation), rotationLabels.getOrElse(rotation) { rotationLabels[0] }, rotationLabels) { idx ->
                     put(rotationKey, idx); pushVideo(rotationNow = idx)
                 }
+
+                // 화면 방향: how the screen follows the phone, for this game; EmulatorActivity applies it live.
+                val orientations = GameOrientation.entries
+                val orientationLabels = orientations.map { stringResource(it.labelRes) }
+                DropdownRow(
+                    stringResource(R.string.orient_title),
+                    orientationLabels[orientations.indexOf(orientation.orientation)],
+                    orientationLabels,
+                ) { idx -> scope.launch { GameOrientation.set(settings, session.game.id, orientations[idx]) } }
 
                 val screenFilterLabels = listOf(
                     stringResource(R.string.qs_screen_filter_none), stringResource(R.string.qs_screen_filter_scanline),

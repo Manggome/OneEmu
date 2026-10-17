@@ -51,6 +51,8 @@ class WipiCompat private constructor(private val context: Context) {
         /** "manual": checked by a person on a device; "auto": wipi_headless run. */
         val verified: String = "auto",
         val note: String? = null,
+        /** Screen orientation this game wants unless the user picks one ([com.manggome.oneemu.emu.GameOrientation]): "portrait", "landscape", "system", "auto". */
+        val orientation: String? = null,
         val files: List<FileRef> = emptyList(),
     ) {
         val statusValue: Status get() = Status.of(status)

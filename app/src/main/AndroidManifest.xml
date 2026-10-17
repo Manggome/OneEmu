@@ -80,13 +80,14 @@
         <!-- A foldable changes smallestScreenSize (and often density) when it opens or closes. Left
              undeclared, Android restarts the activity, and the running game would die with it: the
              session hangs off this activity. Everything listed is read live by Compose and the renderer. -->
-        <!-- fullUser: turns with the phone like "sensor" did, but honours the system rotation lock (games
-             such as NOM are played by turning the phone and must not flip the screen when it is locked). -->
+        <!-- sensor: turns with the phone, ignoring the system rotation lock. A game can ask for something else
+             (폰 설정 따르기 / 세로 고정 / 가로 고정, see emu/GameOrientation.kt); EmulatorActivity then sets
+             requestedOrientation when the session starts and whenever the choice changes. -->
         <activity
             android:name=".emu.EmulatorActivity"
             android:exported="false"
             android:launchMode="singleTask"
-            android:screenOrientation="fullUser"
+            android:screenOrientation="sensor"
             android:theme="@style/Theme.OneEmu.Emulator"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|fontScale|layoutDirection|keyboardHidden|keyboard|navigation|uiMode" />
 

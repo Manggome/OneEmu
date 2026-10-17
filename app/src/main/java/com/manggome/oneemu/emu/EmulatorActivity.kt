@@ -162,6 +162,7 @@ class EmulatorActivity : ComponentActivity() {
             return
         }
         ui.title = game.title
+        applyOrientation(game)
         val system = SystemId.fromId(game.system)
         // Arcade zips are routed to the MAME core whose DAT lists them (same rule as the library's launch check).
         val route = if (system == SystemId.ARCADE) ArcadeCoreRouter.route(game, app) else null
@@ -213,6 +214,22 @@ class EmulatorActivity : ComponentActivity() {
             NativeBridge.setRewind(if (Rewind.supports(session.system)) settings.get(Rewind.SECONDS, Rewind.DEFAULT_SECONDS) else 0)
             updateRunning()
             if (settings.get(MotionSensors.AUTO_CENTER, true)) recenterGyro(announce = true)
+        }
+    }
+
+    private var orientationJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * 화면 방향 for this game ([GameOrientation]): requested as soon as the game is known, and again whenever it is
+     * changed from the in-game settings or the library - live, the activity handles orientation changes itself.
+     */
+    private fun applyOrientation(game: com.manggome.oneemu.data.db.GameEntity) {
+        orientationJob?.cancel()
+        orientationJob = lifecycleScope.launch {
+            GameOrientation.observe(this@EmulatorActivity, settings, game).collect { effective ->
+                val want = effective.orientation.activityOrientation
+                if (requestedOrientation != want) requestedOrientation = want
+            }
         }
     }
 

@@ -298,7 +298,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                     onDismiss = { sheet = Sheet.NONE },
                 )
                 Sheet.WIPI_KEYPAD -> com.manggome.oneemu.emu.phone.WipiSettingsSheet(
-                    gameId = session.game.id,
+                    game = session.game,
                     padConnected = com.manggome.oneemu.emu.input.GamepadDevices.connected().firstOrNull()?.name,
                     padVendor = com.manggome.oneemu.emu.input.GamepadDevices.connected().firstOrNull()?.vendorId,
                     padId = com.manggome.oneemu.emu.input.GamepadDevices.connected().firstOrNull()
