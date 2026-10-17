@@ -17,7 +17,8 @@
      "sha256": "b665ede83645e56828cb9cc93a1d32ed60303cb5efee286865f84df183fa43c8",
      "size": 499053
     }
-   ]
+   ],
+   "orientation": "portrait"
   },
   {
    "title": "놈투",
@@ -33,7 +34,8 @@
      "sha256": "8ac1d682de08419bc5410f1a3d17df9fce7d21f0740a746f46e23d1130bd48ec",
      "size": 276476
     }
-   ]
+   ],
+   "orientation": "portrait"
   },
   {
    "title": "던전앤파이터",
@@ -429,7 +431,8 @@
      "sha256": "2a8a3dcd07eb3fe804707b0fe50cca42f4efdefcb8f8233a54c22f98521f2d3c",
      "size": 1086595
     }
-   ]
+   ],
+   "orientation": "portrait"
   },
   {
    "title": "레전드 오브 마스터",
