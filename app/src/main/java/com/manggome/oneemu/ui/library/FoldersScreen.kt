@@ -132,6 +132,7 @@ fun FoldersScreen(nav: NavHostController, vm: LibraryViewModel = viewModel()) {
                             onRemove = { toRemove = folder },
                         )
                     }
+                    item(key = "boxart_hint") { BoxArtFolderHint(vm) }
                 }
             }
         }
@@ -199,6 +200,18 @@ private fun FolderCard(
 }
 
 /** Thin progress bar + "스캔 중… 12/340" shown while the scanner runs; collapses to nothing otherwise. */
+/** Where the user's own box art goes and how to name it (see LocalBoxArt). */
+@Composable
+private fun BoxArtFolderHint(vm: LibraryViewModel) {
+    val path = remember { vm.dirs.boxArtFolder.absolutePath }
+    Text(
+        stringResource(R.string.lib_folders_boxart_hint, path),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+    )
+}
+
 @Composable
 fun ScanProgressBar(progress: com.manggome.oneemu.library.RomScanner.Progress, modifier: Modifier = Modifier) {
     if (!progress.running) return

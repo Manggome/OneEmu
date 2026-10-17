@@ -18,6 +18,7 @@ import java.io.File
  *   system/                      libretro system dir; BIOS goes here, cores may add subfolders
  *   screenshots/
  *   thumbnails/                  box art and icons the library shows
+ *   boxart/                      the user's own box art, named after the game files (see LocalBoxArt)
  *   skins/                       pad skins the user imported
  * ```
  *
@@ -33,6 +34,8 @@ class AppDirs(private val context: Context) {
     val system: File get() = dir("system")
     val screenshots: File get() = dir("screenshots")
     val thumbnails: File get() = dir("thumbnails")
+    /** Pictures the user puts here, named after a game's file, become that game's thumbnail. */
+    val boxArtFolder: File get() = dir("boxart")
     val skins: File get() = dir("skins")
     val temp: File get() = File(context.cacheDir, "temp").also { it.mkdirs() }
     val updates: File get() = File(context.cacheDir, "updates").also { it.mkdirs() }
@@ -178,7 +181,7 @@ class AppDirs(private val context: Context) {
         const val PUBLIC_DIR = "OneEmu"
 
         /** Folders carried over from the old app-private location. */
-        private val MIGRATED = listOf("saves", "states", "system", "screenshots", "thumbnails", "skins")
+        private val MIGRATED = listOf("saves", "states", "system", "screenshots", "thumbnails", "skins", "boxart")
 
         fun sanitize(name: String): String = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(120)
         const val AUTO_SLOT = 0

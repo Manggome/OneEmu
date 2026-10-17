@@ -22,6 +22,7 @@ import com.manggome.oneemu.library.ArcadeRomChecker
 import com.manggome.oneemu.library.BoxArtCandidate
 import com.manggome.oneemu.library.BoxArtFetcher
 import com.manggome.oneemu.library.BoxArtKind
+import com.manggome.oneemu.library.LocalBoxArt
 import com.manggome.oneemu.library.RomFiles
 import com.manggome.oneemu.library.RomRename
 import com.manggome.oneemu.library.RomScanner
@@ -126,6 +127,7 @@ class LibraryViewModel : ViewModel() {
     val dirs get() = app.dirs
 
     private val boxArt by lazy { BoxArtFetcher(app.dirs) }
+    private val localBoxArt by lazy { LocalBoxArt(app.dirs, app.db) }
     private val _boxArtProgress = MutableStateFlow(BoxArtProgress())
     val boxArtProgress: StateFlow<BoxArtProgress> get() = _boxArtProgress
     private var boxArtJob: Job? = null
@@ -198,6 +200,8 @@ class LibraryViewModel : ViewModel() {
                 .distinctUntilChangedBy { it.first }
                 .collect { (_, recent) -> if (!uiState.value.loading) GameShortcuts.updateRecent(app, recent) }
         }
+        // Pictures dropped into the box art folder since the last visit show up without a rescan.
+        viewModelScope.launch(Dispatchers.IO) { runCatching { localBoxArt.applyAll() } }
     }
 
     private fun buildState(all: List<GameEntity>, p: Prefs, q: String, s: Boolean, openKey: String?): LibraryUiState {
@@ -497,10 +501,18 @@ class LibraryViewModel : ViewModel() {
     }
 
     /**
-     * Box art from the libretro thumbnail server for one game. A miss is reported rather than left
-     * silent, because the user can still pick a picture by hand.
+     * Box art for one game: the box art folder's picture when it has one, otherwise the libretro
+     * thumbnail server. A miss is reported rather than left silent, because the user can still pick a
+     * picture by hand.
      */
     fun fetchBoxArt(game: GameEntity) = launchIo {
+        val local = runCatching { localBoxArt.find(game) }.getOrNull()
+        if (local != null) {
+            deleteOwnedThumbnail(game)
+            db.games().setThumbnail(game.id, local.absolutePath)
+            post(LibraryMessage(R.string.lib_msg_boxart_local_set))
+            return@launchIo
+        }
         if (!BoxArtFetcher.isSupported(game)) {
             post(LibraryMessage(R.string.lib_msg_boxart_unsupported))
             return@launchIo
@@ -516,15 +528,20 @@ class LibraryViewModel : ViewModel() {
         post(LibraryMessage(R.string.lib_msg_boxart_set))
     }
 
-    /** Fills in every game that has no picture yet. Only the first game pays for the server listing. */
+    /**
+     * Fills in every game that has no picture yet: from the box art folder first, then the server for
+     * whatever the folder did not cover. Only the first server lookup pays for the server listing.
+     */
     fun fetchAllBoxArt() {
         if (boxArtJob?.isActive == true) return
         boxArtJob = viewModelScope.launch {
             withContext(Dispatchers.IO) {
+                val local = runCatching { localBoxArt.applyAll() }.getOrDefault(0)
+                if (local > 0) post(LibraryMessage(R.string.lib_msg_boxart_local_applied, listOf(local)))
                 val games = db.games().allOnce()
                     .filter { !it.hidden && it.thumbnail == null && BoxArtFetcher.isSupported(it) }
                 if (games.isEmpty()) {
-                    post(LibraryMessage(R.string.lib_msg_boxart_nothing_to_do))
+                    if (local == 0) post(LibraryMessage(R.string.lib_msg_boxart_nothing_to_do))
                     return@withContext
                 }
                 var found = 0

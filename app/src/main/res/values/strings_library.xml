@@ -160,6 +160,10 @@
     <string name="lib_msg_boxart_nothing_to_do">받을 박스아트가 없습니다</string>
     <string name="lib_msg_boxart_done">박스아트 %1$d/%2$d개를 받았습니다</string>
     <string name="lib_boxart_progress">박스아트 %1$d/%2$d</string>
+    <string name="lib_menu_boxart_all_hint">OneEmu/boxart 폴더에 \"게임파일이름.png\"를 넣으면 그 그림을 먼저 씁니다</string>
+    <string name="lib_msg_boxart_local_set">boxart 폴더의 그림을 썸네일로 썼습니다</string>
+    <string name="lib_msg_boxart_local_applied">boxart 폴더에서 게임 %1$d개의 그림을 넣었습니다</string>
+    <string name="lib_folders_boxart_hint">박스아트 폴더: %1$s\n게임 파일과 이름이 같은 그림(예: 게임파일이름.png, jpg·webp도 됨)을 넣으면 그 게임의 썸네일이 됩니다. 기종별 하위 폴더도 괜찮습니다.</string>
     <string name="lib_msg_thumbnail_set">썸네일을 변경했습니다</string>
     <string name="lib_msg_removed">라이브러리에서 제거했습니다</string>
     <string name="lib_msg_removed_many">%1$d개를 라이브러리에서 제거했습니다</string>

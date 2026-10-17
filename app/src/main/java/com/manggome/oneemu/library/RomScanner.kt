@@ -33,6 +33,7 @@ class RomScanner(
 
     private val extMap: Map<String, List<SystemId>> by lazy { registry.extensionToSystems() }
     private val arcadeTitles by lazy { ArcadeTitles(context) }
+    private val localBoxArt by lazy { LocalBoxArt(dirs, db) }
 
     suspend fun scanAll() = withContext(Dispatchers.IO) {
         for (folder in db.folders().allOnce()) scanFolder(folder)
@@ -73,6 +74,8 @@ class RomScanner(
             val gone = existing.values.filter { it.folderId == folder.id && it.path !in seen && !File(it.path).exists() }
             if (gone.isNotEmpty()) db.games().deleteIds(gone.map { it.id })
             db.folders().update(folder.copy(lastScannedAt = System.currentTimeMillis()))
+            // New games pick up their picture from the box art folder, and a rescan picks up pictures added since.
+            runCatching { localBoxArt.applyAll() }
         } finally {
             _progress.value = Progress(running = false)
         }
@@ -130,7 +133,9 @@ class RomScanner(
         db.games().getByPath(file.absolutePath)?.let { return@withContext it }
         val entity = identify(file, ext, null) ?: return@withContext null
         val id = db.games().insert(entity)
-        if (id > 0) entity.copy(id = id) else db.games().getByPath(file.absolutePath)
+        if (id <= 0) return@withContext db.games().getByPath(file.absolutePath)
+        runCatching { localBoxArt.applyAll() }
+        db.games().get(id) ?: entity.copy(id = id)
     }
 
     /** Multi-disc/track companions, BIOS packs and file-system litter we should not list as games. */
