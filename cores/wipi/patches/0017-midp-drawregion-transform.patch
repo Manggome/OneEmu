@@ -1,0 +1,449 @@
+diff --git a/wie-backend/src/canvas.rs b/wie-backend/src/canvas.rs
+index aca17b26..c8653391 100644
+--- a/wie-backend/src/canvas.rs
++++ b/wie-backend/src/canvas.rs
+@@ -968,6 +968,111 @@ impl Clip {
+     }
+ }
+ 
++/// Region transforms of MIDP 2.0 `Graphics.drawRegion` (the `Sprite.TRANS_*` values): an optional mirror
++/// about the region's vertical centre line, then a clockwise rotation.
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++pub enum RegionTransform {
++    None = 0,
++    MirrorRot180 = 1,
++    Mirror = 2,
++    Rot180 = 3,
++    MirrorRot270 = 4,
++    Rot90 = 5,
++    Rot270 = 6,
++    MirrorRot90 = 7,
++}
++
++impl RegionTransform {
++    pub fn from_midp(value: i32) -> Option<Self> {
++        Some(match value {
++            0 => Self::None,
++            1 => Self::MirrorRot180,
++            2 => Self::Mirror,
++            3 => Self::Rot180,
++            4 => Self::MirrorRot270,
++            5 => Self::Rot90,
++            6 => Self::Rot270,
++            7 => Self::MirrorRot90,
++            _ => return None,
++        })
++    }
++
++    /// Size of a `width` x `height` region after the transform: quarter turns swap the axes.
++    pub fn transformed_size(self, width: u32, height: u32) -> (u32, u32) {
++        match self {
++            Self::MirrorRot270 | Self::Rot90 | Self::Rot270 | Self::MirrorRot90 => (height, width),
++            _ => (width, height),
++        }
++    }
++
++    /// The pixel of a `width` x `height` source region shown at (`u`, `v`) of the transformed region.
++    pub fn source_of(self, u: u32, v: u32, width: u32, height: u32) -> (u32, u32) {
++        let (right, bottom) = (width - 1, height - 1);
++        match self {
++            Self::None => (u, v),
++            Self::Mirror => (right - u, v),
++            Self::Rot180 => (right - u, bottom - v),
++            Self::MirrorRot180 => (u, bottom - v),
++            Self::Rot90 => (v, bottom - u),
++            Self::Rot270 => (right - v, u),
++            Self::MirrorRot90 => (right - v, bottom - u),
++            Self::MirrorRot270 => (v, u),
++        }
++    }
++}
++
++/// The part of the `width` x `height` region at (`sx`, `sy`) that lies inside `src`, with `transform`
++/// applied, and where that part sits inside the transformed region. `None` when the region misses `src`.
++pub fn transform_region(
++    src: &dyn Image,
++    sx: i32,
++    sy: i32,
++    width: u32,
++    height: u32,
++    transform: RegionTransform,
++) -> Option<(u32, u32, VecImageBuffer<ArgbPixel>)> {
++    let x0 = (sx as i64).max(0);
++    let y0 = (sy as i64).max(0);
++    let x1 = (sx as i64 + width as i64).min(src.width() as i64);
++    let y1 = (sy as i64 + height as i64).min(src.height() as i64);
++    if x0 >= x1 || y0 >= y1 {
++        return None;
++    }
++
++    let (part_width, part_height) = ((x1 - x0) as u32, (y1 - y0) as u32);
++    let mut part = vec![Color { a: 0, r: 0, g: 0, b: 0 }; part_width as usize * part_height as usize];
++    for (y, row) in part.chunks_exact_mut(part_width as usize).enumerate() {
++        src.get_pixels(x0 as i32, (y0 + y as i64) as i32, row);
++    }
++
++    let (out_width, out_height) = transform.transformed_size(part_width, part_height);
++    let mut data = Vec::with_capacity(part.len());
++    for v in 0..out_height {
++        for u in 0..out_width {
++            let (x, y) = transform.source_of(u, v, part_width, part_height);
++            data.push(ArgbPixel::from_color(part[(y * part_width + x) as usize]));
++        }
++    }
++
++    // margins of the part inside the region, then where the transform moves its top-left corner
++    let left = (x0 - sx as i64) as u32;
++    let top = (y0 - sy as i64) as u32;
++    let right = width - left - part_width;
++    let bottom = height - top - part_height;
++    let (u, v) = match transform {
++        RegionTransform::None => (left, top),
++        RegionTransform::Mirror => (right, top),
++        RegionTransform::Rot180 => (right, bottom),
++        RegionTransform::MirrorRot180 => (left, bottom),
++        RegionTransform::Rot90 => (bottom, left),
++        RegionTransform::Rot270 => (top, right),
++        RegionTransform::MirrorRot90 => (bottom, right),
++        RegionTransform::MirrorRot270 => (top, left),
++    };
++
++    Some((u, v, VecImageBuffer::from_raw(out_width, out_height, data)))
++}
++
+ /// BMP has no alpha channel, so WIPI packages flag transparency in the file header:
+ /// `bfReserved1 == 1` marks the image as keyed and `biClrImportant` holds the palette
+ /// index of the key color. Returns the key as RGB, or `None` when the image is opaque.
+@@ -1069,7 +1174,7 @@ mod tests {
+ 
+     use crate::canvas::{Clip, Image, ImageBuffer, ImageBufferCanvas};
+ 
+-    use super::{ArgbPixel, Canvas, Color, Rgb332Pixel, VecImageBuffer};
++    use super::{ArgbPixel, Canvas, Color, RegionTransform, Rgb332Pixel, VecImageBuffer, transform_region};
+ 
+     fn full_clip(size: u32) -> Clip {
+         Clip {
+@@ -1763,4 +1868,94 @@ mod tests {
+         assert!(is_set(&image, 8, 16), "inside clip should be filled");
+         assert!(!is_set(&image, 24, 16), "outside clip must not be filled");
+     }
++
++    /// 3 x 2 image whose pixels are numbered 1..=6 in the red channel, row by row:
++    /// ```text
++    /// 1 2 3
++    /// 4 5 6
++    /// ```
++    fn numbered_3x2() -> VecImageBuffer<ArgbPixel> {
++        VecImageBuffer::from_raw(3, 2, (1..=6).map(|n| 0xff00_0000 | (n << 16)).collect())
++    }
++
++    fn numbers(image: &dyn Image) -> Vec<Vec<u8>> {
++        (0..image.height() as i32)
++            .map(|y| {
++                (0..image.width() as i32)
++                    .map(|x| {
++                        let color = image.get_pixel(x, y);
++                        if color.a == 0 { 0 } else { color.r }
++                    })
++                    .collect()
++            })
++            .collect()
++    }
++
++    /// Expected pictures from the MIDP 2.0 `Sprite` transform table (mirror first, then clockwise rotation).
++    const TRANSFORMED_3X2: [(RegionTransform, &[&[u8]]); 8] = [
++        (RegionTransform::None, &[&[1, 2, 3], &[4, 5, 6]]),
++        (RegionTransform::Mirror, &[&[3, 2, 1], &[6, 5, 4]]),
++        (RegionTransform::Rot180, &[&[6, 5, 4], &[3, 2, 1]]),
++        (RegionTransform::MirrorRot180, &[&[4, 5, 6], &[1, 2, 3]]),
++        (RegionTransform::Rot90, &[&[4, 1], &[5, 2], &[6, 3]]),
++        (RegionTransform::Rot270, &[&[3, 6], &[2, 5], &[1, 4]]),
++        (RegionTransform::MirrorRot90, &[&[6, 3], &[5, 2], &[4, 1]]),
++        (RegionTransform::MirrorRot270, &[&[1, 4], &[2, 5], &[3, 6]]),
++    ];
++
++    #[test]
++    fn transform_region_matches_midp_transforms() {
++        let src = numbered_3x2();
++        for (transform, expected) in TRANSFORMED_3X2 {
++            assert_eq!(RegionTransform::from_midp(transform as i32), Some(transform));
++            let (u, v, region) = transform_region(&src, 0, 0, 3, 2, transform).unwrap();
++            assert_eq!((u, v), (0, 0), "{transform:?}");
++            assert_eq!(numbers(&region), expected, "{transform:?}");
++        }
++        assert_eq!(RegionTransform::from_midp(8), None);
++        assert_eq!(RegionTransform::from_midp(-1), None);
++    }
++
++    #[test]
++    fn transform_region_of_a_sub_region() {
++        // the right 2 x 2 block of the 3 x 2 image: 2 3 / 5 6
++        let src = numbered_3x2();
++        let (_, _, region) = transform_region(&src, 1, 0, 2, 2, RegionTransform::Rot90).unwrap();
++        assert_eq!(numbers(&region), [[5, 2], [6, 3]]);
++        let (_, _, region) = transform_region(&src, 1, 0, 2, 2, RegionTransform::Mirror).unwrap();
++        assert_eq!(numbers(&region), [[3, 2], [6, 5]]);
++    }
++
++    #[test]
++    fn transform_region_places_the_part_inside_the_source() {
++        // a 5 x 4 region at (-1, -1) holds the 3 x 2 image with a 1 pixel margin left/top and 1 right, 2 bottom;
++        // transforming only the part inside the image must land where the whole padded region would put it
++        let src = numbered_3x2();
++        let mut padded = VecImageBuffer::<ArgbPixel>::new(5, 4);
++        for y in 0..2 {
++            for x in 0..3 {
++                padded.put_pixel(x + 1, y + 1, src.get_pixel(x, y));
++            }
++        }
++        for (transform, _) in TRANSFORMED_3X2 {
++            let (_, _, whole) = transform_region(&padded, 0, 0, 5, 4, transform).unwrap();
++            let (u, v, part) = transform_region(&src, -1, -1, 5, 4, transform).unwrap();
++
++            let mut placed = VecImageBuffer::<ArgbPixel>::new(whole.width(), whole.height());
++            for y in 0..part.height() as i32 {
++                for x in 0..part.width() as i32 {
++                    placed.put_pixel(x + u as i32, y + v as i32, part.get_pixel(x, y));
++                }
++            }
++            assert_eq!(numbers(&placed), numbers(&whole), "{transform:?}");
++        }
++    }
++
++    #[test]
++    fn transform_region_outside_the_source() {
++        let src = numbered_3x2();
++        assert!(transform_region(&src, 3, 0, 2, 2, RegionTransform::Rot90).is_none());
++        assert!(transform_region(&src, -2, 0, 2, 2, RegionTransform::Rot90).is_none());
++        assert!(transform_region(&src, 0, 0, 0, 2, RegionTransform::Rot90).is_none());
++    }
+ }
+diff --git a/wie-midp/src/classes/javax/microedition/lcdui/graphics.rs b/wie-midp/src/classes/javax/microedition/lcdui/graphics.rs
+index 7b18b427..7c93895a 100644
+--- a/wie-midp/src/classes/javax/microedition/lcdui/graphics.rs
++++ b/wie-midp/src/classes/javax/microedition/lcdui/graphics.rs
+@@ -8,7 +8,10 @@ use jvm_class_proto::{JavaFieldProto, JavaMethodProto, TypeConverter};
+ use jvm_types::{ClassAccessFlags, FieldAccessFlags, MethodAccessFlags};
+ use rustjava_runtime::classes::java::lang::String;
+ 
+-use wie_backend::canvas::{ArgbPixel, Canvas as BackendCanvas, Clip, PixelType, Rgb8Pixel, TextAlignment, VecImageBuffer};
++use wie_backend::canvas::{
++    ArgbPixel, Canvas as BackendCanvas, Clip, Image as BackendImage, PixelType, RegionTransform, Rgb8Pixel, TextAlignment, VecImageBuffer,
++    transform_region,
++};
+ use wie_jvm_support::{WieJavaClassProto, WieJvmContext};
+ 
+ use crate::classes::javax::microedition::lcdui::{Font, Image};
+@@ -709,22 +712,33 @@ impl Graphics {
+             return Err(jvm.exception("java/lang/NullPointerException", "img is null").await);
+         }
+ 
++        let Some(transform) = RegionTransform::from_midp(transform) else {
++            return Err(jvm.exception("java/lang/IllegalArgumentException", "invalid transform").await);
++        };
++        if width <= 0 || height <= 0 {
++            return Ok(());
++        }
++
+         let src_image = Image::image(jvm, &img).await?;
+ 
+         let mut canvas = Self::canvas(jvm, &mut this).await?;
+ 
++        // the anchor point refers to the transformed region, which quarter turns make height x width
++        let (dest_width, dest_height) = transform.transformed_size(width as u32, height as u32);
++        let (dest_width, dest_height) = (dest_width as i32, dest_height as i32);
++
+         let x_delta = if anchor.contains(Anchor::HCENTER) {
+-            -width / 2
++            -dest_width / 2
+         } else if anchor.contains(Anchor::RIGHT) {
+-            -height
++            -dest_width
+         } else {
+             0
+         };
+ 
+         let y_delta = if anchor.contains(Anchor::VCENTER) {
+-            -height / 2
++            -dest_height / 2
+         } else if anchor.contains(Anchor::BOTTOM) {
+-            -height
++            -dest_height
+         } else {
+             0
+         };
+@@ -737,7 +751,11 @@ impl Graphics {
+ 
+         let clip = Self::clip(jvm, &this).await?;
+ 
+-        canvas.draw(x as _, y as _, width as _, height as _, &*src_image, src_x, src_y, clip);
++        if transform == RegionTransform::None {
++            canvas.draw(x as _, y as _, width as _, height as _, &*src_image, src_x, src_y, clip);
++        } else if let Some((u, v, region)) = transform_region(&*src_image, src_x, src_y, width as _, height as _, transform) {
++            canvas.draw(x + u as i32, y + v as i32, region.width(), region.height(), &region, 0, 0, clip);
++        }
+ 
+         Ok(())
+     }
+@@ -1016,6 +1034,8 @@ mod test {
+ 
+     use crate::{classes::javax::microedition::lcdui::Image, get_protos};
+ 
++    use super::Graphics;
++
+     #[test]
+     fn test_graphics() -> Result<()> {
+         run_jvm_test(Box::new([get_protos().into()]), |jvm| async move {
+@@ -1110,6 +1130,152 @@ mod test {
+         })
+     }
+ 
++    async fn image_with_graphics(jvm: &Jvm, width: i32, height: i32) -> JvmResult<(ClassInstanceRef<Image>, ClassInstanceRef<Graphics>)> {
++        let image: ClassInstanceRef<Image> = jvm
++            .invoke_static(
++                "javax/microedition/lcdui/Image",
++                "createImage",
++                "(II)Ljavax/microedition/lcdui/Image;",
++                (width, height),
++            )
++            .await?;
++        let graphics: ClassInstanceRef<Graphics> = jvm
++            .invoke_virtual(
++                &image,
++                "javax/microedition/lcdui/Image",
++                "getGraphics",
++                "()Ljavax/microedition/lcdui/Graphics;",
++                (),
++            )
++            .await?;
++
++        Ok((image, graphics))
++    }
++
++    async fn fill(jvm: &Jvm, graphics: &ClassInstanceRef<Graphics>, color: i32, x: i32, y: i32, width: i32, height: i32) -> JvmResult<()> {
++        let _: () = jvm
++            .invoke_virtual(graphics, "javax/microedition/lcdui/Graphics", "setColor", "(I)V", (color,))
++            .await?;
++        jvm.invoke_virtual(
++            graphics,
++            "javax/microedition/lcdui/Graphics",
++            "fillRect",
++            "(IIII)V",
++            (x, y, width, height),
++        )
++        .await
++    }
++
++    #[allow(clippy::too_many_arguments)]
++    async fn draw_region(
++        jvm: &Jvm,
++        graphics: &ClassInstanceRef<Graphics>,
++        image: &ClassInstanceRef<Image>,
++        region: (i32, i32, i32, i32),
++        transform: i32,
++        x: i32,
++        y: i32,
++        anchor: i32,
++    ) -> JvmResult<()> {
++        let image: Box<dyn ClassInstance> = image.clone().into();
++        jvm.invoke_virtual(
++            graphics,
++            "javax/microedition/lcdui/Graphics",
++            "drawRegion",
++            "(Ljavax/microedition/lcdui/Image;IIIIIIII)V",
++            [
++                image.into(),
++                region.0.into(),
++                region.1.into(),
++                region.2.into(),
++                region.3.into(),
++                transform.into(),
++                x.into(),
++                y.into(),
++                anchor.into(),
++            ],
++        )
++        .await
++    }
++
++    #[test]
++    fn test_draw_region_rotates_around_the_anchor() -> Result<()> {
++        // the drawRegion self-test of NOM (Living Mobile): a 3 x 8 white image with a black pixel at (2, 0),
++        // drawn with TRANS_ROT90 anchored TOP | RIGHT at (8, 0) into a white 16 x 3 image, must put the black
++        // pixel at (7, 2); the game reads the pixel back to pick its drawing workarounds
++        run_jvm_test(Box::new([get_protos().into()]), |jvm| async move {
++            let (src, src_graphics) = image_with_graphics(&jvm, 3, 8).await?;
++            fill(&jvm, &src_graphics, 0xffffff, 0, 0, 3, 8).await?;
++            fill(&jvm, &src_graphics, 0, 2, 0, 1, 1).await?;
++
++            let (dst, dst_graphics) = image_with_graphics(&jvm, 16, 3).await?;
++            fill(&jvm, &dst_graphics, 0xffffff, 0, 0, 16, 3).await?;
++            draw_region(&jvm, &dst_graphics, &src, (0, 0, 3, 8), 5, 8, 0, 16 | 8).await?;
++
++            let backend_image = Image::image(&jvm, &dst).await?;
++            for y in 0..3 {
++                for x in 0..16 {
++                    let color = backend_image.get_pixel(x, y);
++                    let expected = if (x, y) == (7, 2) { 0 } else { 0xff };
++                    assert_eq!((color.r, color.g, color.b), (expected, expected, expected), "pixel ({x}, {y})");
++                }
++            }
++
++            Ok(())
++        })
++    }
++
++    #[test]
++    fn test_draw_region_transforms() -> Result<()> {
++        // 3 x 2 source with pixels numbered 1..=6 (in the red channel) row by row, drawn into a 6 x 6 image
++        // anchored BOTTOM | RIGHT at (5, 5) and HCENTER | VCENTER at (3, 3); 0 = untouched
++        const EXPECTED: [(i32, &[&[u8]]); 8] = [
++            (0, &[&[1, 2, 3], &[4, 5, 6]]),
++            (2, &[&[3, 2, 1], &[6, 5, 4]]),
++            (3, &[&[6, 5, 4], &[3, 2, 1]]),
++            (1, &[&[4, 5, 6], &[1, 2, 3]]),
++            (5, &[&[4, 1], &[5, 2], &[6, 3]]),
++            (6, &[&[3, 6], &[2, 5], &[1, 4]]),
++            (7, &[&[6, 3], &[5, 2], &[4, 1]]),
++            (4, &[&[1, 4], &[2, 5], &[3, 6]]),
++        ];
++
++        run_jvm_test(Box::new([get_protos().into()]), |jvm| async move {
++            let (src, src_graphics) = image_with_graphics(&jvm, 3, 2).await?;
++            for n in 0..6 {
++                fill(&jvm, &src_graphics, (n + 1) << 16, n % 3, n / 3, 1, 1).await?;
++            }
++
++            for (transform, expected) in EXPECTED {
++                let (width, height) = (expected[0].len() as i32, expected.len() as i32);
++                for (anchor, x, y, left, top) in [(32 | 8, 5, 5, 5 - width, 5 - height), (1 | 2, 3, 3, 3 - width / 2, 3 - height / 2)] {
++                    let (dst, dst_graphics) = image_with_graphics(&jvm, 6, 6).await?;
++                    fill(&jvm, &dst_graphics, 0, 0, 0, 6, 6).await?;
++                    draw_region(&jvm, &dst_graphics, &src, (0, 0, 3, 2), transform, x, y, anchor).await?;
++
++                    let backend_image = Image::image(&jvm, &dst).await?;
++                    for py in 0..6 {
++                        for px in 0..6 {
++                            let (u, v) = (px - left, py - top);
++                            let expected = if (0..width).contains(&u) && (0..height).contains(&v) {
++                                expected[v as usize][u as usize]
++                            } else {
++                                0
++                            };
++                            assert_eq!(
++                                backend_image.get_pixel(px, py).r,
++                                expected,
++                                "transform {transform} anchor {anchor} pixel ({px}, {py})"
++                            );
++                        }
++                    }
++                }
++            }
++
++            Ok(())
++        })
++    }
++
+     async fn new_graphics(jvm: &Jvm) -> JvmResult<(ClassInstanceRef<Image>, Box<dyn ClassInstance>)> {
+         let image: ClassInstanceRef<Image> = jvm
+             .invoke_static(
