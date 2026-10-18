@@ -8,7 +8,8 @@ import java.io.File
 
 /**
  * Applies a [ArcadeRomCheck.Status.RENAME_SUGGESTED] result: renames the zip in place to the DAT short name
- * and updates the library row (path, and the title when the DAT knows the game). The caller confirms first.
+ * and updates the library row (path, and the title — Korean when known — when the DAT knows the game). The caller
+ * confirms first.
  */
 object ArcadeRename {
     sealed class Result {
@@ -27,7 +28,8 @@ object ArcadeRename {
         if (!src.renameTo(dst)) return@withContext Result.Failed(dst)
 
         val checker = ArcadeRomChecker.get(app)
-        val title = res.coreId?.let { checker.db(it)[newName]?.description }?.let { RomInfo.cleanTitle("$it.zip") }?.takeIf { it.isNotBlank() }
+        val title = ArcadeTitles.get(app).koreanTitle(newName)
+            ?: res.coreId?.let { checker.db(it)[newName]?.description }?.let { RomInfo.cleanTitle("$it.zip") }?.takeIf { it.isNotBlank() }
         val updated = game.copy(path = dst.absolutePath, title = title ?: game.title, fileSize = dst.length())
         app.db.games().update(updated)
         checker.invalidate(game.path)

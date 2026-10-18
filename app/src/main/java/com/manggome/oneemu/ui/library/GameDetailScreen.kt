@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -55,12 +56,16 @@ import androidx.navigation.NavHostController
 import com.manggome.oneemu.R
 import com.manggome.oneemu.emu.menu.CheatEditor
 import com.manggome.oneemu.emu.pad.PadProfile
+import com.manggome.oneemu.library.ArcadeTitles
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.ui.Routes
 import com.manggome.oneemu.ui.common.GameThumbnail
 import com.manggome.oneemu.ui.common.SystemChip
 import com.manggome.oneemu.ui.common.formatDateTime
 import com.manggome.oneemu.ui.common.formatFileSize
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /** Routes.GAME — large thumbnail, metadata and the same actions as the sheet. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -124,6 +129,15 @@ fun GameDetailScreen(nav: NavHostController, gameId: Long, vm: LibraryViewModel 
             GameThumbnail(g, Modifier.size(180.dp, 240.dp), shape = RoundedCornerShape(14.dp), titleSize = 48.sp, badgeSize = 28.dp)
             Spacer(Modifier.height(16.dp))
             Text(g.title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+            if (system == SystemId.ARCADE) {
+                // The library shows the Korean name; the DAT's English one goes underneath.
+                val english by produceState<String?>(null, g.path) {
+                    value = withContext(Dispatchers.IO) { ArcadeTitles.get(context).englishTitle(File(g.path).nameWithoutExtension) }
+                }
+                english?.takeIf { it != g.title }?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                }
+            }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 system?.let { SystemChip(it); Spacer(Modifier.width(8.dp)) }
