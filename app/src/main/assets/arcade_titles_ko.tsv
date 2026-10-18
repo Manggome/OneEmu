@@ -1,0 +1,537 @@
+# Korean arcade game titles (read by library/ArcadeTitles.kt): MAME short name <TAB> Korean title [<TAB> clones].
+# Names follow the namu.wiki article titles / what Korean players call the game; titles Koreans write in
+# English stay English. Edit the first two columns by hand, then run scripts/gen-arcade-titles-ko.py to
+# refresh the third column (clone/regional sets that share the title). A set with its own line wins over
+# the clone column, which is how two sets that would look identical get a region/version suffix.
+# Capcom CPS1
+sf2	스트리트 파이터 2	sf2b sf2b2 sf2ea sf2eb sf2ebbl sf2ebbl2 sf2ebbl3 sf2ed sf2ee sf2ef sf2em sf2en sf2j sf2j17 sf2ja sf2jc sf2jf sf2jh sf2jl sf2qp1 sf2qp2 sf2rk sf2rules sf2thndr sf2thndr2 sf2ua sf2ub sf2uc sf2ud sf2ue sf2uf sf2ug sf2uh sf2ui sf2uk sf2um
+sf2ce	스트리트 파이터 2 대쉬	sf2acc sf2acca sf2accp2 sf2amf2 sf2amf3 sf2bhh sf2ceb sf2ceb2 sf2ceb3 sf2ceb4 sf2ceb5 sf2ceblp sf2cebltw sf2ceds6 sf2ceea sf2ceec sf2cej sf2ceja sf2cejb sf2cejc sf2cems6a sf2cems6b sf2cems6c sf2cet sf2ceua sf2ceub sf2ceuc sf2ceupl sf2dkot2 sf2dongb sf2koryu sf2level sf2m1 sf2m10 sf2m2 sf2m3 sf2m4 sf2m5 sf2m6 sf2m7 sf2m8 sf2m9 sf2mdt sf2mdta sf2mdtb sf2mix sf2mkot sf2rb sf2rb2 sf2rb3 sf2re sf2red sf2reda sf2redp2 sf2t sf2tj sf2v004 sf2yyc
+sf2hf	스트리트 파이터 2 대쉬 터보	sf2hfj sf2hfu
+ffight	파이널 파이트	fcrash ffighta ffightae ffightbl ffightbla ffightblb ffightj ffightj1 ffightj2 ffightj3 ffightj4 ffightu ffightu1 ffightua ffightub ffightuc
+captcomm	캡틴 코만도	captcomj captcommb captcommb2 captcommj captcommjr1 captcommr1 captcommu captcomu
+knights	나이츠 오브 더 라운드	knightsb knightsb2 knightsb3 knightsj knightsja knightsu
+kod	킹 오브 드래곤즈	kodb kodj kodja kodr1 kodr2 kodu
+dino	캐딜락&디노사우르스	dinoa dinoj dinopic dinopic2 dinopic3 dinou
+punisher	퍼니셔	punipic punipic2 punipic3 punisherh punisherj punisheru punishrj punishru
+wof	천지를 먹다 2	sgyxz wofa wofj wofpic wofr1 wofr1bl wofu
+dynwar	천지를 먹다	dynwara dynwarj dynwarjr dynwaru
+slammast	머슬 보머	mbomberj mbombrdj slammastu slammasu slampic slampic2
+mbombrd	머슬 보머 듀오
+strider	스트라이더 비룡	striderj striderjr striderua strideruc stridrja stridrua
+ghouls	대마계촌	daimakai daimakair ghoulsu
+forgottn	로스트 월드	forgottna forgottnj forgottnu forgottnua forgottnuaa forgottnuc forgottnue lostwrld lostwrldo
+willow	윌로우	willowj willowje willowu willowuo
+1941	1941 카운터 어택	1941j 1941r1 1941u
+mercs	전장의 이리 2	mercsj mercsu mercsua mercsur1
+mtwins	치키치키 보이즈	chikij
+msword	매직 소드	mswordj mswordr1 mswordu
+unsquad	에어리어 88	area88 area88r
+cawing	US 네이비	cawingb2 cawingbl cawingj cawingjr cawingr1 cawingu cawingur1
+nemo	네모	nemoj nemoja nemor1
+3wonders	3 원더스	3wondersb 3wondersh 3wondersr1 3wondersu 3wonderu wonder3
+varth	바스 - 오퍼레이션 썬더스톰	varthb varthb2 varthj varthjr varthr1 varthu
+pang3	팡! 3	pang3b pang3b2 pang3b3 pang3b4 pang3b5 pang3j pang3n pang3r1
+megaman	록맨: 더 파워 배틀	megamana mmancp2u mmancp2ur1 mmancp2ur2 rmancp2j rockmanj
+sf	스트리트 파이터	sfan sfj sfjan sfjbl sfp sfu sfua sfw
+# Capcom CPS2
+ssf2	슈퍼 스트리트 파이터 2	ssf2a ssf2ar1 ssf2h ssf2j ssf2jr1 ssf2jr2 ssf2r1 ssf2tb ssf2tba ssf2tbd ssf2tbh ssf2tbj ssf2tbj1 ssf2tbr1 ssf2tbu ssf2u ssf2ud ssf2us2
+ssf2t	슈퍼 스트리트 파이터 2 X	ssf2ta ssf2tad ssf2th ssf2tu ssf2tur1 ssf2xj ssf2xjd ssf2xjr1 ssf2xjr1d ssf2xjr1r
+hsf2	하이퍼 스트리트 파이터 2	hsf2a hsf2d hsf2j hsf2j1 hsf2j2
+sfa	스트리트 파이터 제로	sfad sfar1 sfar2 sfar3 sfau sfza sfzar1 sfzb sfzbr1 sfzh sfzhr1 sfzj sfzjr1 sfzjr2
+sfa2	스트리트 파이터 제로 2	sfa2u sfa2ur1 sfz2a sfz2ad sfz2b sfz2br1 sfz2h sfz2j sfz2jd sfz2jr1 sfz2n
+sfz2al	스트리트 파이터 제로 2 알파	sfz2alb sfz2ald sfz2alh sfz2alj sfz2alr1
+sfa3	스트리트 파이터 제로 3	sfa3b sfa3h sfa3hr1 sfa3u sfa3ud sfa3ur1 sfa3us sfz3a sfz3ar1 sfz3j sfz3jr1 sfz3jr2 sfz3jr2d
+ddtod	던전 앤 드래곤 타워 오브 둠	ddtoda ddtodar1 ddtodd ddtodh ddtodhr1 ddtodhr2 ddtodj ddtodjr1 ddtodjr2 ddtodr1 ddtodu ddtodur1
+ddsom	던전 앤 드래곤 섀도 오버 미스타라	ddsoma ddsomar1 ddsomb ddsomh ddsomj ddsomjr1 ddsomjr2 ddsomr1 ddsomr2 ddsomr3 ddsomu ddsomud ddsomur1
+avsp	에이리언 대 프레데터	avspa avspd avsph avspj avspu
+armwar	파워드 기어	armwar1d armwara armwarar1 armwarb armwarr1 armwaru armwaru1 pgear pgearr1
+batcir	배틀 서킷	batcira batcird batcirj
+dstlk	뱀파이어	dstlka dstlkb dstlkh dstlku dstlku1d dstlkur1 vampj vampja vampjr1
+nwarr	뱀파이어 헌터	nwarra nwarrb nwarrh nwarru nwarrud vhuntj vhuntjr1 vhuntjr1s vhuntjr2
+vsav	뱀파이어 세이버	vsava vsavb vsavd vsavh vsavj vsavu
+vhunt2	뱀파이어 헌터 2	vhunt2d vhunt2r1
+vsav2	뱀파이어 세이버 2	vsav2d
+ringdest	슈퍼머슬봄버	ringdesta ringdestb ringdesth ringdstd smbomb smbombr1
+xmcota	X-MEN 칠드런 오브 아톰	xmcotaa xmcotaar1 xmcotaar2 xmcotab xmcotad xmcotah xmcotahr1 xmcotaj xmcotaj1 xmcotaj2 xmcotaj3 xmcotajr xmcotar1 xmcotar1d xmcotau
+cybots	사이버보츠	cybotsj cybotsjd cybotsu cybotsud
+msh	마블 슈퍼 히어로즈	msha mshb mshbr1 mshh mshj mshjr1 mshu mshud
+xmvsf	X-MEN VS 스트리트 파이터	xmvsfa xmvsfar1 xmvsfar2 xmvsfar3 xmvsfb xmvsfh xmvsfj xmvsfjr1 xmvsfjr2 xmvsfjr3 xmvsfjr4 xmvsfr1 xmvsfu xmvsfu1d xmvsfur1 xmvsfur2
+mshvsf	마블 슈퍼 히어로즈 VS 스트리트 파이터	mshvsfa mshvsfa1 mshvsfb mshvsfb1 mshvsfh mshvsfj mshvsfj1 mshvsfj2 mshvsfu mshvsfu1 mshvsfu1d
+mvsc	마블 VS 캡콤	mvsca mvscar1 mvscb mvsch mvscj mvscjr1 mvscjsing mvscr1 mvscu mvscud mvscur1
+sgemf	포켓 파이터	pfghtj sgemfa sgemfd sgemfh
+ecofghtr	얼티밋 에콜로지	ecofghtra ecofghtrd ecofghtrh ecofghtru ecofghtru1 uecology
+19xx	19XX	19xxa 19xxar1 19xxb 19xxd 19xxh 19xxj 19xxjr1 19xxjr2 19xxu
+gigawing	기가 윙	gigawinga gigawingb gigawingd gigawingh gigawingj gigawingjd gwingjd
+dimahoo	그레이트 마법대작전	dimahoou dimahoud gmahou
+mmatrix	마즈 매트릭스	mmatrixa mmatrixd mmatrixj
+1944	1944 더 루프 마스터	1944d 1944j 1944u
+progear	프로기어의 폭풍	progeara progearj progearjbl progearjd progearu progearud progerjd
+megaman2	록맨 2: 더 파워 파이터즈	megaman2a megaman2h megamn2d rockman2j
+spf2t	슈퍼 퍼즐 파이터 2 X	spf2ta spf2td spf2th spf2tu spf2xj spf2xjd
+mpang	마이티! 팡	mpanga mpangj mpangr1 mpangu
+pzloop2	퍼즈 루프 2	pzloop2j pzloop2jd pzloop2jp pzloop2jr1
+csclub	캡콤 스포츠 클럽	csclub1 csclub1d cscluba csclubh csclubj csclubjy
+techromn	테크 로맨서 (유럽)	techromna
+techromnu	테크 로맨서 (미국)
+kikaioh	초강전기 키카이오
+# Capcom CPS3 / older boards
+sfiii	스트리트 파이터 3	sfiiia sfiiih sfiiij sfiiin sfiiina sfiiiu
+sfiii2	스트리트 파이터 3 세컨드 임팩트	sfiii2a sfiii2h sfiii2j sfiii2n
+sfiii3	스트리트 파이터 3 서드 스트라이크	sfiii3a sfiii3an sfiii3j sfiii3jr1 sfiii3n sfiii3na sfiii3nar1 sfiii3nr1 sfiii3r1 sfiii3u sfiii3ur1
+jojo	죠죠의 기묘한 모험	jojoa jojoan jojoar1 jojoar2 jojoj jojojr1 jojojr2 jojon jojonr1 jojonr2 jojor1 jojor2 jojou jojour1 jojour2
+jojoba	죠죠의 기묘한 모험: 미래를 위한 유산	jojobajr1 jojobajr2 jojoban jojobane jojobaner1 jojobaner2 jojobanr1 jojobanr2 jojobar1 jojobar2
+redearth	레드 어스	redearthn redearthnr1 redearthr1 redeartn warzard warzardr1
+1942	1942	1942a 1942abl 1942b 1942p 1942w
+1943	1943	1943b 1943bj 1943j 1943ja 1943jah 1943u 1943ua
+commando	전장의 이리	commandj commandob commandob2 commandob3 commandoj commandou commandou2 commandu sinvasn
+gng	마계촌	gnga gngb gngbl gngbla gngblita gngc gngknight gngknighta gngknightb gngknightc gngknightt gngmaiden gngmaidena gngmaidenb gngmaidenc gngmaident gngprot gngt makaimuc makaimug makaimur makaimurb makaimurc makaimurg makknight makknightb makknightc makknightg makmaiden makmaidenb makmaidenc makmaideng
+sonson	손손	sonsonj
+# SNK Neo Geo
+kof94	더 킹 오브 파이터즈 '94
+kof95	더 킹 오브 파이터즈 '95	kof95a kof95h
+kof96	더 킹 오브 파이터즈 '96	kof96a kof96h
+kof97	더 킹 오브 파이터즈 '97	kof97a kof97h kof97k kof97oro kof97pls kog
+kof98	더 킹 오브 파이터즈 '98	kof98a kof98h kof98k kof98ka
+kof98n	더 킹 오브 파이터즈 '98 (복호화판)
+kof99	더 킹 오브 파이터즈 '99	kof99a kof99e kof99h kof99k kof99ka kof99n kof99p
+kof2000	더 킹 오브 파이터즈 2000	kof2000n
+kof2001	더 킹 오브 파이터즈 2001	ct2k3sp cthd2003 kof2001h
+kof2002	더 킹 오브 파이터즈 2002	kf10thep kf2k2mp kf2k2mp2 kf2k2pla kf2k2pls kf2k5uni kof10th kof2002b kof2k4se
+kof2003	더 킹 오브 파이터즈 2003	kf2k3bl kf2k3bla kf2k3pl kf2k3upl kof2003d kof2003h
+mslug	메탈슬러그
+mslug2	메탈슬러그 2	mslug2t
+mslugx	메탈슬러그 X
+mslug3	메탈슬러그 3	mslug3a mslug3b6 mslug3h mslug3n
+mslug4	메탈슬러그 4	ms4plus mslug4h
+mslug5	메탈슬러그 5	ms5plus mslug5b mslug5h
+samsho	사무라이 스피리츠	samshoh
+samsho2	진 사무라이 스피리츠 하오마루 지옥변	samsho2k samsho2ka
+samsho3	사무라이 스피리츠 잔쿠로 무쌍검	fswords samsho3h
+samsho4	사무라이 스피리츠 아마쿠사 강림	samsho4k
+samsho5	사무라이 스피리츠 제로	samsho5a samsho5b samsho5h
+samsh5sp	사무라이 스피리츠 제로 스페셜	samsh5sph samsh5spho samsh5spn
+fatfury1	아랑전설
+fatfury2	아랑전설 2
+fatfursp	아랑전설 스페셜	fatfursa fatfurspa
+fatfury3	아랑전설 3
+rbff1	리얼 바웃 아랑전설	rbff1a rbff1k rbff1ka
+rbffspec	리얼 바웃 아랑전설 스페셜	rbffspeck
+rbff2	리얼 바웃 아랑전설 2	rbff2a rbff2h rbff2k
+garou	아랑: 마크 오브 더 울브스	garoubl garouh garouha garouo garoup
+aof	용호의 권
+aof2	용호의 권 2	aof2a
+aof3	용호의 권 외전	aof3k
+lastblad	월화의 검사	lastbladh lastblda lastsold
+lastbld2	월화의 검사 2
+shocktro	쇼크 트루퍼스	shocktra shocktroa
+shocktr2	쇼크 트루퍼스 세컨드 스쿼드
+blazstar	블레이징 스타
+pulstar	펄스타
+twinspri	트윙클 스타 스프라이츠
+neobombe	네오 봄버맨
+wh1	월드 히어로즈	wh1h wh1ha
+wh2	월드 히어로즈 2	wh2h
+wh2j	월드 히어로즈 2 JET	wh2jh
+whp	월드 히어로즈 퍼펙트
+kotm	킹 오브 더 몬스터즈	kotmh
+kotm2	킹 오브 더 몬스터즈 2	kotm2a kotm2p
+sengoku	전국전승	sengokh sengokuh
+sengoku2	전국전승 2
+sengoku3	전국전승 2001	sengoku3a
+mutnat	뮤테이션 네이션
+burningf	버닝 파이트	burningfh burningfp burningfpa burningfpb burningh
+roboarmy	로보 아미	roboarmya
+lresort	라스트 리조트	lresortp
+chainrec	매지컬 드롭	magdrop magdropp
+magdrop2	매지컬 드롭 2
+magdrop3	매지컬 드롭 3
+ninjamas	닌자 마스터즈: 패왕인법첩
+breakers	브레이커즈
+breakrev	브레이커즈 리벤지
+doubledr	더블 드래곤 (네오지오)
+svc	SVC CHAOS SNK VS CAPCOM	svcboot svcplus svcplusa svcsplus
+rotd	레이지 오브 더 드래곤	rotdh
+ncombat	닌자 컴뱃	ncombath
+ncommand	닌자 코만도
+nam1975	NAM-1975
+tophuntr	탑 헌터	tophuntrh
+spinmast	미라클 어드벤처
+galaxyfg	갤럭시 파이트
+fightfev	왕중왕	fightfeva fightfva
+ssideki	득점왕
+ssideki2	득점왕 2
+ssideki3	득점왕 3
+ssideki4	득점왕 4: 불꽃의 리베로
+wjammers	플라잉 파워 디스크
+3countb	파이어 수플렉스
+strhoop	덩크 드림
+turfmast	빅 토너먼트 골프
+bstars	베이스볼 스타즈 프로페셔널	bstarsh
+bstars2	베이스볼 스타즈 2
+sonicwi2	소닉윙즈 2
+sonicwi3	소닉윙즈 3
+pbobblen	퍼즐 보블 (네오지오)	pbobblenb pbobblna
+pbobbl2n	퍼즐 보블 2 (네오지오)
+tws96	테크모 월드 사커 '96
+kizuna	풍운 슈퍼 태그 배틀	kizuna4p
+savagere	풍운묵시록
+wakuwak7	와쿠와쿠 7
+gowcaizr	초인학원 고우카이저
+kabukikl	천외마경 진전
+ganryu	무사시 간류키
+puzzledp	퍼즐 데 퐁!	puzzldpr
+neodrift	네오 드리프트 아웃
+zupapa	주파파!
+crsword	크로스드 소드
+viewpoin	뷰포인트	viewpoinp
+bangbead	뱅 비드
+overtop	오버 탑
+sdodgeb	쿠니오군의 열혈투구전설
+androdun	안드로 듀노스
+cyberlip	사이버 립
+socbrawl	사커 브롤	socbrawlh
+trally	스래쉬 랠리
+superspy	슈퍼 스파이
+nitd	나이트메어 인 더 다크	nitdbl
+gpilots	고스트 파일럿	gpilotsh gpilotsp
+legendos	내일의 죠 전설
+2020bb	2020 슈퍼 베이스볼	2020bba 2020bbh
+alpham2	ASO II: 라스트 가디언	alpham2p
+ridhero	라이딩 히어로	ridheroh
+maglord	매지션 로드	maglordh
+popbounc	갑포링
+goalx3	골! 골! 골!
+gururin	구루링
+miexchng	머니 아이돌 익스체인저
+s1945p	스트라이커즈 1945 플러스
+pspikes2	파워 스파이크 2
+neocup98	네오지오 컵 '98
+zedblade	작전명 라그나로크
+quizkof	퀴즈 킹 오브 파이터즈	quizkofk
+karnovr	파이터즈 히스토리 다이너마이트
+matrim	신 호혈사 일족: 투혼
+# Konami
+tmnt	닌자 거북이	tmht tmht2p tmht2pa tmhta tmhtb tmnt2pj tmnt2po tmnta tmntj tmntu tmntua tmntub tmntuc tmntucbl
+tmnt2	닌자 거북이: 터틀스 인 타임	tmht22pe tmht24pe tmnt22p tmnt22pu tmnt24pu tmnt2a tmnt2o
+ssriders	선셋 라이더스	ssrdrabd ssrdrebc ssrdrebd ssrdrjbd ssrdruac ssrdrubc ssrdruda ssridersabd ssridersadd ssridersb ssriderseaa ssridersebc ssridersebd ssridersjac ssridersjad ssridersjbd ssridersuab ssridersuac ssridersubc ssridersuda sunsetbl
+simpsons	심슨 가족	simps2pa simps2pj simpsn2p simpsons2p simpsons2p2 simpsons2p3 simpsons2pa simpsons2pj simpsons4pa simpsons4pe simpsons4pe2
+xmen	엑스맨	xmen2p xmen2pa xmen2pe xmen2pj xmen2pu xmen6p xmen6pu xmena xmenaa xmene xmenj xmenja xmenu xmenua
+mystwarr	미스틱 워리어즈	mystwarra mystwarraa mystwarrj mystwarru mystwaru
+metamrph	메타몰픽 포스	metamrpha metamrphe metamrphj metamrphu metamrpj
+viostorm	바이올런트 스톰	viostorma viostormab viostormabbl viostormeb viostormj viostormu viostormub viostormubbl viostrma viostrmj viostrmu
+asterix	아스테릭스	asterixaad asterixeaa asterixeac asterixj astrxeaa astrxeac
+crimfght	크라임 파이터즈	crimfght2 crimfghtj crimfghtu crimfgt2 crimfgtj
+vendetta	크라임 파이터 2	vendet2p vendetao vendetas vendetta2p vendetta2pd vendetta2peba vendetta2pp vendetta2pu vendetta2pun vendetta2pw vendettaj vendettan vendettar vendettaun vendettaz vendettj vendtaso
+mia	M.I.A.	mia2 miaj
+gberet	그린베레	gberetb rushatck
+ironhors	대열차강도	dairesya ironhorsh
+kicker	소림사로 가는 길	shaolinb shaolins
+mikie	신입사원 토오루군	mikiehs mikiej
+yiear	이얼 쿵후	yiear2 yieartf
+contra	콘트라	contra1 contrab contrabj contrabj1 contrae contraj contraj1 contrajb gryzor gryzor1 gryzora
+scontra	슈퍼 콘트라	scontraa scontraj
+jackal	특수부대 자칼	jackalbl jackalj jackalr topgunr
+hcastle	악마성 드라큘라	akumajou akumajoun hcastlee hcastlej hcastlek hcastleo hcastljo
+frogger	프로거	froggeram froggereb froggermc froggers1 froggers2 froggers3 froggert froggerv froggervd froggrmc froggrs frogseg1 frogseg2
+pooyan	푸얀	pooyans
+timeplt	타임 파일럿	timeplta timepltc
+tp84	타임 파일럿 '84	tp84a tp84b
+gyruss	자이러스	gyrussb gyrussce
+junofrst	쥬노 퍼스트	junofrstg junofstg
+megazone	메가 존	megaznik megazonea megazoneb megazonec megazoneh megazonei megazonej
+scramble	스크램블	scramb2 scramb3 scramblb scramblebb scramblebf scramblebun scrambleo scrambler scrambles scrambles2 scrambls scramce scrammr scrampt scramrf seainv
+scobra	슈퍼 코브라	scobrab scobrae scobrae2 scobrag scobraggi scobras scobrase suprheli
+nemesis	그라디우스	gradius nemesisuk nemesuk
+vulcan	그라디우스 2	gradius2 gradius2a gradius2b grdius2a grdius2b vulcana vulcanb
+gradius3	그라디우스 3	gradius3a gradius3e gradius3j gradius3ja gradius3jas grdius3a grdius3e
+gradius4	그라디우스 4	gradius4a gradius4aa gradius4ja gradius4u gradius4ua
+salamand	사라만다	lifefrce lifefrcej salamandj salamandt salamanj
+lifefrcj	라이프 포스
+salmndr2	사라만다 2	salmndr2a
+twinbee	트윈비
+parodius	파로디우스다!	parodisj parodiusa parodiuse parodiusj
+sexyparo	섹시 파로디우스	sexyparoa
+thunderx	썬더 크로스	thnderxj thunderxa thunderxb thunderxj
+ajax	A-JAX	ajaxj typhoon
+xexex	젝세스	orius xexexa xexexj
+lethalen	리설 인포서즈	lethaleneaa lethaleneab lethalenead lethaleneae lethalenj lethalenua lethalenub lethalenux
+hyperspt	하이퍼 스포츠	hpolym84 hypersptb
+trackfld	하이퍼 올림픽	hyprolym hyprolyma trackflc trackfldc trackfldnz trackfldu
+circusc	서커스 찰리	circusc2 circusc3 circusc4 circuscc circusce
+roadf	로드 파이터	roadf2 roadfh roadfu
+pingpong	코나미 탁구
+moomesa	와일드 웨스트 카우보이즈 오브 무 메사	moomesaaab moomesauab moomesauac
+bucky	버키 오 헤어	buckyaa buckyaab buckyea buckyjaa buckyua buckyuab
+qbert	큐버트	myqbert qberta qbertj qbertjp qberttst qbtrktst
+# Namco
+puckman	팩맨	abscam pacman pacmanso pacmod piranha piranhao puckmana puckmanf puckmanh puckmod
+mspacman	미즈 팩맨	mschamp mschamps msheartb mspacii mspacii2 mspacmab mspacmab2 mspacmab4 mspacmab6 mspacmanbg mspacmanbg2 mspacmanbgc mspacmanbi mspacmanblt4 mspacmanbpl mspacmancr mspacmane mspacmane2 mspacmanlai mspacmat mspacmbe mspacmbmc mspacmbn mspacmnf mspacpls
+galaga	갤러그	galagamf galagamk galagamw galagao
+galaxian	갤럭시안	galap4 galapx galartic galaxbsf galaxbsf2 galaxcirsa galaxiaj galaxiana galaxianbl galaxianbl2 galaxianbl3 galaxianem galaxiani galaxianiii galaxianm galaxianmo galaxianoly galaxianrp galaxiant galaxrcgg galaxrf galaxrfgg galmidw galmidwo galturbo moonal2 moonal2b moonaln spacian2 supergx tst_galx zerotime
+digdug	디그더그	digdug1 digduga1 digdugat digdugat1 digdugb digsid
+xevious	제비우스	sxevious sxeviousj xeviousa xeviousb xeviousc xeviousd
+mappy	마피	mappyj
+rallyx	랠리X	rallyxa rallyxm
+bosco	보스코니안	bosco1 bosco1o bosco3 boscomd boscomdo boscoo boscoo2
+polepos	폴 포지션	polepos1 poleposa poleposa1 poleposa1n poleposa2 poleposj
+pacland	팩랜드	pacland2 pacland3 paclandj paclandjo paclandjo2 paclandm paclandm2
+dspirit	드래곤 스피릿	dspirit1 dspirit2 dspirita dspirito
+todruaga	드루아가의 탑	todruagao todruagas todruago
+rthunder	롤링 썬더	rthunder0 rthunder1 rthunder2 rthundera rthundero rthundro
+splatter	스플래터 하우스	splatter2 splatterj splattero
+valkyrie	왈큐레의 전설
+wndrmomo	원더 모모
+genpeitd	원평토마전
+skykid	스카이 키드	skykidd skykido skykids
+aliensec	바라듀크	baraduka baraduke
+kingball	킹 & 벌룬	kingbalj kingballj
+tekken	철권	tekkena tekkenac tekkenb tekkenc tekkenjb
+tekken2	철권 2	tekken2a tekken2b tekken2jb tekken2jc tekken2ua tekken2ub tekken2ud
+tekken3	철권 3	tekken3a tekken3b tekken3c tekken3d tekken3ja tekken3jd tekken3je1 tekken3ua tekken3ud
+tektagt	철권 태그 토너먼트	tektagta tektagtb tektagtc tektagtc1a tektagtjc1 tektagtub tektagtuc1
+souledge	소울 엣지	souledga souledgb souledge1 souledge1j souledgea souledgeja souledgeua souledgeuc
+soulclbr	소울 칼리버	soulclbrab soulclbrac soulclbrb soulclbrb2 soulclbrj soulclbrja soulclbrja2 soulclbrjb soulclbrjc soulclbrub soulclbruc
+# Nintendo
+dkong	동키콩	dkchrmx dkongf dkonghrd dkonghs dkongike dkongj dkongjo dkongjo1 dkongjp dkongo dkongpe dkongx dkongx11 dkremix
+dkongjr	동키콩 주니어	dkingjr dkingjrv dkngjnrb dkngjnrj dkongjnrj dkongjr2 dkongjrb dkongjre dkongjrhs dkongjrj dkongjrm dkongjrmc dkongjrpb
+dkong3	동키콩 3	dkong3abl dkong3b dkong3hs dkong3j
+mario	마리오 브라더스	mariobl mariobla marioe mariof mariog marioj marioja marioo
+popeye	뽀빠이	popeyeb2 popeyeb3 popeyebl popeyef popeyehs popeyej popeyejo popeyeu
+punchout	펀치아웃!!	punchita punchouta punchoutah punchoutj
+# Taito
+bublbobl	보글보글	bbredux boblcave bub68705 bubbobr1 bublbob1 bublbobl1 bublboblb bublboblp bublboblr bublboblr1 bublboblu bublbobr bublcave bublcave10 bublcave11 bublpong missb2
+rbisland	레인보우 아일랜드	rainbow rainbowe rainbowo rbislando
+pbobble	퍼즐 보블	bublbust
+pbobble2	퍼즐 보블 2	pbobbl2j pbobbl2u pbobbl2x pbobble2j pbobble2o pbobble2u pbobble2x
+pbobble3	퍼즐 보블 3	pbobbl3j pbobbl3u pbobble3j pbobble3u
+pbobble4	퍼즐 보블 4	pbobbl4j pbobbl4u pbobble4j pbobble4u
+arkanoid	알카노이드	ark1ball arkaboot arkangc arkangc2 arkanoidj arkanoidja arkanoidjb arkanoidjbl arkanoidjbl2 arkanoidpe arkanoidu arkanoiduo arkatayt arkatour arkbl2 arkbl3 arkgcbl arkgcbla arkmcubl arknoidj arknoidu arknoiuo arktayt2
+tnzs	뉴질랜드 스토리	tnzs2 tnzsb tnzsj tnzsjo tnzso tnzsoa tnzsop tnzsuo
+kikikai	기기괴계
+darius	다라이어스	dariuse dariusj dariuso dariusu
+dariusg	다라이어스 외전	dariusgj dariusgu dariusgx
+rastan	라스탄 사가	rastana rastanb rastanu rastanu2 rastanua rastanub rastsaga rastsaga1 rastsagaa rastsagaabl rastsagab
+opwolf	오퍼레이션 울프	opwolfa opwolfb opwolfj opwolfjsc opwolfp opwolfu
+othunder	오퍼레이션 선더볼트	othunderj othunderjsc othundero othunderu othunderua othunderuo othundu
+elevator	엘리베이터 액션	elevatob elevatora elevatorb
+invaders	스페이스 인베이더	cosmicm2 cosmicmo invader4 invaderl invadernc invadersem invadrmr invasion jspecter jspectr2 sicv sicv1 sinvzen sisv sisv2 sisv3 sitv sitv1 spaceat2 spaceatt spaceatt2k spaceattbp spacecom spacerng spacewr3 spcebttl spceking spcewarla spcewars swipeout tst_invd ultrainv
+qix	킥스	qix2 qixa qixb qixo
+chasehq	체이스 HQ	chasehqj chasehqju chasehqu
+ninjaw	닌자 워리어즈	ninjaw1 ninjawj ninjawu
+metalb	메탈 블랙	metalba metalbj
+gunfront	건 프론티어	gunfronj gunfrontj
+gunlock	레이포스	gunlocko rayforce rayforcej rayforcj
+raystorm	레이스톰	raystormj raystormo raystormu
+kaiserkn	카이저 너클	dankuga gblchmp kaiserkj kaiserknj
+cleopatr	클레오파트라 포춘	cleopatro
+landmakr	랜드 메이커	landmakrj landmakrp landmkrp
+dondokod	돈 도코 돈	dondokdj dondokdu dondokodj dondokodu
+lkage	카게의 전설	lkagea lkageb lkageb2 lkageb3 lkagebl1 lkagebl2 lkagebl3 lkagebl4 lkagem lkageo lkageoo
+chaknpop	채큰 팝
+growl	루나크	growla growlp growlu runark
+footchmp	해트 트릭 히어로	euroch92 euroch92j hthero htheroj htherou
+slapshot	슬랩샷	slapshotj
+spacegun	스페이스 건	spacegunj spacegunu
+gekiridn	역린탄	gekiridnj
+gseeker	그리드 시커	gseekerj gseekeru
+masterw	마스터 오브 웨폰	masterwj masterwu yukiwo
+bubblem	버블 메모리즈	bubblemj bubblemu
+liquidk	리퀴드 키즈	liquidku mizubaku
+cadash	카다쉬	cadashf cadashg cadashgo cadashi cadashj cadashj1 cadashjo cadashp cadashs cadashso cadashu cadashu1
+exzisus	익스지저스	exzisusa exzisust
+aquajack	아쿠아 잭	aquajackj aquajacku aquajckj
+contcirc	컨티넨탈 서커스	contcircj contcircu contcircua contcrcu
+psyforce	사이킥 포스	psyforcej psyforcex
+mrdo	미스터 도!	mrdobl mrdofabr mrdofix mrdot mrdoy mrdu mrlo
+# Toaplan
+tigerh	타이거 헬리	tigerh2 tigerhb1 tigerhb2 tigerhb3 tigerhj
+slapfigh	슬랩 파이트	alcon slapbtjp slapbtuk slapfigha slapfighb1 slapfighb2 slapfighb3
+twincobr	구극 타이거	ktiger ktiger2p ktigera twincobru twincobu
+fshark	비상교	fsharkb fsharkbt hishouza skyshark skysharka
+fireshrk	교!교!교!	fireshrka fireshrkd fireshrkdh samesam2 samesame samesame2 samesamecn
+wardner	와드너의 숲	pyros wardnerb wardnerj wardnerjb
+truxton	타츠진
+hellfire	헬파이어	hellfir1 hellfire1 hellfire1a hellfire2 hellfire2a hellfire3
+zerowing	제로 윙	zerowing1 zerowing2 zerowingw
+snowbros	스노우 브라더스	snowbroa snowbrob snowbroj snowbros3 snowbrosa snowbrosb snowbrosc snowbrosd snowbrosj snowbroswb
+outzone	아웃존	outzonea outzoneb outzonec outzonecv outzoned outzoneh
+vimana	비마나	vimana1 vimanaj vimanan
+tekipaki	세뇌 게임 테키 파키	tekipakit
+ghox	곡스	ghoxj ghoxjo
+truxton2	타츠진오
+dogyuun	도균	dogyuuna dogyuunb dogyuunbl dogyuunk dogyuunt dogyuunto
+grindstm	V·V	grindsta grindstma vfive
+kbash	너클 배쉬	kbashk kbashp
+batsugun	바츠군	batsuguna batsugunb batsugunbl batsugunc batsugunsp batugnsp
+snowbro2	스노우 브라더스 2	snowbro2b snowbro2b2 snowbro2b3 snowbro2ny
+# Psikyo
+samuraia	전국 에이스	samuraiak sngkace sngkacea
+tengai	전국 블레이드	tengaij
+gunbird	건버드	gunbirdj gunbirdk
+gunbird2	건버드 2	gunbird2a
+btlkroad	배틀 K 로드	btlkroadk
+s1945	스트라이커즈 1945	s1945a s1945bl s1945j s1945jn s1945k s1945n s1945nj
+s1945ii	스트라이커즈 1945 II
+s1945iii	스트라이커즈 1945 III
+soldivid	솔 디바이드	soldividk
+sbomber	스페이스 봄버	sbombera
+dragnblz	드래곤 블레이즈
+gnbarich	건바리치
+daraku	타락천사
+# Raizing / Eighting
+sstriker	마법대작전	mahoudai sstrikera sstrikerk
+shippumd	질풍 마법대작전	kingdmgp
+bgaregga	배틀 가레가	bgareggablj bgareggacn bgareggahk bgareggak bgaregganv bgareggat bgareggat2 bgareggatw
+batrider	암드 폴리스 배트라이더	batriderc batriderhk batriderj batriderja batriderk batridert batrideru batridra batridrk
+bbakraid	배틀 바크레이드	bbakradu bbakraidc bbakraidj bbakraidja
+beastrzr	블러디 로어	beastrzra bldyroar
+bldyror2	블러디 로어 2	bldyror2a bldyror2j bldyror2u
+# Cave
+donpachi	돈파치	donpachihk donpachij donpachijs donpachikr donpachj donpachk
+ddonpach	도돈파치	ddonpacha ddonpachj ddonpchj
+ddp3	도돈파치 대왕생	ddp3a ddp3b ddp3blk ddpdoj ddpdoja ddpdojb ddpdojblk ddpdojblka ddpdojblkb ddpdojblkbl ddpdojp
+esprade	에스프레이드	espradej espradejo espradeo
+espgal	에스프가루다	espgalbl
+dfeveron	탄총 피버론	feversos
+guwange	구완게	guwanges
+ket	케츠이: 키즈나 지고쿠타치	ket1 keta ketarr ketarr10 ketarr15 ketarr151 ketarrf ketarrs15 ketarrs151 ketb ketbl ketikd
+mushisam	벌레공주님	mushisama mushisamb
+ibara	이바라	ibarao
+deathsml	데스 스마일즈
+uopoko	포동포동 포크	uopokoj
+sailormn	미소녀 전사 세일러 문	sailormne sailormnh sailormnj sailormnk sailormnne sailormnnh sailormnnj sailormnnk sailormnnt sailormnnu sailormno sailormnoe sailormnoh sailormnoj sailormnok sailormnot sailormnou sailormnt sailormnu sailormo
+# IGS
+kov	삼국전기	kov100 kov111 kov114 kov115
+kovplus	삼국전기 풍운재기 플러스	kovplusa
+kovsh	삼국전기 슈퍼 히어로즈	kovsh100 kovsh101 kovsh102 kovsh103
+kov2	삼국전기 2	kov2100 kov2101 kov2102 kov21022 kov2103 kov2104 kov2106
+kov2p	삼국전기 2 플러스	kov2p200 kov2p202 kov2p203 kov2p204 kov2p205
+orlegend	서유석액전	orlegend105k orlegend105t orlegend111c orlegend111k orlegend111t orlegendc orlegendca orlegende orlegndc orlegnde
+olds	서유석액전 스페셜	olds100 olds100a olds103t
+martmast	마샬 마스터즈	martmast102c martmast103c martmast104c martmastc martmastc102
+killbld	킬링 블레이드	killbld100 killbld104 killbld106
+dmnfrnt	데몬 프론트	dmnfrnt102 dmnfrnt103 dmnfrnta
+ddp2	도돈파치 2	ddp2100 ddp2100c ddp2100hk ddp2100j ddp2100k ddp2100t ddp2101 ddp2101c ddp2101hk ddp2101j ddp2101k ddp2101t ddp2a ddp2c ddp2hk ddp2j ddp2k ddp2t
+photoy2k	포토 Y2K	photoy2k102 photoy2k102j photoy2k103j photoy2k104
+# Seibu
+raiden	라이덴	raidena raidenb raidenj raidenk raidenkb raidenm raident raidenu raidenua raidenub
+raiden2	라이덴 2	raiden2a raiden2au raiden2b raiden2c raiden2d raiden2dx raiden2e raiden2ea raiden2eg raiden2es raiden2eu raiden2eua raiden2eub raiden2eup raiden2f raiden2g raiden2gb raiden2hk raiden2i raiden2j raiden2k raiden2nl raiden2sw raiden2u
+raidendx	라이덴 DX	raidendxa1 raidendxa2 raidendxch raidendxg raidendxj raidendxja raidendxk raidendxnl raidendxpt raidendxu
+rdft	라이덴 파이터즈	rdfta rdftadi rdftadia rdftam rdftau rdftauge rdftdi rdftgb rdftgr rdftit rdftj rdftja rdftjb rdfts rdftu rdftua
+rdft2	라이덴 파이터즈 2	rdft22kc rdft2a rdft2a2 rdft2aa rdft2it rdft2j rdft2j2 rdft2ja rdft2jb rdft2jc rdft2s rdft2t rdft2u rdft2us
+rfjet	라이덴 파이터즈 Jet	rfjet2kc rfjeta rfjetj rfjets rfjetsa rfjett rfjetu rfjetus
+viprp1	바이퍼 페이즈 1	viprp1h viprp1hk viprp1j viprp1k viprp1oj viprp1ot viprp1pt viprp1s viprp1t viprp1u viprp1ua
+dynduke	다이너마이트 듀크	dbldyn dbldynf dyndukea dyndukef dyndukej dyndukeja dyndukeu
+zeroteam	제로 팀	nzerotea nzeroteam nzeroteama nzeroteamb zeroteama zeroteamb zeroteamc zeroteamd zeroteame zeroteams zerotm2k
+cupsoc	세이부 컵 축구	cupsoc2 cupsoca cupsocbl cupsocs cupsocs2 cupsocsb cupsocsb2 cupsocsb3 cupsocsb4 cupsocsb5 olysoc92
+deadang	데드 앵글	ghunter ghunters leadang
+# Data East
+captaven	캡틴 아메리카 앤 어벤져스	captavena captavene captavenj captavenu captavenua captavenuu captavna captavne captavnj captavnu captavuu
+nslasher	나이트 슬래셔즈	nslasherj nslashers nslasheru
+karnov	카르노프	karnova karnovj
+chelnov	아토믹 러너 체르노브	chelnovj chelnovu
+hbarrel	헤비 배럴	hbarrelu hbarrelua hbarrelw
+midres	미드나이트 레지스탕스	midres2 midresb midresbj midresj midresu
+robocop	로보캅	robocopb robocopj robocopu robocopu0 robocopw robocpu0
+robocop2	로보캅 2	robocop2j robocop2u robocop2ua robocp2j robocp2u
+darkseal	다크 실	darksea1 darkseaj darkseal1 darksealj gatedom1 gatedoom gatedoom1
+cbuster	크루드 버스터	cbusterj cbusterw twocrude twocrudea
+tumblep	텀블 팝	tumbleb tumbleb2 tumblep2 tumblepb tumblepba tumblepj
+dietgo	다이어트 고고	dietgoe dietgoea dietgoeb dietgoj dietgou
+edrandy	에드워드 랜디	edrandy1 edrandy2 edrandyj
+cninja	죠 & 맥	cninja0 cninja1 cninjabl cninjau joemac
+baddudes	드래곤닌자	drgninja
+btime	버거타임	btime2 btime3 btimem
+triothep	트리오 더 펀치	triothepj
+secretag	시크릿 에이전트	secretab secretagj slyspy slyspy2 slyspy3
+funkyjet	펑키 젯	funkyjeta funkyjeta2 funkyjetj
+fghthist	파이터즈 히스토리	fghthista fghthistb fghthistj fghthistja fghthistjb fghthistu fghthistua fghthistub fghthistuc
+avengrgs	어벤져스 인 갤럭틱 스톰	avengrgsj
+darwin	다윈 4078
+bwing	배틀 윙즈	batwings bwings bwingsa bwingso
+brkthru	강행돌파	brkthruj brkthrut brkthruu
+cobracom	코브라 커맨드	cobracmj cobracoma cobracomb cobracomj cobracomjb
+# Irem
+rtype	R-TYPE	rtypeb rtypej rtypejp rtypem82b rtypepj rtypeu
+rtype2	R-TYPE II	rtype2j rtype2jc rtype2m82b
+rtypeleo	R-TYPE LEO	rtypelej rtypeleoj
+airduel	에어 듀얼	airdueljm72 airduelm72 airduelu
+uccops	언더커버 캅스	uccopsar uccopsaru uccopsj uccopsu
+inthunt	해저대전쟁	inthuntk inthuntu kaiteids
+gunforce	건포스	gunforcej gunforceu gunforcj gunforcu
+gunforc2	건포스 2	geostorm geostorma
+10yard	10야드 파이트	10yard85 10yardj vs10yard vs10yardj vs10yardu
+nbbatman	야구격투 리그맨	leaguemn leaguemna nbbatmanu
+hharry	대공의 겐상	dkgenm72 dkgensan dkgensana dkgensanm72 dkgensanm82 hharryb hharryu
+dsoccr94	드림 사커 '94	dsccr94j dsoccr94j dsoccr94k
+lethalth	리쎌 선더	thndblst
+majtitle	메이저 타이틀	majtitlej
+majtitl2	메이저 타이틀 2	majtitl2a majtitl2b majtitl2j skingam2 skingame skingame2
+mysticri	미스틱 라이더스	gunhohki mysticrib
+dynablst	봄버맨	atompunk bbmanw bbmanwj bbmanwja bombrman dynablsb dynablstb dynablstb2 dynablstb3 dynablstb4 newapunk
+vigilant	비질란테	vigilanta vigilantb vigilantbl vigilantc vigilantd vigilantg vigilantj vigilanto vigilantu vigilntj vigilntu
+kungfum	스파르탄 X	kungfub kungfub2 kungfub3s kungfud kungfumd spartanx
+imgfight	이미지 파이트	imgfightj imgfightjb imgfighto
+hook	후크	hookj hooku
+ssoldier	퍼펙트 솔저스	psoldier
+mpatrol	문 패트롤	mpatrolw mranger
+nspirit	최후의 인도	nspiritj
+xmultipl	X멀티플라이	xmultiplm72
+bmaster	크로스브레이즈	crossbld
+# Technos / Mitchell / Video System / Kaneko / Tecmo / Sega / Midway / Atari / others
+ddragon	더블 드래곤	ddragon6809 ddragon6809a ddragona ddragonb ddragonb2 ddragonba ddragonbl ddragonbl2 ddragonbla ddragonj ddragonja ddragonu ddragonua ddragonub ddragonw ddragonw1
+ddragon2	더블 드래곤 2	ddragn2u ddragon2bl ddragon2j ddragon2u
+ddragon3	더블 드래곤 3	ddrago3b ddragon3b ddragon3j ddragon3p
+renegade	열혈경파 쿠니오군	kuniokun renegadeb
+pang	팡	bbros pangb pangb2 pangba pangbb pangbc pangbold pompingw
+spang	슈퍼 팡	sbbros spangbl spangj
+aerofgt	소닉윙즈	aerfboo2 aerfboot aerofgtb aerofgtc sonicwi
+pspikes	파워 스파이크	pspikesb pspikesba pspikesc pspikesk pspikesu svolly91
+turbofrc	터보 포스	turbofrcj turbofrco turbofrcu turbofrcua
+galpanic	갈스 패닉	galpanib galpanica galpanicb galpanicc
+berlwall	베를린 월	berlwallk berlwallt berlwalt
+rygar	아르고스의 전사	rygar2 rygar3 rygarj rygarj2
+shadoww	닌자 용검전	gaiden ryukendn ryukendna ryukendnb shadowwa
+wc90	테크모 월드컵 '90	wc90a wc90t
+solomon	솔로몬의 열쇠	solomonj
+bombjack	봄잭	bombjac2 bombjack2 bombjackbl bombjackt
+silkworm	실크웜	silkworm2 silkwormb silkwormb2 silkwormj silkwormp silkwrm2
+twcup98	테크모 월드컵 '98	twsoc98
+goldnaxe	골든 액스	goldnabl goldnaxa goldnaxb goldnaxc goldnaxe1 goldnaxe1d goldnaxe2 goldnaxe3 goldnaxe3d goldnaxeb1 goldnaxeb2 goldnaxej goldnaxejd goldnaxeu goldnaxeud goldnaxj
+altbeast	수왕기	altbeas2 altbeast2 altbeast4 altbeast5 altbeast5d altbeast6 altbeastbl altbeastj altbeastj1 altbeastj2 altbeastj3 jyuohki
+shinobi	시노비	shinobi1 shinobi1d shinobi2 shinobi2d shinobi3 shinobi4 shinobi5 shinobi6 shinobia shinobib shinobl shinoblb shinobld shinoblda shinobldb shinobls
+outrun	아웃런	outruna outrunb outrundx outrundxa outrundxeh outrundxeha outrundxj outruneh outruneha outruno outrunra
+sharrier	스페이스 해리어	sharrier1
+hangon	행온	hangon1 hangon2
+aburner2	애프터 버너 2	aburner aburner131 aburner2g
+wb3	원더 보이 3	wb31 wb31d wb32 wb32d wb33 wb33d wb34 wb34d wb35 wb35a wb35d wb3a wb3bbl wb3bl
+wboy	원더 보이	wbdeluxe wboy2 wboy2u wboy3 wboy4 wboy5 wboy6 wboyblt wboyo wboysys2 wboysys2a wboyu wboyub
+puyo	뿌요뿌요	puyobl puyoj puyoja
+puyopuy2	뿌요뿌요 2
+columns	컬럼스	columnsj columnsu
+tetris	테트리스 (세가)	tetris1 tetris1d tetris2 tetris2d tetris3 tetris3d tetrisa tetrisbl tetrisd tetrist tetrista tetristh
+atetris	테트리스 (아타리)	atetb3482 atetb5205 atetckt2 atetcktl atetrisa atetrisb atetrisb2 atetrisb3 atetrisb4 atetrisbp atetrisc atetrisc2
+bnzabros	보난자 브라더스	bnzabrosj
+flicky	플리키	flickya flickyb flickyo flickys1 flickys2 flickyup flickyupa
+vf	버추어 파이터
+mp_sonic	소닉 더 헤지혹 (메가 플레이)
+mp_soni2	소닉 더 헤지혹 2 (메가 플레이)
+mp_gaxe2	골든 액스 2 (메가 플레이)	mp_gaxe2a
+mp_sor2	베어 너클 2 (메가 플레이)
+mp_shnb3	시노비 3 (메가 플레이)
+mp_col3	컬럼스 3 (메가 플레이)
+mk	모탈 컴뱃	mkla1 mkla2 mkla3 mkla3bl mkla4 mknifty mknifty666 mkprot4 mkprot8 mkprot9 mkr4 mkrep mktturbo mkyawdim mkyawdim2 mkyawdim3 mkyawdim4 mkyturbo mkyturboe
+mk2	모탈 컴뱃 2	mk2chal mk2p mk2r11 mk2r14 mk2r20 mk2r21 mk2r30 mk2r31e mk2r32 mk2r32e mk2r42 mk2r91
+mk3	모탈 컴뱃 3	mk3p40 mk3r10 mk3r20 umk3r11
+umk3	얼티밋 모탈 컴뱃 3	umk3r10
+gauntlet	건틀릿	gaun2pg1 gaun2pj2 gaun2pr3 gaunt2p gaunt2pg gaunt2pj gauntg gauntgr3 gauntgr6 gauntgr8 gauntj gauntj12 gauntlet2p gauntlet2pg gauntlet2pg1 gauntlet2pj gauntlet2pj2 gauntlet2pr3 gauntletg gauntletgr3 gauntletgr6 gauntletgr8 gauntletj gauntletj12 gauntletr1 gauntletr2 gauntletr4 gauntletr5 gauntletr7 gauntletr9 gauntlets gauntr1 gauntr2 gauntr4 gauntr5 gauntr7 gauntr9 gaunts
+paperboy	페이퍼보이	paperboyr1 paperboyr2 paperbr1 paperbr2
+centiped	센티피드	centipb2 centipd2 centipdb2 centipdd centiped1 centiped2 centiped3 centipedj centtime millpac
+asteroid	애스터로이드	asterock asteroi1 asteroib asteroid1 asteroid2 asteroidb asteroidb1 asteroidb2 spcrocks
+dbz	드래곤볼 Z	dbza
+dbz2	드래곤볼 Z 2 슈퍼 배틀
+cclimber	크레이지 클라이머	ccboot ccboot2 ccbootmm ccbootmr cclimbera cclimberj cclimbrj cclimbroper cclimbrrod
+terracre	테라 크레스타	terracra terracrb terracrea terracren terracreo
+rodland	로드랜드	rittam rodlanda rodlandj rodlandjb rodlandjb2 rodlndjb
+tetrisp2	테트리스 플러스 2	teplus2j tetrisp2a tetrisp2j tetrisp2ja tp2m32
+penbros	펭귄 브라더스	ablast
