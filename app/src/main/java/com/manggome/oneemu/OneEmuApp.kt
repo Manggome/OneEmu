@@ -37,7 +37,11 @@ class OneEmuApp : Application() {
         com.manggome.oneemu.emu.CrashMarker.installJavaCrashRecorder(this)
         runCatching { com.manggome.oneemu.emu.NativeBridge.installCrashHandler(java.io.File(cacheDir, "native_crash.txt").absolutePath) }
         // Mirror the per-system default-core preference into CoreRegistry so synchronous callers see it.
-        appScope.launch { runCatching { scanner.pruneUnsupportedEntries(); scanner.ensureNoContentEntries() } }
+        appScope.launch {
+            runCatching { scanner.pruneUnsupportedEntries(); scanner.ensureNoContentEntries() }
+            // Arcade games scanned with English titles move to their Korean names (unless the user renamed them).
+            runCatching { scanner.localizeArcadeTitlesIfTableChanged(settings) }
+        }
         // Box art, pad skins and save-state thumbnails were turning up in the phone's gallery.
         appScope.launch { runCatching { dirs.hideFromGallery() } }
         appScope.launch { settings.observe(com.manggome.oneemu.emu.FoldLayout.SIDE_BY_SIDE, true).collect { com.manggome.oneemu.emu.FoldLayout.enabled = it } }

@@ -2,7 +2,10 @@ package com.manggome.oneemu.library
 
 import android.content.Context
 import android.graphics.Bitmap
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.room.withTransaction
 import com.manggome.oneemu.core.CoreRegistry
+import com.manggome.oneemu.data.Settings
 import com.manggome.oneemu.data.db.AppDatabase
 import com.manggome.oneemu.data.db.FolderEntity
 import com.manggome.oneemu.data.db.GameEntity
@@ -32,11 +35,33 @@ class RomScanner(
     val progress: StateFlow<Progress> get() = _progress
 
     private val extMap: Map<String, List<SystemId>> by lazy { registry.extensionToSystems() }
-    private val arcadeTitles by lazy { ArcadeTitles(context) }
+    private val arcadeTitles by lazy { ArcadeTitles.get(context) }
     private val localBoxArt by lazy { LocalBoxArt(dirs, db) }
 
     suspend fun scanAll() = withContext(Dispatchers.IO) {
         for (folder in db.folders().allOnce()) scanFolder(folder)
+        runCatching { localizeArcadeTitles() }
+    }
+
+    /**
+     * Arcade games added before the Korean title table keep the English DAT title ("Bubble Bobble"). Moves
+     * them to the Korean name ("보글보글"), but only rows whose title is still the one the scanner generated;
+     * a title the user typed stays. One transaction; the English tables are read only when a row qualifies.
+     */
+    suspend fun localizeArcadeTitles(): Int = withContext(Dispatchers.IO) {
+        val updates = db.games().allOnce()
+            .filter { it.system == SystemId.ARCADE.id && !it.path.startsWith(EmulatorSession.NO_CONTENT_PREFIX) }
+            .mapNotNull { g -> arcadeTitles.localizedTitle(File(g.path).name, g.title)?.let { g.id to it } }
+        if (updates.isNotEmpty()) db.withTransaction { for ((id, title) in updates) db.games().setTitle(id, title) }
+        updates.size
+    }
+
+    /** [localizeArcadeTitles] at app start, once per version of the Korean table (a rescan always runs it). */
+    suspend fun localizeArcadeTitlesIfTableChanged(settings: Settings) {
+        val stamp = arcadeTitles.koreanTableStamp()
+        if (settings.get(ARCADE_KO_STAMP, 0) == stamp) return
+        localizeArcadeTitles()
+        settings.set(ARCADE_KO_STAMP, stamp)
     }
 
     suspend fun scanFolder(folder: FolderEntity) = withContext(Dispatchers.IO) {
@@ -256,6 +281,8 @@ class RomScanner(
 
     companion object {
         private const val DVD_SIZED_BYTES = 2_000_000_000L
+        /** [ArcadeTitles.koreanTableStamp] of the table the library's arcade titles were last localized with. */
+        private val ARCADE_KO_STAMP = intPreferencesKey("arcade_titles_ko_stamp")
         /** The one Jazz² file that stands for a game: Anims.j2a, which every install has exactly one of. */
         private const val JAZZ2_ANCHOR_EXT = "j2a"
         private const val JAZZ2_ANCHOR_MIN_BYTES = 1_000_000L
