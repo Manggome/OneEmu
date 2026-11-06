@@ -20,6 +20,7 @@ import java.io.File
  *   thumbnails/                  box art and icons the library shows
  *   boxart/                      the user's own box art, named after the game files (see LocalBoxArt)
  *   skins/                       pad skins the user imported
+ *   patched/                     patched ROM copies whose own folder was not writable (RomPatch)
  * ```
  *
  * It used to sit under `Android/data/<package>/files`, which Android 11 put out of reach of most
@@ -37,6 +38,8 @@ class AppDirs(private val context: Context) {
     /** Pictures the user puts here, named after a game's file, become that game's thumbnail. */
     val boxArtFolder: File get() = dir("boxart")
     val skins: File get() = dir("skins")
+    /** Patched ROM copies, used only when the original's own folder cannot be written. */
+    val patched: File get() = dir("patched")
     val temp: File get() = File(context.cacheDir, "temp").also { it.mkdirs() }
     val updates: File get() = File(context.cacheDir, "updates").also { it.mkdirs() }
 
