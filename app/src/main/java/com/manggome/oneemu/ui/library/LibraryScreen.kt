@@ -125,6 +125,14 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
     val pickSave = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) importGame = null else importUri = uri
     }
+    // 패치 적용: the game first, then the patch file; the run itself lives in the view model.
+    var patchGame by remember { mutableStateOf<GameEntity?>(null) }
+    val pickPatch = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val g = patchGame
+        patchGame = null
+        if (uri != null && g != null) vm.startPatch(g, uri)
+    }
+    val patchState by vm.patch.collectAsStateWithLifecycle()
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         val target = thumbnailTarget
         thumbnailTarget = -1L
@@ -235,6 +243,8 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
         }
     }
 
+    patchState?.let { RomPatchDialog(it, onDismiss = vm::dismissPatch, onPlay = ::tryLaunch) }
+
     // Resolve the live row so favorite/thumbnail changes made from the sheet show immediately.
     val liveSelected = selected?.let { sel -> state.sections.asSequence().flatMap { it.games.asSequence() }.firstOrNull { it.id == sel.id } ?: sel }
     liveSelected?.let { game ->
@@ -252,6 +262,7 @@ private fun LibraryContent(nav: NavHostController, vm: LibraryViewModel) {
             onPickBoxArt = { nav.navigate(Routes.boxArt(it.id)) },
             onOpenDetails = { nav.navigate(Routes.game(it.id)) },
             onImportSave = { g -> importGame = g; pickSave.launch(arrayOf("*/*")) },
+            onApplyPatch = { g -> patchGame = g; pickPatch.launch(arrayOf("*/*")) },
         )
     }
     if (confirmRemoveMany) {

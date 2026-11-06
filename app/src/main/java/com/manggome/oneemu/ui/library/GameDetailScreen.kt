@@ -80,6 +80,12 @@ fun GameDetailScreen(nav: NavHostController, gameId: Long, vm: LibraryViewModel 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri?.let { vm.setThumbnail(gameId, it) }
     }
+    // 패치 적용 always patches the game on screen; the run itself lives in the view model.
+    val pickPatch = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val g = game
+        if (uri != null && g != null) vm.startPatch(g, uri)
+    }
+    val patchState by vm.patch.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         vm.messages.collect { msg -> snackbar.showSnackbar(context.getString(msg.resId, *msg.args.toTypedArray())) }
@@ -232,9 +238,18 @@ fun GameDetailScreen(nav: NavHostController, gameId: Long, vm: LibraryViewModel 
                 onOpenCoreOptions = { nav.navigate(Routes.coreOptions(it)) },
                 onOpenGameCoreOptions = { g, coreId -> nav.navigate(Routes.gameCoreOptions(coreId, g.id)) },
                 onPickBoxArt = { nav.navigate(Routes.boxArt(it.id)) },
+                onApplyPatch = { pickPatch.launch(arrayOf("*/*")) },
             )
         }
     }
 
+    patchState?.let { state ->
+        RomPatchDialog(state, onDismiss = vm::dismissPatch, onPlay = { target ->
+            when (val check = vm.checkLaunch(target)) {
+                LaunchCheck.Ok -> launchGame(context, target)
+                else -> launchBlock = check
+            }
+        })
+    }
     launchBlock?.let { LaunchCheckDialog(it) { launchBlock = null } }
 }

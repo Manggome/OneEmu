@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -64,6 +65,7 @@ import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.library.WipiSaves
 import com.manggome.oneemu.library.ArcadeCoreRouter
 import com.manggome.oneemu.library.ArcadeRomChecker
+import com.manggome.oneemu.library.RomPatch
 import com.manggome.oneemu.ui.common.ConfirmDialog
 import com.manggome.oneemu.ui.common.GameThumbnail
 import com.manggome.oneemu.ui.common.InfoDialog
@@ -90,6 +92,8 @@ fun GameActionSheet(
     onOpenDetails: ((GameEntity) -> Unit)? = null,
     /** 세이브 가져오기: pick a downloaded save and put it where this game reads it. */
     onImportSave: ((GameEntity) -> Unit)? = null,
+    /** 패치 적용: pick an IPS/BPS/UPS patch and make a patched copy of this game. */
+    onApplyPatch: ((GameEntity) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
@@ -140,6 +144,9 @@ fun GameActionSheet(
                     Icons.Filled.FileOpen,
                     stringResource(if (system == SystemId.WIPI) R.string.wipi_save_import else R.string.save_import_action),
                 ) { onDismiss(); onImportSave(game) }
+            }
+            if (onApplyPatch != null && RomPatch.canPatch(system, game.path)) {
+                SheetItem(Icons.Filled.Translate, stringResource(R.string.patch_action)) { onDismiss(); onApplyPatch(game) }
             }
             val shortcutFailed = stringResource(R.string.lib_shortcut_unsupported)
             val context = androidx.compose.ui.platform.LocalContext.current

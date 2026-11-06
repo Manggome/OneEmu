@@ -151,12 +151,16 @@ class RomScanner(
         stale.size
     }
 
-    /** Adds a single file the user picked manually. */
-    suspend fun addFile(file: File): GameEntity? = withContext(Dispatchers.IO) {
+    /**
+     * Adds a single file the user picked manually. [folderId] files it under a library folder the
+     * file sits in (a patched copy written next to its original), so removing it hides it like any
+     * scanned game instead of the next scan bringing it straight back.
+     */
+    suspend fun addFile(file: File, folderId: Long? = null): GameEntity? = withContext(Dispatchers.IO) {
         val ext = file.extension.lowercase()
         if (ext !in extMap) return@withContext null
         db.games().getByPath(file.absolutePath)?.let { return@withContext it }
-        val entity = identify(file, ext, null) ?: return@withContext null
+        val entity = identify(file, ext, folderId) ?: return@withContext null
         val id = db.games().insert(entity)
         if (id <= 0) return@withContext db.games().getByPath(file.absolutePath)
         runCatching { localBoxArt.applyAll() }

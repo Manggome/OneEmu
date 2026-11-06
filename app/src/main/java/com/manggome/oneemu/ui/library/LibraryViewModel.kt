@@ -3,6 +3,7 @@ package com.manggome.oneemu.ui.library
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.ViewModel
@@ -24,6 +25,8 @@ import com.manggome.oneemu.library.BoxArtFetcher
 import com.manggome.oneemu.library.BoxArtKind
 import com.manggome.oneemu.library.LocalBoxArt
 import com.manggome.oneemu.library.RomFiles
+import com.manggome.oneemu.library.RomPatch
+import com.manggome.oneemu.library.RomPatcher
 import com.manggome.oneemu.library.RomRename
 import com.manggome.oneemu.library.RomScanner
 import com.manggome.oneemu.emu.EmulatorSession
@@ -116,6 +119,32 @@ sealed class LaunchCheck {
      * ([ArcadeRomCheck.UNSTABLE_DRIVERS], e.g. Sega ST-V). [note] is the Korean explanation; launch only after the user confirms.
      */
     data class UnstableWarning(val game: GameEntity, val note: String) : LaunchCheck()
+}
+
+/** 패치 적용, as the dialog shows it. [patchName] is the picked patch file's name. */
+sealed class PatchState {
+    abstract val original: GameEntity
+    abstract val patchName: String
+
+    data class Working(override val original: GameEntity, override val patchName: String) : PatchState()
+
+    /** [game] is the new library entry, null when the file was made but could not be listed. */
+    data class Done(
+        override val original: GameEntity,
+        override val patchName: String,
+        val game: GameEntity?,
+        val file: File,
+        val format: RomPatcher.Format,
+        val inFallback: Boolean,
+    ) : PatchState()
+
+    data class Failed(
+        override val original: GameEntity,
+        override val patchName: String,
+        val problem: RomPatcher.Problem,
+        val expected: String? = null,
+        val actual: String? = null,
+    ) : PatchState()
 }
 
 class LibraryViewModel : ViewModel() {
@@ -625,6 +654,68 @@ class LibraryViewModel : ViewModel() {
         else Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt().coerceAtLeast(1), (decoded.height * scale).toInt().coerceAtLeast(1), true)
             .also { if (it !== decoded) decoded.recycle() }
     }.getOrNull()
+
+    // ---- ROM patches (한글패치) ------------------------------------------------------------------
+
+    private val _patch = MutableStateFlow<PatchState?>(null)
+    /** The 패치 적용 run in progress or just finished; null when no dialog is up. Lives here so a rotation does not start it twice. */
+    val patch: StateFlow<PatchState?> get() = _patch
+
+    /** Makes a patched copy of [game] with the patch file at [patchUri] (from the system picker) and lists it. */
+    fun startPatch(game: GameEntity, patchUri: Uri) {
+        if (_patch.value is PatchState.Working) return
+        val name = runCatching {
+            app.contentResolver.query(patchUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        }.getOrNull() ?: patchUri.lastPathSegment.orEmpty()
+        _patch.value = PatchState.Working(game, name)
+        viewModelScope.launch(Dispatchers.IO) { _patch.value = runPatch(game, patchUri, name) }
+    }
+
+    fun dismissPatch() {
+        if (_patch.value !is PatchState.Working) _patch.value = null
+    }
+
+    private suspend fun runPatch(game: GameEntity, patchUri: Uri, name: String): PatchState {
+        // The picker hands out a content:// URI; the patcher wants a file it can seek in.
+        val patch = File(dirs.temp, "patch-${System.nanoTime()}.tmp")
+        try {
+            val copied = runCatching {
+                app.contentResolver.openInputStream(patchUri)?.use { input -> patch.outputStream().use { input.copyTo(it, 256 * 1024) } } != null
+            }.getOrDefault(false)
+            if (!copied) return PatchState.Failed(game, name, RomPatcher.Problem.IO)
+            val system = SystemId.fromId(game.system)
+            val fallback = dirs.patched
+            val result = try {
+                RomPatch.apply(File(game.path), system, system?.extensions.orEmpty(), patch, dirs.temp, fallback)
+            } catch (e: RomPatcher.PatchException) {
+                return PatchState.Failed(game, name, e.problem, e.expected, e.actual)
+            }
+            val added = runCatching { addPatchedCopy(game, result.file) }.getOrNull()
+            return PatchState.Done(game, name, added, result.file, result.format, inFallback = result.file.parentFile == fallback)
+        } finally {
+            patch.delete()
+        }
+    }
+
+    /**
+     * Lists the patched copy under the original's name plus "(패치)", on the same system and core. Filed
+     * under the library folder it landed in, when it did, so a rescan treats it like any scanned game.
+     */
+    private suspend fun addPatchedCopy(original: GameEntity, file: File): GameEntity? {
+        val path = file.absolutePath
+        val folder = db.folders().allOnce().firstOrNull { f ->
+            val root = f.path.trimEnd('/')
+            path.startsWith("$root/") && (f.recursive || file.parentFile?.absolutePath == root)
+        }
+        val added = scanner.addFile(file, folder?.id) ?: return null
+        // " (패치)" / " (패치 2)": whatever RomPatch appended to the original's file name.
+        val label = file.nameWithoutExtension.removePrefix(File(original.path).nameWithoutExtension).ifBlank { " (${RomPatch.SUFFIX})" }
+        val updated = added.copy(title = original.title + label, system = original.system, coreId = original.coreId)
+        db.games().update(updated)
+        return updated
+    }
 
     // ---- adding content ------------------------------------------------------------------------
 
