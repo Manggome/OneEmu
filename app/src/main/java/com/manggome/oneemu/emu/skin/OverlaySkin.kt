@@ -21,6 +21,9 @@ enum class HitShape { RADIAL, RECT }
 
 enum class OverlayOrientation { PORTRAIT, LANDSCAPE }
 
+/** A rectangle in normalized (0..1) coordinates, top-left origin. */
+data class NormRect(val x: Float, val y: Float, val w: Float, val h: Float)
+
 sealed interface DescAction {
     /** One or more RetroPad buttons (libretro mask). */
     data class Press(val mask: Int) : DescAction
@@ -33,6 +36,9 @@ sealed interface DescAction {
     /** Switch to [target] (null = next overlay in file order). */
     data class OverlayNext(val target: String?) : DescAction
     data class FastForward(val hold: Boolean) : DescAction
+    /** Quick save / quick load slot (Delta skins' `quickSave` / `quickLoad`). */
+    data object QuickSave : DescAction
+    data object QuickLoad : DescAction
     /** Picture only, never hit-tested. */
     data object Image : DescAction
     /** Known RetroArch hotkey we do not implement; hidden. */
@@ -62,12 +68,21 @@ data class OverlayDesc(
     val reachRight: Float,
     val reachUp: Float,
     val reachDown: Float,
+    /**
+     * The button is printed on the background picture (Delta skins), so a hotkey without an image of its own
+     * is still a real, visible button.
+     */
+    val artInBackground: Boolean = false,
+    /** Drawn image size relative to the hit box (a Delta thumbstick knob is smaller than its touch area). */
+    val imageScaleX: Float = 1f,
+    val imageScaleY: Float = 1f,
 ) {
     /** Hit-tested at runtime. Invisible hotkeys (no image) are dropped so they cannot hijack game touches. */
     val interactive: Boolean
         get() = when (action) {
             DescAction.Image, DescAction.Unsupported -> false
-            DescAction.MenuToggle, is DescAction.OverlayNext, is DescAction.FastForward -> image != null
+            DescAction.MenuToggle, is DescAction.OverlayNext, is DescAction.FastForward,
+            DescAction.QuickSave, DescAction.QuickLoad -> (image != null || artInBackground) && rx > 0f && ry > 0f
             else -> rx > 0f && ry > 0f
         }
 
@@ -88,6 +103,16 @@ data class Overlay(
     val alphaMod: Float,
     val next: String?,
     val descs: List<OverlayDesc>,
+    /**
+     * Converted from a Delta skin: one picture with the buttons printed on it, so it is placed as a whole
+     * (never pulled apart, pad-size setting ignored), anchored to the bottom in portrait, and it says where
+     * the game picture goes ([gameScreen]).
+     */
+    val delta: Boolean = false,
+    /** Delta `translucent`: drawn over the game at the pad opacity. Opaque skins are drawn solid around the game. */
+    val translucent: Boolean = false,
+    /** Game picture inside the design box, normalized (0..1 of the box). Null = the app's own viewport. */
+    val gameScreen: NormRect? = null,
 ) {
     private val lower = name.lowercase()
 
