@@ -144,7 +144,10 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                 .collectAsState(initial = DefaultLayouts.forProfile(padProfile, config))
             // Game viewport for this (system, screen configuration): saved value or the top-anchored default.
             val savedViewport by remember(padProfile, config) { ViewportStore.observeSaved(padProfile, config) }.collectAsState(initial = null)
-            val viewport = savedViewport ?: ViewportStore.default(session.system, config, Size(surfaceSize.width.toFloat(), surfaceSize.height.toFloat()))
+            // A Delta skin says where its screen is; that wins while the skin is on screen.
+            // The pad reports it again (or null) whenever its skin, orientation or visibility changes.
+            var skinViewport by remember { mutableStateOf<ViewportRect?>(null) }
+            val viewport = skinViewport ?: savedViewport ?: ViewportStore.default(session.system, config, Size(surfaceSize.width.toFloat(), surfaceSize.height.toFloat()))
             // Applied on session start and whenever it changes; re-applied after the editor closes because the
             // editor previews its unsaved rectangle live on the paused frame.
             // Feature phones draw their own handset screen (PhoneScreen), which places the picture itself.
@@ -201,6 +204,7 @@ internal fun EmulatorScreen(host: EmulatorActivity) {
                         onRewind = host::setRewinding,
                         rewinding = ui.rewinding,
                     ),
+                    onSkinViewport = { skinViewport = it },
                 )
             }
 

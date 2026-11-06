@@ -112,6 +112,7 @@ fun SkinPickerScreen(profile: PadProfile, onBack: () -> Unit, onEdit: () -> Unit
     val onlineDoneMsg = stringResource(R.string.skins_online_done)
 
     val importedMsg = stringResource(R.string.skins_import_done)
+    val importedOtherMsg = stringResource(R.string.skins_import_done_other)
     val failedMsg = stringResource(R.string.skins_import_failed)
     fun runImport(block: suspend () -> SkinInfo) {
         importing = true
@@ -119,7 +120,10 @@ fun SkinPickerScreen(profile: PadProfile, onBack: () -> Unit, onEdit: () -> Unit
             val result = runCatching { block() }
             importing = false
             val info = result.getOrNull()
-            if (info != null) {
+            if (info != null && !deltaFits(info, profile)) {
+                // A Delta skin made for another console: keep it, but only that console's picker offers it.
+                snackbar.showSnackbar(importedOtherMsg.replace("%1\$s", info.name).replace("%2\$s", deltaSystemsLabel(info)))
+            } else if (info != null) {
                 SkinStore.select(profile.key, info.id)
                 snackbar.showSnackbar(importedMsg.replace("%1\$s", info.name))
             } else {
@@ -182,6 +186,7 @@ fun SkinPickerScreen(profile: PadProfile, onBack: () -> Unit, onEdit: () -> Unit
             title = { Text(stringResource(R.string.skins_import)) },
             text = { Text(stringResource(R.string.skins_import_hint)) },
             confirmButton = {
+                // .deltaskin / .manicskin are zips under a name no MIME table knows: providers report them as octet-stream.
                 TextButton(onClick = { importDialog = false; zipPicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }) {
                     Text(stringResource(R.string.skins_import_zip))
                 }
@@ -243,7 +248,8 @@ private fun MySkinsList(
             items(universal, key = { it.id }) { SkinCardRow(it, profile, selectedId, scope, onEdit, null) }
         }
         item(key = "h-imp") { SectionHeader(stringResource(R.string.skins_section_imported)) }
-        val imp = imported.orEmpty()
+        // Delta skins are drawn for one console; only that console's pad lists them.
+        val imp = imported.orEmpty().filter { deltaFits(it, profile) }
         if (imp.isEmpty()) {
             item(key = "no-imp") {
                 Text(stringResource(R.string.skins_no_imported), style = MaterialTheme.typography.bodyMedium, color = OneEmuColors.OnSurfaceMuted, modifier = Modifier.padding(horizontal = 4.dp))
@@ -292,7 +298,8 @@ private fun SkinCardRow(
             SkinPreview(loaded, landscape = true, system, Modifier.size(width = 92.dp, height = 44.dp))
         },
         title = info.name,
-        subtitle = if (info.author.isBlank() && info.license.isBlank()) stringResource(R.string.skins_credit_unknown)
+        subtitle = if (info.isDelta) stringResource(R.string.skins_delta_badge, deltaSystemsLabel(info))
+        else if (info.author.isBlank() && info.license.isBlank()) stringResource(R.string.skins_credit_unknown)
         else stringResource(R.string.skins_credit, info.author.ifBlank { "?" }, info.license.ifBlank { "?" }),
         onEdit = onEdit,
         trailing = if (onDelete != null) {
@@ -300,6 +307,17 @@ private fun SkinCardRow(
         } else null,
     )
 }
+
+/**
+ * Whether [info] may be offered on [profile]'s pad: always for RetroArch overlays, and for a Delta skin only
+ * on the console it was drawn for (its buttons are printed on the picture; the Wii Remote pad has none of them).
+ */
+private fun deltaFits(info: SkinInfo, profile: PadProfile): Boolean =
+    !info.isDelta || (info.suits(profile.system) && profile.variant == PadProfile.Variant.STANDARD)
+
+/** "GB · GBC" for the consoles a Delta skin is for. */
+private fun deltaSystemsLabel(info: SkinInfo): String =
+    SystemId.entries.filter { it.id in info.systems }.joinToString(" · ") { it.shortName }
 
 @Composable
 private fun VectorCard(profile: PadProfile, selected: Boolean, onSelect: () -> Unit, onEdit: () -> Unit) {

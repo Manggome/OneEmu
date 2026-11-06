@@ -32,8 +32,11 @@ class PlacedDesc(
     }
 }
 
-/** Where the overlay's design box landed on screen (background image target). */
-class OverlayFrame(val box: Rect, val screen: Size)
+/**
+ * Where the overlay's design box landed on screen (background image target), and for a Delta skin where
+ * the game picture goes ([gameScreen], screen pixels).
+ */
+class OverlayFrame(val box: Rect, val screen: Size, val gameScreen: Rect? = null)
 
 /**
  * Places every desc of [overlay] on a [screen] the way RetroArch's auto-scale does: the overlay's design
@@ -57,20 +60,36 @@ fun placeOverlay(overlay: Overlay, screen: Size, landscape: Boolean, layout: Ski
         sepY = (h - boxH) / 2f
     }
     val offX = (w - boxW) / 2f
-    val offY = (h - boxH) / 2f
+    // Delta lays a portrait skin against the bottom edge; the spare height goes above it.
+    val offY = if (overlay.delta && !landscape) h - boxH else (h - boxH) / 2f
     val shiftX = if (overlay.blockXSeparation) 0f else sepX
     val shiftY = if (overlay.blockYSeparation) 0f else sepY
 
     val placed = ArrayList<PlacedDesc>(overlay.descs.size)
     for (d in overlay.descs) {
         val edit = layout[overlay, d]
-        val s = globalScale * (edit?.scale ?: 1f)
+        // The buttons of a Delta skin are printed on its picture; growing the touch areas alone would misalign them.
+        val s = (if (overlay.delta) 1f else globalScale) * (edit?.scale ?: 1f)
         var cx = offX + d.x * boxW + when { d.x < 0.5f -> -shiftX; d.x > 0.5f -> shiftX; else -> 0f }
         var cy = offY + d.y * boxH + when { d.y < 0.5f -> -shiftY; d.y > 0.5f -> shiftY; else -> 0f }
         if (edit != null) { cx += edit.dx * w; cy += edit.dy * h }
         placed += PlacedDesc(d, cx, cy, d.rx * boxW * s, d.ry * boxH * s, edit?.visible ?: true)
     }
-    return OverlayFrame(Rect(offX, offY, offX + boxW, offY + boxH), screen) to placed
+    val box = Rect(offX, offY, offX + boxW, offY + boxH)
+    return OverlayFrame(box, screen, deltaGameScreen(overlay, box, screen, landscape)) to placed
+}
+
+/**
+ * The game picture of a Delta skin in screen pixels: its screens' frame inside the box, or with none given,
+ * whatever is left above a portrait skin (Delta's own default). Null leaves the picture where the app puts it.
+ */
+private fun deltaGameScreen(overlay: Overlay, box: Rect, screen: Size, landscape: Boolean): Rect? {
+    if (!overlay.delta) return null
+    overlay.gameScreen?.let { g ->
+        return Rect(box.left + g.x * box.width, box.top + g.y * box.height, box.left + (g.x + g.w) * box.width, box.top + (g.y + g.h) * box.height)
+    }
+    if (!landscape && box.top >= screen.height * 0.15f) return Rect(0f, 0f, screen.width, box.top)
+    return null
 }
 
 /** 8-way direction from a finger inside a dpad area (elliptical normalisation, 45° diagonal zones). */

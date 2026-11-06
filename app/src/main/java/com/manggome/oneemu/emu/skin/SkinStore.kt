@@ -37,6 +37,13 @@ data class SkinMeta(
     val landscapeCfg: String? = null,
 )
 
+enum class SkinFormat {
+    /** RetroArch overlay: .cfg + PNGs. */
+    OVERLAY,
+    /** Delta / ManicEMU skin: info.json + PDF/PNG (`.deltaskin`, `.manicskin`). */
+    DELTA,
+}
+
 /** One installed skin: either an APK asset folder (`assets/skins/<dir>`) or an imported folder under `skins/`. */
 data class SkinInfo(
     val id: String,
@@ -49,7 +56,9 @@ data class SkinInfo(
     val landscapeCfg: String,
     val assetDir: String?,
     val fileDir: File?,
+    val format: SkinFormat = SkinFormat.OVERLAY,
 ) {
+    val isDelta: Boolean get() = format == SkinFormat.DELTA
     val builtIn: Boolean get() = assetDir != null
     val neutral: Boolean get() = systems.isEmpty()
     fun suits(system: SystemId): Boolean = system.id in systems
@@ -91,6 +100,8 @@ data class SkinLayout(val items: Map<String, DescEdit> = emptyMap()) {
  */
 object SkinStore {
     const val VECTOR = "vector"
+    /** The file that makes a skin folder a Delta skin. */
+    const val DELTA_INFO = "info.json"
     private const val ASSET_ROOT = "skins"
     private const val USER_PREFIX = "user:"
 
@@ -157,7 +168,8 @@ object SkinStore {
     suspend fun find(context: Context, id: String): SkinInfo? = all(context).firstOrNull { it.id == id }
 
     private fun describeUserDir(dir: File): SkinInfo? {
-        val cfgs = dir.walkTopDown().maxDepth(2).filter { it.isFile && it.extension.equals("cfg", true) }
+        if (File(dir, DELTA_INFO).isFile) return describeDeltaDir(dir)
+        val cfgs =dir.walkTopDown().maxDepth(2).filter { it.isFile && it.extension.equals("cfg", true) }
             .map { it.relativeTo(dir).path.replace('\\', '/') }.sorted().toList()
         if (cfgs.isEmpty()) return null
         val meta = File(dir, "skin.json").takeIf { it.exists() }?.let { f -> runCatching { json.decodeFromString(SkinMeta.serializer(), f.readText()) }.getOrNull() }
@@ -179,6 +191,24 @@ object SkinStore {
             source = meta?.source,
             portraitCfg = port, landscapeCfg = land,
             assetDir = null, fileDir = dir,
+        )
+    }
+
+    /** A Delta skin folder: offered only to the systems its `gameTypeIdentifier` names. */
+    private fun describeDeltaDir(dir: File): SkinInfo? {
+        val skin = runCatching { DeltaSkinParser.parse(File(dir, DELTA_INFO).readText()) }.getOrNull() ?: return null
+        val systems = DeltaGameTypes.systemsFor(skin.gameTypeIdentifier)
+        if (systems.isEmpty()) return null
+        return SkinInfo(
+            id = USER_PREFIX + dir.name,
+            name = skin.name,
+            systems = systems.map { it.id }.toSet(),
+            author = "",
+            license = "",
+            source = null,
+            portraitCfg = DELTA_INFO, landscapeCfg = DELTA_INFO,
+            assetDir = null, fileDir = dir,
+            format = SkinFormat.DELTA,
         )
     }
 
@@ -314,10 +344,28 @@ object SkinStore {
     }
 
     private suspend fun finishImport(context: Context, target: File): SkinInfo {
+        if (File(target, DELTA_INFO).isFile) return finishDeltaImport(context, target)
         val info = describeUserDir(target) ?: throw ImportException("no cfg")
         // Make sure at least one cfg parses to something with buttons.
         val cfg = runCatching { OverlayCfgParser.parse(File(target, info.portraitCfg).readText(), info.portraitCfg.substringBeforeLast('/', "")) }.getOrNull()
         if (cfg == null || cfg.overlays.none { it.hasPadButtons }) throw ImportException("invalid cfg")
+        refreshImported(context)
+        return info
+    }
+
+    /** Checks that a Delta skin names a system OneEmu has and that one of its layouts can be played. */
+    private suspend fun finishDeltaImport(context: Context, target: File): SkinInfo {
+        val skin = try {
+            DeltaSkinParser.parse(File(target, DELTA_INFO).readText())
+        } catch (e: DeltaSkinException) {
+            throw ImportException("invalid info.json: ${e.message}")
+        }
+        val system = DeltaGameTypes.primarySystem(skin.gameTypeIdentifier) ?: throw ImportException("unsupported game type ${skin.gameTypeIdentifier}")
+        val playable = skin.representations.any { rep ->
+            rep.background != null && File(target, rep.background).isFile && DeltaSkinLayout.toOverlay(rep, system) != null
+        }
+        if (!playable) throw ImportException("no playable layout")
+        val info = describeDeltaDir(target) ?: throw ImportException("invalid deltaskin")
         refreshImported(context)
         return info
     }

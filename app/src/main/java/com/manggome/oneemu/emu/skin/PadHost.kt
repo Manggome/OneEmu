@@ -28,7 +28,9 @@ import com.manggome.oneemu.emu.pad.rememberPadInsets
 import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalContext
 import com.manggome.oneemu.emu.Haptics
+import com.manggome.oneemu.emu.ViewportRect
 import com.manggome.oneemu.emu.rememberScreenConfig
+import androidx.compose.runtime.LaunchedEffect
 import com.manggome.oneemu.emu.pad.PadInput
 import com.manggome.oneemu.emu.pad.PadElementId
 import com.manggome.oneemu.emu.pad.PadLayout
@@ -57,6 +59,11 @@ fun PadHost(
     onFastForward: (Boolean) -> Unit,
     actions: PadActions = PadActions(),
     modifier: Modifier = Modifier,
+    /**
+     * Where the skin wants the game picture (a Delta skin's screen frame), or null for the app's own
+     * viewport - which is what every other pad, a hidden pad and an orientation the skin lacks report.
+     */
+    onSkinViewport: (ViewportRect?) -> Unit = {},
 ) {
     val context = LocalContext.current
     val config = rememberScreenConfig()
@@ -69,12 +76,16 @@ fun PadHost(
 
     when (val sel = selection) {
         SkinSelection.Loading -> {}
-        SkinSelection.Vector -> VirtualPad(
-            layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive,
-            onInput, onPointer, onMenu, onFastForward, modifier, actions,
-        )
+        SkinSelection.Vector -> {
+            LaunchedEffect(Unit) { onSkinViewport(null) }
+            VirtualPad(
+                layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive,
+                onInput, onPointer, onMenu, onFastForward, modifier, actions,
+            )
+        }
         is SkinSelection.Skin -> {
-            val loaded by produceState<Result<LoadedSkin>?>(null, sel.info.id) {
+            // A Delta skin picks its layout by screen shape, so a fold or unfold loads it again.
+            val loaded by produceState<Result<LoadedSkin>?>(null, sel.info.id, config) {
                 value = runCatching { SkinLoader.load(context, sel.info) }
             }
             val skinLayout by produceState(SkinLayout.EMPTY, sel.info.id, config) {
@@ -83,7 +94,9 @@ fun PadHost(
             val result = loaded ?: return
             val skin = result.getOrNull()
             if (skin == null || skin.cfg(landscape).isEmpty) {
-                // Broken import: fall back to the vector pad rather than leaving the user without controls.
+                // Broken import, or a Delta skin with no layout for this orientation: fall back to the vector
+                // pad rather than leaving the user without controls.
+                LaunchedEffect(Unit) { onSkinViewport(null) }
                 VirtualPad(layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, modifier, actions)
             } else if (!hidden) {
                 SkinPad(
@@ -92,12 +105,18 @@ fun PadHost(
                     gameRect = gameRect, fastForwardActive = fastForwardActive,
                     onInput = onInput, onPointer = onPointer, onMenu = onMenu, onFastForward = onFastForward,
                     modifier = modifier,
+                    onQuickSave = actions.onQuickSave,
+                    onQuickLoad = actions.onQuickLoad,
+                    onGameScreen = onSkinViewport,
                 )
                 // After SkinPad so it sits on top: the skin's pointer handler consumes every touch below it.
                 ExtraOverlay(layout, profile, opacity, globalScale, hapticMs, haptics, actions, modifier)
-            } else if (gameRect != null) {
-                // Pad hidden (physical gamepad) but the touch screen must still work.
-                VirtualPad(layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, modifier, actions)
+            } else {
+                LaunchedEffect(Unit) { onSkinViewport(null) }
+                if (gameRect != null) {
+                    // Pad hidden (physical gamepad) but the touch screen must still work.
+                    VirtualPad(layout, profile, opacity, globalScale, hapticMs, haptics, gameRect, fastForwardActive, onInput, onPointer, onMenu, onFastForward, modifier, actions)
+                }
             }
         }
     }

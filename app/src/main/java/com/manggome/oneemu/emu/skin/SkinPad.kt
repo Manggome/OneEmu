@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -16,8 +17,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.PointerInputChange
@@ -29,6 +32,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.manggome.oneemu.emu.Haptics
+import com.manggome.oneemu.emu.ViewportRect
 import com.manggome.oneemu.emu.pad.PadInput
 import com.manggome.oneemu.model.SystemId
 import com.manggome.oneemu.ui.theme.OneEmuColors
@@ -74,16 +78,26 @@ fun DrawScope.drawOverlay(skin: LoadedSkin, overlay: Overlay, frame: OverlayFram
     overlay.backgroundImage?.let { bg ->
         val img = skin.image(bg) ?: return@let
         val box = if (overlay.fullScreen) Rect(Offset.Zero, frame.screen) else frame.box
-        drawImage(img, dstOffset = IntOffset(box.left.toInt(), box.top.toInt()), dstSize = IntSize(box.width.toInt(), box.height.toInt()))
+        val draw = { drawImage(img, dstOffset = IntOffset(box.left.toInt(), box.top.toInt()), dstSize = IntSize(box.width.toInt(), box.height.toInt())) }
+        // An opaque Delta skin frames the game: keep its picture off the game screen, which sits underneath.
+        val hole = frame.gameScreen?.takeIf { overlay.delta && !overlay.translucent }
+        if (hole != null) clipRect(hole.left, hole.top, hole.right, hole.bottom, ClipOp.Difference) { draw() } else draw()
     }
     for (i in placed.indices) {
         val p = placed[i]
         val d = p.desc
+        if (d.artInBackground && d.image == null) {
+            // Printed on the background: show the press as a soft glow over the button.
+            val press = d.action as? DescAction.Press
+            val lit = visual.pressed?.get(i) == true || (press != null && visual.pressedMask and press.mask == press.mask)
+            if (lit && p.visible) drawOval(tint, Offset(p.cx - p.rx, p.cy - p.ry), Size(p.rx * 2f, p.ry * 2f))
+            continue
+        }
         if (!d.drawable) continue
         if (!p.visible && !visual.showHidden) continue
         val img = skin.image(d.image) ?: continue
-        var w = (p.rx * 2f).toInt()
-        var h = (p.ry * 2f).toInt()
+        var w = (p.rx * 2f * d.imageScaleX).toInt()
+        var h = (p.ry * 2f * d.imageScaleY).toInt()
         if (w <= 0 || h <= 0) continue
         var cx = p.cx
         var cy = p.cy
@@ -128,6 +142,10 @@ fun SkinPad(
     onMenu: () -> Unit,
     onFastForward: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    onQuickSave: () -> Unit = {},
+    onQuickLoad: () -> Unit = {},
+    /** Where a Delta skin puts the game picture, null when the skin leaves it to the app. */
+    onGameScreen: (ViewportRect?) -> Unit = {},
 ) {
     val config = LocalConfiguration.current
     val screenAspect = config.screenWidthDp.toFloat() / config.screenHeightDp.coerceAtLeast(1)
@@ -142,6 +160,8 @@ fun SkinPad(
     val placement = remember(overlay, size, layout, globalScale) {
         overlay?.let { placeOverlay(it, size, landscape, layout, globalScale) }
     }
+    val gameScreen = placement?.first?.gameScreen?.let { ViewportRect.fromRect(it, size) }
+    LaunchedEffect(gameScreen) { onGameScreen(gameScreen) }
 
     // Latest values for the long-lived pointer coroutine.
     val overlayState = rememberUpdatedState(overlay)
@@ -154,6 +174,8 @@ fun SkinPad(
     val onPointerState = rememberUpdatedState(onPointer)
     val onMenuState = rememberUpdatedState(onMenu)
     val onFfState = rememberUpdatedState(onFastForward)
+    val onQuickSaveState = rememberUpdatedState(onQuickSave)
+    val onQuickLoadState = rememberUpdatedState(onQuickLoad)
     val switchOverlay = rememberUpdatedState<(DescAction.OverlayNext) -> Unit> { a ->
         val cur = overlayState.value ?: return@rememberUpdatedState
         val next = cfg.byName(a.target ?: cur.next) ?: cfg.after(cur) ?: return@rememberUpdatedState
@@ -284,6 +306,8 @@ fun SkinPad(
                                 val inside = pd.contains(p.x, p.y, 1.6f)
                                 when (val a = pd.desc.action) {
                                     DescAction.MenuToggle -> if (inside) onMenuState.value()
+                                    DescAction.QuickSave -> if (inside) onQuickSaveState.value()
+                                    DescAction.QuickLoad -> if (inside) onQuickLoadState.value()
                                     is DescAction.OverlayNext -> if (inside) switchOverlay.value(a)
                                     is DescAction.FastForward -> {
                                         if (a.hold) onFfState.value(false)
@@ -315,7 +339,9 @@ fun SkinPad(
                 }
             },
     ) {
-        Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = opacity.coerceIn(0.05f, 1f) }) {
+        // An opaque Delta skin is the console body around the game, drawn solid as Delta does.
+        val solid = overlay?.delta == true && !overlay.translucent
+        Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = if (solid) 1f else opacity.coerceIn(0.05f, 1f) }) {
             val ov = overlay ?: return@Canvas
             val pl = placement ?: return@Canvas
             @Suppress("UNUSED_EXPRESSION") visualVersion
