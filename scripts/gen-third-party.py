@@ -83,7 +83,10 @@ def render(cores):
     w('  ARM JIT 는 [dynarmic](https://github.com/azahar-emu/dynarmic) (0BSD) 과 그 의존성 mcl·fmt·oaknut·robin-map')
     w('  (MIT), 빌드용 Boost 헤더 (BSL-1.0) 입니다. 게임별 고속 패치표는 ParkJeongseop/wie (MIT) 에서 왔습니다.')
     w('- **GeneralUser GS 사운드폰트** v2.0.3 (S. Christian Collins) — 피처폰 배경음악 합성용 코어 에셋.')
-    w('  자유 사용·재배포 허용, 전문은 `cores/wipi/assets/LICENSE-GeneralUser-GS.txt`.\n')
+    w('  자유 사용·재배포 허용, 전문은 `cores/wipi/assets/LICENSE-GeneralUser-GS.txt`.')
+    w('- **FBNeo 라이선스 전문** — FBNeo 라이선스는 전문을 그대로 함께 배포하도록 요구합니다.')
+    w('  `cores/fbneo/assets/LICENSE-FBNeo.txt` (APK 의 `coreassets/fbneo/`) 에 원문을 넣었습니다.')
+    w('  판매·유료 배포뿐 아니라 이 코드를 쓰는 프로젝트의 후원 요청도 금지합니다.\n')
 
     w('## 포함되지 않은 것\n')
     w('OneEmu 는 **게임 ROM, BIOS, 펌웨어, 암호화 키를 포함하거나 배포하지 않습니다.**')

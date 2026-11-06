@@ -105,6 +105,7 @@
 | PS2 · PSP · 3DS · 아케이드 · 피처폰 | 없음 | 필요 없습니다 |
 
 아케이드는 BIOS 대신 **롬셋 이름**이 중요합니다. 네오지오 게임은 `neogeo.zip` 을 같은 폴더에 두세요.
+네오지오·CPS1·CPS2·CPS3 게임은 FBNeo 코어(처음 실행할 때 내려받기)로 먼저 실행하고, 나머지는 MAME 코어가 맡습니다.
 
 </details>
 
@@ -149,7 +150,7 @@ Kotlin + Jetpack Compose 로 만들었고, 에뮬레이션은 [libretro](https:/
 OneEmu 는 **GPL-3.0-or-later** 입니다 ([`LICENSE`](LICENSE)). 포함된 코어들의 라이선스는
 [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) 와 앱의 **설정 → 정보** 에서 볼 수 있습니다.
 
-> ⚠ **일부 코어는 상업적 이용을 금지합니다** (Genesis Plus GX, MAME 2003-Plus, MAME 2010).
+> ⚠ **일부 코어는 상업적 이용을 금지합니다** (Genesis Plus GX, MAME 2003-Plus, MAME 2010, FBNeo).
 > 이 코어들이 들어 있는 한 OneEmu 를 팔거나 수익 목적으로 배포할 수 없습니다. 무료로 쓰고 나누는 것은 괜찮습니다.
 
 OneEmu 는 게임 ROM, BIOS, 펌웨어, 암호화 키를 **포함하지도 배포하지도 않습니다.**

@@ -164,12 +164,13 @@ class EmulatorActivity : ComponentActivity() {
         ui.title = game.title
         applyOrientation(game)
         val system = SystemId.fromId(game.system)
-        // Arcade zips are routed to the MAME core whose DAT lists them (same rule as the library's launch check).
-        val route = if (system == SystemId.ARCADE) ArcadeCoreRouter.route(game, app) else null
+        // Arcade zips are routed to the arcade core whose DAT lists them — FBNeo first for Neo Geo/CPS, else MAME
+        // (same rule as the library's launch check).
+        val route = if (system == SystemId.ARCADE) ArcadeCoreRouter.route(game, app, inspectZip = true) else null
         if (route?.neededCoreId != null) {
-            // Downloadable core (MAME 2010 / current MAME) not installed yet: offer the download instead of a plain error.
+            // Downloadable core (MAME 2010 / current MAME / FBNeo) not installed yet: offer the download instead of a plain error.
             ArcadeCoreRouter.needsDownload(app.cores, route.neededCoreId)?.let { ui.downloadCore = it; return }
-            ui.error = getString(R.string.lib_launch_core_needed, ArcadeCoreRouter.displayName(app.cores, route.neededCoreId), ArcadeCoreRouter.mameVersion(route.neededCoreId))
+            ui.error = getString(R.string.lib_launch_core_needed, ArcadeCoreRouter.displayName(app.cores, route.neededCoreId), ArcadeCoreRouter.romsetName(route.neededCoreId))
             return
         }
         // Optional explicit core (used by "이 코어로 실행" and for diagnostics); falls back to routing/defaults.
