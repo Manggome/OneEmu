@@ -1,0 +1,66 @@
+From: OneEmu build <Manggome@users.noreply.github.com>
+Subject: [PATCH] citra_libretro: expose "disable right eye rendering" as a core option
+
+Azahar's renderer can skip the top screen's right-eye image
+(Settings::values.disable_right_eye_render, video_core/right_eye_disabler.cpp);
+its Qt and Android frontends offer it as "Disable Right Eye Rendering"
+("Greatly improves performance in some games"). The libretro frontend never
+reads or sets it, so the libretro core always draws both eyes even though it
+has no stereoscopic output at all (render_3d is never set, stays Off) and the
+second image is thrown away.
+
+Add citra_disable_right_eye_render (graphics category, default enabled) and
+feed it into the setting. RightEyeDisabler re-reads the setting at every frame
+end, so changing the option in-game takes effect without a restart. Titles that
+break with it (Luigi's Mansion 1/2, Rayman Origins) are already excluded by the
+core's own hack list (common/hacks/hack_list.cpp, HackType::RIGHT_EYE_DISABLE,
+applied per title in GSP_GPU::AcquireGpuRight via RightEyeDisabler::SetEnabled),
+whatever the option says.
+
+diff --git a/src/citra_libretro/core_settings.cpp b/src/citra_libretro/core_settings.cpp
+index 085f7ac..b360b22 100644
+--- a/src/citra_libretro/core_settings.cpp
++++ b/src/citra_libretro/core_settings.cpp
+@@ -64,6 +64,8 @@ static constexpr const char* texture_filter = citra_setting(BaseKeys::texture_fi
+ static constexpr const char* texture_sampling = citra_setting(BaseKeys::texture_sampling);
+ static constexpr const char* custom_textures = citra_setting(BaseKeys::custom_textures);
+ static constexpr const char* dump_textures = citra_setting(BaseKeys::dump_textures);
++static constexpr const char* disable_right_eye_render =
++    citra_setting(BaseKeys::disable_right_eye_render);
+ } // namespace graphics
+
+ namespace layout {
+@@ -440,6 +442,22 @@ static constexpr retro_core_option_v2_definition option_definitions[] = {
+         },
+         config::disabled
+     },
++    {
++        config::graphics::disable_right_eye_render,
++        "Disable Right Eye Rendering",
++        "Disable Right Eye Rendering",
++        "Skip drawing the right-eye image of the top screen. The libretro core never shows "
++        "stereoscopic 3D, so that image is wasted work. Greatly improves performance in some "
++        "games; titles known to flicker with it are excluded automatically.",
++        nullptr,
++        config::category::graphics,
++        {
++            { config::enabled, "Enabled" },
++            { config::disabled, "Disabled" },
++            { nullptr, nullptr }
++        },
++        config::enabled
++    },
+
+     // Layout Category
+     {
+@@ -936,6 +954,10 @@ static void ParseGraphicsOptions(void) {
+
+     Settings::values.dump_textures = LibRetro::FetchVariable(config::graphics::dump_textures,
+                                                              config::disabled) == config::enabled;
++
++    Settings::values.disable_right_eye_render =
++        LibRetro::FetchVariable(config::graphics::disable_right_eye_render, config::enabled) ==
++        config::enabled;
+ }
+
+ static Settings::LayoutOption GetLayoutOption(const std::string& name) {
