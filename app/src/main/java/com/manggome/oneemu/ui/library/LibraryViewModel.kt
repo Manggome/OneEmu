@@ -375,10 +375,11 @@ class LibraryViewModel : ViewModel() {
             return LaunchCheck.MissingFile(game.path)
         val system = SystemId.fromId(game.system)
         if (system == SystemId.ARCADE && game.coreId == null) {
-            val route = ArcadeCoreRouter.route(game, app)
+            // inspectZip: a Neo Geo / CPS zip that is a MAME-only set goes back to the MAME core (ArcadeCoreRouter).
+            val route = ArcadeCoreRouter.route(game, app, inspectZip = true)
             if (route.neededCoreId != null) {
                 ArcadeCoreRouter.needsDownload(cores, route.neededCoreId)?.let { return LaunchCheck.CoreDownload(game, it) }
-                return LaunchCheck.NoCore(system, ArcadeCoreRouter.displayName(cores, route.neededCoreId), ArcadeCoreRouter.mameVersion(route.neededCoreId))
+                return LaunchCheck.NoCore(system, ArcadeCoreRouter.displayName(cores, route.neededCoreId), ArcadeCoreRouter.romsetName(route.neededCoreId))
             }
             if (route.resolvedCoreId == null) {
                 // Name unknown to every DAT: the doctor may have identified the set by CRC → offer the rename.

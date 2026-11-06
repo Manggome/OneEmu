@@ -2,7 +2,7 @@
 # it as a GitHub Release tagged v0.1.<commit count>. The in-app updater compares BuildConfig.VERSION_NAME
 # ("0.1.<commit count>") against that tag, so the two MUST stay identical (see the "version" step).
 #
-# Cores whose cores/<id>/core.json says "distribution": "download" (MAME 2010, current MAME) are NOT part of
+# Cores whose cores/<id>/core.json says "distribution": "download" (MAME 2010, current MAME, FBNeo) are NOT part of
 # the APK: cores.yml builds them and publishes them on the rolling `cores` release; the app downloads them on
 # demand. The matrix below lists bundled cores only, and the APK job drops any download-type .so as a guard.
 name: Build & Release

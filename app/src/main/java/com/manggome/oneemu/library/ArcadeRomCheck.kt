@@ -22,9 +22,10 @@ import java.util.zip.ZipFile
  *    first and then the game's own search path (game, parent, BIOS zips) — MAME logs
  *    `epr-18022.ic2 NOT FOUND (tried in segabill twcup98 stvbios)`. A missing device zip is [Status.NEEDS_DEVICE].
  *
- * [resolve] looks the zip up in several DBs (one per core, in preference order) with [routeByName]: the
- * first DB wins unless it rates the game's driver "preliminary" (or the driver is known to crash, see
- * [UNSTABLE_DRIVERS]) and a later DB rates it no worse. When no DB knows the file name it falls back to
+ * [resolve] looks the zip up in several DBs (one per core, in preference order) with [routeByName]: Neo Geo / CPS
+ * games FBNeo marks working go to FBNeo ([FBNEO_BOARDS]; back to the MAME pick when the zip is a MAME-only set);
+ * otherwise the first MAME DB wins unless it rates the game's driver "preliminary" (or the driver is known to crash,
+ * see [UNSTABLE_DRIVERS]) and a later DB rates it no worse. When no DB knows the file name it falls back to
  * CRC identification: newer MAME versions renamed many sets (rbisland vs rainbow, spidman vs spidey …),
  * so the zip's entry CRCs are matched against every game's ROM list and the best fit is reported as
  * [Status.RENAME_SUGGESTED].
@@ -69,6 +70,13 @@ object ArcadeRomCheck {
         // Current MAME (ArcadeCoreRouter.MAME) has no entry: its ST-V driver runs, so every ST-V game it lists goes there.
     )
 
+    /**
+     * Boards FBNeo runs first: the driver source files (FBNeo DAT `sourcefile`, file name without ".cpp") of Neo Geo
+     * MVS and Capcom CPS1/CPS2/CPS3. FBNeo grew up on exactly these boards and is the usual pick for them; the
+     * MAME 0.78 driver in particular renders some Neo Geo games wrongly (Metal Slug sprite glitches were reported).
+     */
+    val FBNEO_BOARDS: Set<String> = setOf("d_neogeo", "d_cps1", "d_cps2", "d_cps3")
+
     /** Why [routeByName] passed over an earlier (preferred) core. */
     enum class RouteReason {
         /** The first core that lists the game (or the only one) — nothing to explain. */
@@ -77,10 +85,27 @@ object ArcadeRomCheck {
         PREFERRED_PRELIMINARY,
         /** The preferred core's driver is in [UNSTABLE_DRIVERS]; the chosen core rates the game no worse. */
         PREFERRED_UNSTABLE,
+        /** A Neo Geo / CPS game ([FBNEO_BOARDS]) that FBNeo lists as working: FBNeo instead of the MAME core ([Routing.skippedCoreId]). */
+        FBNEO_BOARD,
+        /**
+         * The game is an FBNeo board game, but the zip is not FBNeo's set (files missing there) while the MAME core's
+         * set is complete — typically an old MAME 0.78 Neo Geo set. Only [resolve] (which reads the zip) decides this.
+         */
+        FBNEO_SET_MISMATCH,
     }
 
-    /** Result of [routeByName]: the core to run the game with, and the core it was taken away from (if any). */
-    data class Routing(val coreId: String, val game: Game, val reason: RouteReason = RouteReason.NONE, val skippedCoreId: String? = null) {
+    /**
+     * Result of [routeByName]: the core to run the game with, and the core it was taken away from (if any).
+     * [fallback] is set when FBNeo took a board game ([RouteReason.FBNEO_BOARD]): the routing the MAME cores alone
+     * would give, used by [resolve] when the zip turns out not to be an FBNeo set.
+     */
+    data class Routing(
+        val coreId: String,
+        val game: Game,
+        val reason: RouteReason = RouteReason.NONE,
+        val skippedCoreId: String? = null,
+        val fallback: Routing? = null,
+    ) {
         /** The chosen core is itself known to crash on this driver ([UNSTABLE_DRIVERS]) — nothing better exists. */
         val knownUnstable: Boolean get() = isUnstableDriver(coreId, game)
     }
@@ -338,7 +363,33 @@ object ArcadeRomCheck {
     private fun effectiveRank(coreId: String, game: Game): Int = if (isUnstableDriver(coreId, game)) -1 else game.driverStatus.rank
 
     /**
-     * Picks the core for [shortName] among [dbs] (preference order, e.g. MAME 2003-Plus → MAME 2010):
+     * Picks the core for [shortName] among [dbs] (MAME cores in preference order, plus FBNeo's DB if present):
+     *  1. FBNeo first for its boards: when FBNeo's DAT lists the game on a [FBNEO_BOARDS] driver (Neo Geo, CPS1/2/3)
+     *     and rates it working (not preliminary), FBNeo runs it ([RouteReason.FBNEO_BOARD]). What the MAME cores
+     *     would pick is kept in [Routing.fallback]: [resolve] switches to it when the zip is a MAME-only set.
+     *  2. Everything else: the MAME rule ([routeMame]) over the MAME DBs only — FBNeo does not compete there.
+     *  3. A name no MAME DAT lists but FBNeo's does (any board): FBNeo.
+     * Name lookups only; whether FBNeo is installed does not matter (callers offer the download).
+     */
+    fun routeByName(dbs: List<Pair<String, Db>>, shortName: String): Routing? {
+        val fbneo = dbs.firstOrNull { it.first == ArcadeCoreRouter.FBNEO }?.second?.get(shortName)
+        val mame = routeMame(dbs.filter { it.first != ArcadeCoreRouter.FBNEO }, shortName)
+        return when {
+            fbneo != null && isFbneoBoardGame(fbneo) ->
+                if (mame == null) Routing(ArcadeCoreRouter.FBNEO, fbneo)
+                else Routing(ArcadeCoreRouter.FBNEO, fbneo, RouteReason.FBNEO_BOARD, mame.coreId, fallback = mame)
+            mame != null -> mame
+            fbneo != null -> Routing(ArcadeCoreRouter.FBNEO, fbneo)
+            else -> null
+        }
+    }
+
+    /** A runnable game of FBNeo's DAT on one of [FBNEO_BOARDS] that FBNeo marks working — FBNeo runs it first. */
+    fun isFbneoBoardGame(game: Game): Boolean =
+        game.runnable && game.driverName in FBNEO_BOARDS && game.driverStatus != DriverStatus.PRELIMINARY
+
+    /**
+     * The MAME rule: picks the core for [shortName] among [dbs] (preference order, e.g. MAME 2003-Plus → MAME 2010):
      *  1. the first DB that lists the name wins when it rates the driver good/imperfect (or has no rating);
      *  2. when it rates the game preliminary — or the driver is in [UNSTABLE_DRIVERS] for that core — the first
      *     later DB that rates the game strictly better takes it; failing that, the **last** later DB that rates it
@@ -352,7 +403,7 @@ object ArcadeRomCheck {
      * of whether the (downloadable) core is installed; the caller's download prompt handles that.
      * Returns null when no DB lists the name.
      */
-    fun routeByName(dbs: List<Pair<String, Db>>, shortName: String): Routing? {
+    fun routeMame(dbs: List<Pair<String, Db>>, shortName: String): Routing? {
         val listed = dbs.mapNotNull { (id, db) -> db[shortName]?.let { id to it } }
         val (firstId, first) = listed.firstOrNull() ?: return null
         val reason = when {
@@ -496,8 +547,10 @@ object ArcadeRomCheck {
     }
 
     /**
-     * Routes [zip] with [routeByName] (first DB in [dbs] order that lists its short name, unless that core rates
-     * the driver preliminary/unstable and a later one does no worse) and checks it there. When none lists the
+     * Routes [zip] with [routeByName] (FBNeo for its working Neo Geo / CPS games, else the first DB in [dbs] order
+     * that lists its short name, unless that core rates the driver preliminary/unstable and a later one does no
+     * worse) and checks it there; an FBNeo board pick whose zip is a complete set only for the MAME core goes back
+     * to that core ([RouteReason.FBNEO_SET_MISMATCH]). When none lists the
      * name, identifies the set by entry CRCs in the same order, routes the identified name the same way and
      * returns RENAME_SUGGESTED (the report is the check under the suggested name, so missing files are still
      * listed). Otherwise NOT_IN_DAT with `coreId == null`.
@@ -515,6 +568,24 @@ object ArcadeRomCheck {
         val shortName = zip.nameWithoutExtension.lowercase()
         val byId = dbs.toMap()
 
+        fun checkOn(coreId: String, asName: String?) =
+            check(byId.getValue(coreId), zip, samplesDir(coreId), sibling, chdSupported(coreId), asName)
+
+        /**
+         * Checks the zip on [rt]'s core. An FBNeo board pick ([Routing.fallback] set) whose zip has problems as an
+         * FBNeo set but none as the MAME core's set (an old MAME 0.78 Neo Geo dump, say: other C-ROM CRCs, other BIOS
+         * files) runs on that MAME core instead — FBNeo would refuse to load it. When both have problems FBNeo stays,
+         * so the report explains what FBNeo needs.
+         */
+        fun checked(rt: Routing, asName: String? = null): Pair<Routing, Report> {
+            val report = checkOn(rt.coreId, asName)
+            val fb = rt.fallback ?: return rt to report
+            if (report.issues.isEmpty()) return rt to report
+            val fbReport = checkOn(fb.coreId, asName)
+            return if (fbReport.issues.isEmpty()) fb.copy(reason = RouteReason.FBNEO_SET_MISMATCH, skippedCoreId = rt.coreId) to fbReport
+            else rt to report
+        }
+
         /** The set these entry CRCs really are, checked under that name; null when nothing fits. */
         fun identified(): Resolution? {
             val crcs = readEntries(zip).values.mapTo(HashSet()) { it.crc }
@@ -523,16 +594,14 @@ object ArcadeRomCheck {
                 val name = db.identify(crcs)?.name ?: continue
                 if (name == shortName) continue
                 // The identified name may be rated better in another core: route it like a correctly named zip.
-                val rt = routeByName(dbs, name) ?: continue
-                val r = check(byId.getValue(rt.coreId), zip, samplesDir(rt.coreId), sibling, chdSupported(rt.coreId), asName = name)
+                val (rt, r) = checked(routeByName(dbs, name) ?: continue, asName = name)
                 return Resolution(rt.coreId, r.copy(shortName = shortName, status = Status.RENAME_SUGGESTED, suggestedName = name), rt.reason, rt.skippedCoreId)
             }
             return null
         }
 
-        routeByName(dbs, shortName)?.let { rt ->
-            val db = byId.getValue(rt.coreId)
-            val report = check(db, zip, samplesDir(rt.coreId), sibling, chdSupported(rt.coreId))
+        routeByName(dbs, shortName)?.let { named ->
+            val (rt, report) = checked(named)
             if (report.missing.isEmpty()) return Resolution(rt.coreId, report, rt.reason, rt.skippedCoreId)
             // The name is in the DAT but the contents are not that set's. A sibling revision saved under the
             // plain name is the usual reason - kof98.zip holding the decrypted kof98n, say - and MAME then

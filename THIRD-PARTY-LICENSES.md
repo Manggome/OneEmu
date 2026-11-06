@@ -9,6 +9,7 @@ OneEmu 는 여러 오픈 소스 에뮬레이터 코어를 함께 배포합니다
 아래 코어는 **상업적 이용을 금지**합니다. 이 코어가 들어 있는 한 OneEmu 를
 **판매하거나 유료 앱·광고 수익 목적으로 배포할 수 없습니다.** 무료 배포는 허용됩니다.
 
+- **FBNeo** (`fbneo`, 내려받기형) — FBNeo (non-commercial)
 - **Genesis Plus GX (메가드라이브 / 마스터 시스템)** (`genesisplusgx`, APK 에 포함) — Non-commercial
 - **MAME 2003-Plus** (`mame2003plus`, APK 에 포함) — MAME (non-commercial)
 - **MAME 2010** (`mame2010`, 내려받기형) — MAME (non-commercial)
@@ -27,6 +28,7 @@ GPL 조건을 따릅니다. 전문은 [`LICENSE`](LICENSE) 에 있습니다.
 | ARMSX2 (플레이스테이션 2) | ps2 | GPL-3.0-or-later | 내려받기 | [ARMSX2/ARMSX2](https://github.com/ARMSX2/ARMSX2) `f4272b6768a2` |
 | AzaharPlus (3DS) | 3ds | GPL-2.0-or-later | APK 포함 | [AzaharPlus/AzaharPlus](https://github.com/AzaharPlus/AzaharPlus) `263745c1df2c` |
 | Dolphin (게임큐브/Wii) | gc | GPL-2.0-or-later | 내려받기 | [libretro/dolphin](https://github.com/libretro/dolphin) `ed70219e8bf8` |
+| FBNeo | arcade | FBNeo (non-commercial) ⚠ | 내려받기 | [libretro/FBNeo](https://github.com/libretro/FBNeo) `d15071abf141` |
 | FCEUmm | nes | GPL-2.0 | APK 포함 | [libretro/libretro-fceumm](https://github.com/libretro/libretro-fceumm) `236ccdfc911e` |
 | Genesis Plus GX (메가드라이브 / 마스터 시스템) | md, sms, gg | Non-commercial ⚠ | APK 포함 | [libretro/Genesis-Plus-GX](https://github.com/libretro/Genesis-Plus-GX) `c2838c7dc423` |
 | 재즈 잭래빗 2 (Jazz² Resurrection) | jazz2 | GPL-3.0-or-later | APK 포함 | [deathkiller/jazz2-native](https://github.com/deathkiller/jazz2-native) `9cc77a769ca0` |
@@ -55,6 +57,9 @@ GPL 조건을 따릅니다. 전문은 [`LICENSE`](LICENSE) 에 있습니다.
   (MIT), 빌드용 Boost 헤더 (BSL-1.0) 입니다. 게임별 고속 패치표는 ParkJeongseop/wie (MIT) 에서 왔습니다.
 - **GeneralUser GS 사운드폰트** v2.0.3 (S. Christian Collins) — 피처폰 배경음악 합성용 코어 에셋.
   자유 사용·재배포 허용, 전문은 `cores/wipi/assets/LICENSE-GeneralUser-GS.txt`.
+- **FBNeo 라이선스 전문** — FBNeo 라이선스는 전문을 그대로 함께 배포하도록 요구합니다.
+  `cores/fbneo/assets/LICENSE-FBNeo.txt` (APK 의 `coreassets/fbneo/`) 에 원문을 넣었습니다.
+  판매·유료 배포뿐 아니라 이 코드를 쓰는 프로젝트의 후원 요청도 금지합니다.
 
 ## 포함되지 않은 것
 

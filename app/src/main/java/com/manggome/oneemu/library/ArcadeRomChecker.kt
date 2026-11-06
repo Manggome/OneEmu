@@ -112,12 +112,12 @@ class ArcadeRomChecker private constructor(private val context: Context) {
 
     private fun coreName(coreId: String): String = ArcadeCoreRouter.displayName(com.manggome.oneemu.OneEmuApp.get().cores, coreId)
 
-    /** "MAME 2010 (MAME 0.139 롬셋)"; current MAME: "MAME (최신 MAME 롬셋)". */
+    /** "MAME 2010 (MAME 0.139 롬셋)", "FBNeo (FBNeo 롬셋)"; current MAME: "MAME (최신 MAME 롬셋)". */
     fun coreLabel(coreId: String): String =
         if (coreId == ArcadeCoreRouter.MAME) context.getString(R.string.lib_arcade_core_label_latest, coreName(coreId))
-        else context.getString(R.string.lib_arcade_core_label, coreName(coreId), ArcadeCoreRouter.mameVersion(coreId))
+        else context.getString(R.string.lib_arcade_core_label, coreName(coreId), ArcadeCoreRouter.romsetName(coreId))
 
-    /** "MAME 2003-Plus, MAME 2010" */
+    /** "MAME 2003-Plus, MAME 2010, MAME, FBNeo" */
     private fun allCoreNames(): String = ArcadeCoreRouter.CORE_IDS.joinToString(", ") { coreName(it) }
 
     /** One-line status, e.g. "BIOS 필요: neogeo". */
@@ -143,7 +143,7 @@ class ArcadeRomChecker private constructor(private val context: Context) {
         val r = res.report
         val coreId = res.coreId ?: ArcadeCoreRouter.MAME2003PLUS
         val name = coreName(coreId)
-        val version = ArcadeCoreRouter.mameVersion(coreId)
+        val version = ArcadeCoreRouter.romsetName(coreId)
         return when (r.status) {
             Status.OK -> context.getString(R.string.lib_arcade_desc_ok, coreLabel(coreId))
             Status.MISSING_FILES -> context.getString(R.string.lib_arcade_desc_missing, r.missing.size, name, version)
@@ -178,6 +178,8 @@ class ArcadeRomChecker private constructor(private val context: Context) {
             RouteReason.NONE -> null
             RouteReason.PREFERRED_PRELIMINARY -> context.getString(R.string.lib_arcade_route_preliminary, coreName(skippedCoreId), coreName(chosenCoreId))
             RouteReason.PREFERRED_UNSTABLE -> context.getString(R.string.lib_arcade_route_unstable, coreName(skippedCoreId), coreName(chosenCoreId))
+            RouteReason.FBNEO_BOARD -> context.getString(R.string.lib_arcade_route_fbneo_board, coreName(skippedCoreId), coreName(chosenCoreId))
+            RouteReason.FBNEO_SET_MISMATCH -> context.getString(R.string.lib_arcade_route_fbneo_set_mismatch, coreName(skippedCoreId), coreName(chosenCoreId))
         }
     }
 
@@ -237,6 +239,8 @@ class ArcadeRomChecker private constructor(private val context: Context) {
     fun coreMismatchNote(res: Resolution, runningCoreId: String): String? {
         val target = res.coreId ?: return null
         if (target == runningCoreId || runningCoreId !in ArcadeCoreRouter.CORE_IDS) return null
+        // The running core lists the game too (a Neo Geo game forced back from FBNeo to MAME 2003-Plus): no mismatch.
+        if (res.report.game?.name?.let { db(runningCoreId)[it] } != null) return null
         return context.getString(R.string.lib_arcade_core_mismatch, coreName(runningCoreId), coreName(target))
     }
 
@@ -253,7 +257,7 @@ class ArcadeRomChecker private constructor(private val context: Context) {
             add(if (r.biosPresent) context.getString(R.string.lib_arcade_in_folder_ok, b) else context.getString(R.string.lib_arcade_bios_missing_folder, b))
         }
         r.outdatedBiosFiles.takeIf { it.isNotEmpty() }?.let { files ->
-            add(context.getString(R.string.lib_arcade_bios_outdated, r.biosZip ?: "", files.joinToString(", ") { it.name }, ArcadeCoreRouter.mameVersion(coreId)))
+            add(context.getString(R.string.lib_arcade_bios_outdated, r.biosZip ?: "", files.joinToString(", ") { it.name }, ArcadeCoreRouter.romsetName(coreId)))
         }
         r.parentZip?.takeIf { it != r.biosZip }?.let { p ->
             add(if (r.parentPresent) context.getString(R.string.lib_arcade_in_folder_ok, p) else context.getString(R.string.lib_arcade_parent_missing_folder, p))
@@ -334,17 +338,21 @@ class ArcadeRomChecker private constructor(private val context: Context) {
         }
     }
 
-    /** Lines of the core log that MAME prints while loading ROMs (NOT FOUND / WRONG CHECKSUMS / …). */
+    /**
+     * Lines of the core log that MAME prints while loading ROMs (NOT FOUND / WRONG CHECKSUMS / …), and FBNeo's
+     * "ROM at index 3 with name 201-c1.c1 and CRC 0x72813676 is required" / "None of those archives was found".
+     */
     fun mameLoadLines(log: String): List<String> =
         log.lineSequence().map { it.trim() }.filter { MAME_LOAD_LINE.containsMatchIn(it) }
-            .map { it.removePrefix("[MAME 2003+]").removePrefix("[MAME 2010]").removePrefix("[MAME]").trim() }.toList()
+            .map { it.removePrefix("[MAME 2003+]").removePrefix("[MAME 2010]").removePrefix("[MAME]").removePrefix("[FBNeo]").trim() }.toList()
 
     companion object {
         private const val TAG = "ArcadeRomChecker"
         private const val ROMDB_GZ = "romdb.tsv.gz"
         private const val ROMDB_PLAIN = "romdb.tsv"
         private val MAME_LOAD_LINE = Regex(
-            "NOT FOUND|NO GOOD DUMP|WRONG CHECKSUMS|WRONG LENGTH|ROM NEEDS REDUMP|Required files are missing|Warnings flagged|EXPECTED:|FOUND:|CRC\\(",
+            "NOT FOUND|NO GOOD DUMP|WRONG CHECKSUMS|WRONG LENGTH|ROM NEEDS REDUMP|Required files are missing|Warnings flagged|EXPECTED:|FOUND:|CRC\\(" +
+                "|ROM at index .* is required|None of those archives was found",
         )
 
         @Volatile private var instance: ArcadeRomChecker? = null
