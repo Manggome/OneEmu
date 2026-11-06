@@ -1,7 +1,7 @@
 {
  "schema": 1,
- "updated": "2026-10-05",
- "_comment": "피처폰(WIPI) 게임 호환 목록. 파일 단위(SHA-256)로 판정하고, 같은 PID 의 다른 파일은 '다른 판본'으로 표시한다. status: perfect(완벽 호환: 끝까지·저장·재실행 확인) > playable > menu > intro > broken. verified: manual(사람이 실기기에서 확인) | auto(wipi_headless 자동 테스트). 게임 파일은 포함하지 않는다.",
+ "updated": "2026-11-06",
+ "_comment": "피처폰(WIPI) 게임 호환 목록. OneEmu 에서 최적화·확인한 게임을 파일 단위(SHA-256)로 판정하고, 같은 PID 의 다른 파일은 '다른 판본'으로 표시한다. status: perfect(완벽 호환: 끝까지·저장·재실행 확인) > playable > menu > intro > broken. verified: manual(사람이 실기기에서 확인) | auto(wipi_headless 자동 테스트). orientation: 화면 방향 기본값(선택). 게임 파일은 포함하지 않는다.",
  "games": [
   {
    "title": "놈3",
@@ -402,22 +402,6 @@
    ]
   },
   {
-   "title": "검은방 2",
-   "carrier": "LGT",
-   "pid": "PD132640",
-   "aid": "0002BA0E",
-   "status": "playable",
-   "tested": "2026-10-04",
-   "verified": "auto",
-   "note": "탐색 플레이 확인.",
-   "files": [
-    {
-     "sha256": "af7d82e5e2393867ee2d7031fc4e4637a9d21d5ccb0a3c8098ddd9d425537e23",
-     "size": 1677668
-    }
-   ]
-  },
-  {
    "title": "놈 ZERO",
    "carrier": "LGT",
    "pid": "PD129126",
@@ -433,22 +417,6 @@
     }
    ],
    "orientation": "portrait"
-  },
-  {
-   "title": "레전드 오브 마스터",
-   "carrier": "LGT",
-   "pid": "PD127080",
-   "aid": "0002A4B1",
-   "status": "playable",
-   "tested": "2026-10-04",
-   "verified": "auto",
-   "note": "본게임(던전 전투) 플레이 확인.",
-   "files": [
-    {
-     "sha256": "735a579d82ac53bb205b04250ce44586c6d9375e64c2d6f3324796b3ae24d031",
-     "size": 2260948
-    }
-   ]
   },
   {
    "title": "메이플스토리 시그너스기사단",
@@ -547,22 +515,6 @@
    ]
   },
   {
-   "title": "오세아누스",
-   "carrier": "LGT",
-   "pid": "PD147489",
-   "aid": "0002D6C4",
-   "status": "playable",
-   "tested": "2026-10-04",
-   "verified": "auto",
-   "note": "본게임 플레이 확인.",
-   "files": [
-    {
-     "sha256": "d76ad718d4f46320d025807f19340e302a353725c5f89e76f686f8f0cfd49d1c",
-     "size": 3879395
-    }
-   ]
-  },
-  {
    "title": "제노니아",
    "carrier": "LGT",
    "pid": "PD116132",
@@ -611,53 +563,6 @@
    ]
   },
   {
-   "title": "테일즈위버 루시안칼츠편 (작업본)",
-   "carrier": "LGT",
-   "pid": "PD145765",
-   "aid": "0002EC43",
-   "status": "playable",
-   "tested": "2026-10-04",
-   "verified": "auto",
-   "note": "본게임 플레이 확인. 상점의 네트워크 구매는 30초 뒤 접속 실패 안내 후 계속 진행.",
-   "files": [
-    {
-     "sha256": "65630d8b37283050b2809e4f0c7993dcecc62cffccd66d63ea8abd7e117bc298",
-     "size": 3199998
-    }
-   ]
-  },
-  {
-   "title": "테일즈위버 막시민편",
-   "carrier": "LGT",
-   "pid": "PD123388",
-   "aid": "00029747",
-   "status": "menu",
-   "tested": "2026-09-30",
-   "verified": "auto",
-   "files": [
-    {
-     "sha256": "f5e21001612d95d72f20277f9c42d19f6c2ee07c0dc93151ecccc257f95217b6",
-     "size": 1813234
-    }
-   ]
-  },
-  {
-   "title": "테일즈위버 이스핀편",
-   "carrier": "LGT",
-   "pid": "PD109677",
-   "aid": "00026308",
-   "status": "menu",
-   "tested": "2026-10-04",
-   "verified": "auto",
-   "note": "생일 입력·메뉴까지 확인.",
-   "files": [
-    {
-     "sha256": "1045007289d80420f2f11808f6312e57e9d287f21da0186d57cdded92363e984",
-     "size": 1269282
-    }
-   ]
-  },
-  {
    "title": "하이브리드",
    "carrier": "LGT",
    "pid": "PD123965",
@@ -674,22 +579,6 @@
     {
      "sha256": "344e1285110a77089625b6d353c9766ecfd900763d7283ba0fd5eeeded07dcab",
      "size": 1759779
-    }
-   ]
-  },
-  {
-   "title": "하이브리드 2",
-   "carrier": "LGT",
-   "pid": "PX142921",
-   "aid": "00F2E18D",
-   "status": "playable",
-   "tested": "2026-10-04",
-   "verified": "auto",
-   "note": "본게임 플레이 확인.",
-   "files": [
-    {
-     "sha256": "c6ba7335de74bc54fb4bf27372bd512001716f0ff6e51bc215ef165bfe4da9a3",
-     "size": 2405773
     }
    ]
   },
@@ -738,22 +627,6 @@
     {
      "sha256": "3ccc6cf147d2d537a27b60e151732c2bed0144127bd1b93944591b0e4169373b",
      "size": 505022
-    }
-   ]
-  },
-  {
-   "title": "검은방3",
-   "carrier": "LGT",
-   "pid": "PD144693",
-   "aid": "0002E829",
-   "status": "playable",
-   "tested": "2026-10-04",
-   "verified": "auto",
-   "note": "탐색 플레이 확인.",
-   "files": [
-    {
-     "sha256": "580a66c32fff91cfd16b89ebd641dd003164ff73a4afa5009ed162db75683ec2",
-     "size": 2369977
     }
    ]
   },
