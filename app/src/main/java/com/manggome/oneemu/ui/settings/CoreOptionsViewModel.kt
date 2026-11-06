@@ -80,9 +80,10 @@ class CoreOptionsViewModel(private val coreId: String, private val gameId: Long 
         if (!libPath.exists()) return State.Error("core library missing: ${libPath.name}")
         val coreOverrides = app.settings.coreOptionOverrides(core.id)
         // Options a specific game needs (GameQuirks) are part of what its rows fall back to, so the screen
-        // shows them as the value in force and the user can still override any of them.
+        // shows them as the value in force and the user can still override any of them. Same order as the
+        // session (EmulatorSession.buildOptionOverrides): a core-wide setting the user chose beats the quirk.
         val quirk = if (perGame) app.db.games().get(gameId)?.let { GameQuirks.forGame(core.id, it) } else null
-        val baseline = core.defaultOptions + coreOverrides + quirk?.options.orEmpty()
+        val baseline = core.defaultOptions + quirk?.options.orEmpty() + coreOverrides
         val overrides = if (perGame) app.settings.gameOptionOverrides(gameId) else coreOverrides
         val merged = baseline.toMutableMap().apply { putAll(overrides) }
         val blob = merged.entries.joinToString("\n") { "${it.key}=${it.value}" }
