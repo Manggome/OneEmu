@@ -582,8 +582,20 @@ object ArcadeRomCheck {
             val fb = rt.fallback ?: return rt to report
             if (report.issues.isEmpty()) return rt to report
             val fbReport = checkOn(fb.coreId, asName)
-            return if (fbReport.issues.isEmpty()) fb.copy(reason = RouteReason.FBNEO_SET_MISMATCH, skippedCoreId = rt.coreId) to fbReport
-            else rt to report
+            if (fbReport.issues.isEmpty()) return fb.copy(reason = RouteReason.FBNEO_SET_MISMATCH, skippedCoreId = rt.coreId) to fbReport
+            // Neither is a clean set. A MAME core that finds every file - the BIOS zip's at least by name - loads a
+            // set whose only flaw is an older BIOS zip (the 0.78-era neogeo.zip: another sm1.sm1, a 64 KB 000-lo.lo)
+            // with a checksum warning: MAME 2010 plays a 0.139 mslug.zip that way. FBNeo wants the exact BIOS files.
+            val name = asName ?: shortName
+            for ((id, db) in dbs) {
+                if (id == rt.coreId) continue
+                val g = db[name] ?: continue
+                if (g.driverStatus == DriverStatus.PRELIMINARY) continue
+                val r = if (id == fb.coreId) fbReport else checkOn(id, asName)
+                if (r.missing.isEmpty() && r.issues.all { it.owner == r.biosZip })
+                    return Routing(id, g, RouteReason.FBNEO_SET_MISMATCH, rt.coreId) to r
+            }
+            return rt to report
         }
 
         /** The set these entry CRCs really are, checked under that name; null when nothing fits. */

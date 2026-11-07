@@ -156,6 +156,25 @@ class ArcadeFbneoRoutingTest {
         assertEquals(setOf("sp-s3.sp1", "000-lo.lo"), oldBiosSet.report.outdatedBiosFiles.map { it.name }.toSet())
     }
 
+    @Test fun aSetWhoseOnlyFlawIsAnOlderBiosZipGoesToTheMameCoreThatTakesIt() {
+        // Galaxy S24+ report: MAME 2010's mslug.zip (FBNeo's C-ROMs) next to an older neogeo.zip whose 000-lo.lo is
+        // the 64 KB dump. FBNeo wants the exact BIOS file and MAME 2003-Plus other C-ROMs; MAME 2010 finds every file
+        // by name and plays it with a checksum warning, so it gets the game.
+        val m2010 = db(
+            line("neogeo", "", "", false, listOf(rom("sp-s3.sp1", newBios), rom("000-lo.lo", newLo)), "", "neogeo.c"),
+            line("mslug", "neogeo", "neogeo", true, listOf(rom("201-p1.bin", p1), rom("201-c1.bin", newC1), rom("sp-s3.sp1", newBios, "="), rom("000-lo.lo", newLo, "=")), "good", "neogeo.c"),
+        )
+        val all = listOf("mame2003plus" to mame2003Db, "mame2010" to m2010, "fbneo" to fbneoDb)
+        val dir = tmp.newFolder()
+        zip(dir, "neogeo", "sp-s3.sp1" to newBios, "000-lo.lo" to oldLo)
+        val res = ArcadeRomCheck.resolve(all, zip(dir, "mslug", "201-p1.bin" to p1, "201-c1.bin" to newC1), chdSupported = { it != "mame2003plus" })
+        assertEquals("mame2010", res.coreId); assertEquals(RouteReason.FBNEO_SET_MISMATCH, res.reason); assertEquals("fbneo", res.skippedCoreId)
+        assertTrue(res.report.missing.isEmpty()); assertEquals(listOf("000-lo.lo"), res.report.mismatched.map { it.name })
+        // With the 000-lo.lo missing by name too, no MAME core takes it either: FBNeo stays and lists the BIOS files.
+        zip(dir, "neogeo", "sp-s3.sp1" to newBios, "mamelo.lo" to oldLo)
+        assertEquals("fbneo", ArcadeRomCheck.resolve(all, File(dir, "mslug.zip")).coreId)
+    }
+
     @Test fun renamedFbneoSetIsIdentifiedAndRoutedToFbneo() {
         val dir = tmp.newFolder()
         zip(dir, "neogeo", "sp-s3.sp1" to newBios, "000-lo.lo" to newLo)

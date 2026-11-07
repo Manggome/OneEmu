@@ -121,10 +121,13 @@ object ArcadeCoreRouter {
         val named = checker.routeByName(shortName) ?: return Route(default, null, null)
         val rt = named.fallback?.let { fb ->
             val res = checker.cached(game.path) ?: if (inspectZip) checker.resolveNow(File(game.path)) else null
-            if (res?.reason == ArcadeRomCheck.RouteReason.FBNEO_SET_MISMATCH && res.coreId == fb.coreId &&
-                res.status != ArcadeRomCheck.Status.RENAME_SUGGESTED)
-                fb.copy(reason = res.reason, skippedCoreId = named.coreId)
-            else null
+            val to = res?.coreId
+            if (res?.reason == ArcadeRomCheck.RouteReason.FBNEO_SET_MISMATCH && to != null && to != named.coreId &&
+                res.status != ArcadeRomCheck.Status.RENAME_SUGGESTED) {
+                // Usually the MAME pick itself; another MAME core when only that one takes the zip (see resolve).
+                val g = if (to == fb.coreId) fb.game else res.report.game
+                g?.let { ArcadeRomCheck.Routing(to, it, res.reason, named.coreId) }
+            } else null
         } ?: named
         val core = cores.core(rt.coreId)
         val status = rt.game.driverStatus

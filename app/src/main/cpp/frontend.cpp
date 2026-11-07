@@ -968,7 +968,57 @@ void Frontend::applyPendingVideoConfig() {
 void Frontend::setAudioMuted(bool muted) { audio_.setMuted(muted || paused_); }
 
 // ---------------------------------------------------------------- environment
+// Commands whose handler below reads or writes through `data`. Cores may pass NULL to probe whether a
+// query is supported at all (FBNeo asks GET_SAVESTATE_CONTEXT that way in retro_init, which crashed every
+// FBNeo game on start): answer such probes with true for the scalar queries we implement, false otherwise.
+static int environmentNullProbe(unsigned cmd) {
+    switch (cmd) {
+        case RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT:
+        case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE:
+        case RETRO_ENVIRONMENT_GET_FASTFORWARDING:
+        case RETRO_ENVIRONMENT_GET_THROTTLE_STATE:
+        case RETRO_ENVIRONMENT_GET_JIT_CAPABLE:
+        case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE:
+        case RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS:
+        case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
+        case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION:
+        case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION:
+        case RETRO_ENVIRONMENT_GET_LANGUAGE:
+        case RETRO_ENVIRONMENT_GET_OVERSCAN:
+        case RETRO_ENVIRONMENT_GET_CAN_DUPE:
+        case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
+        case RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES:
+        case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
+            return 1;
+        case RETRO_ENVIRONMENT_SET_ROTATION:
+        case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
+        case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
+        case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY:
+        case RETRO_ENVIRONMENT_GET_LIBRETRO_PATH:
+        case RETRO_ENVIRONMENT_GET_USERNAME:
+        case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
+        case RETRO_ENVIRONMENT_SET_HW_RENDER:
+        case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE:
+        case RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT:
+        case RETRO_ENVIRONMENT_GET_VARIABLE:
+        case RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK:
+        case RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE:
+        case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
+        case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
+        case RETRO_ENVIRONMENT_GET_PERF_INTERFACE:
+        case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
+        case RETRO_ENVIRONMENT_SET_GEOMETRY:
+            return 0;
+        default:
+            return -1; // the handler copes with NULL itself
+    }
+}
+
 bool Frontend::environment(unsigned cmd, void* data) {
+    if (!data) {
+        int probe = environmentNullProbe(cmd);
+        if (probe >= 0) return probe == 1;
+    }
     switch (cmd) {
         case RETRO_ENVIRONMENT_SET_ROTATION:
             rotation_ = *(const unsigned*)data & 3;
