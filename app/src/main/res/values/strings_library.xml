@@ -92,6 +92,9 @@
     <string name="lib_core_default">기종 기본값</string>
     <string name="lib_core_default_of">기종 기본값 (%1$s)</string>
     <string name="lib_core_unavailable">미포함</string>
+    <string name="lib_core_tap_to_download">설치되지 않음 · 누르면 내려받습니다</string>
+    <string name="lib_core_downloading">내려받는 중… 끝나면 이 코어로 바뀝니다</string>
+    <string name="lib_core_download_failed">내려받기 실패: %1$s (다시 누르면 재시도)</string>
     <string name="lib_core_none">이 기종에서 사용할 수 있는 코어가 없습니다.</string>
     <string name="lib_core_options">코어 옵션…</string>
 

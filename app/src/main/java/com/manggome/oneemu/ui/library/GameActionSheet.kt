@@ -58,6 +58,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.manggome.oneemu.core.DownloadState
 import androidx.compose.ui.unit.sp
 import com.manggome.oneemu.R
 import com.manggome.oneemu.data.db.GameEntity
@@ -346,6 +348,17 @@ fun CorePickerDialog(
         if (system == SystemId.ARCADE) ArcadeRomChecker.get(context).routeReasonText(ArcadeCoreRouter.route(game.copy(coreId = null))) else null
     }
     val effective = vm.coreFor(game)
+    // A downloadable core that isn't installed (ARMSX2, FBNeo, MAME 2010 ...; also gone after a reinstall) is not a
+    // dead row: tapping it downloads the core here, and the game switches to it once the install lands.
+    val downloads = com.manggome.oneemu.OneEmuApp.get().coreDownloads
+    val dlStates by downloads.state.collectAsStateWithLifecycle()
+    var pendingCore by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(dlStates, pendingCore) {
+        val id = pendingCore ?: return@LaunchedEffect
+        val core = vm.cores.core(id) ?: return@LaunchedEffect
+        if (vm.cores.isAvailable(core)) { vm.setCore(game, id); pendingCore = null }
+        else if (dlStates[id] is DownloadState.Failed) pendingCore = null
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.lib_core_title)) },
@@ -360,17 +373,26 @@ fun CorePickerDialog(
                         enabled = true,
                     ) { vm.setCore(game, null) }
                     for (core in cores) {
-                        val available = vm.cores.isAvailable(core)
+                        val dl = dlStates[core.id] ?: DownloadState.Idle
+                        val available = remember(dl) { vm.cores.isAvailable(core) }
                         CoreRow(
                             label = if (system == SystemId.ARCADE && core.id == default?.id) stringResource(R.string.lib_core_auto_of, core.displayName) else core.displayName,
                             sub = when {
+                                !available && core.isDownloadable -> when (dl) {
+                                    is DownloadState.Downloading -> stringResource(R.string.lib_core_downloading)
+                                    is DownloadState.Failed -> stringResource(R.string.lib_core_download_failed, dl.message)
+                                    else -> stringResource(R.string.lib_core_tap_to_download)
+                                }
                                 !available -> stringResource(R.string.lib_core_unavailable)
                                 system == SystemId.ARCADE && core.id == default?.id -> autoReason
                                 else -> null
                             },
-                            selected = game.coreId == core.id,
-                            enabled = available,
-                        ) { vm.setCore(game, core.id) }
+                            selected = game.coreId == core.id || pendingCore == core.id,
+                            enabled = available || (core.isDownloadable && dl !is DownloadState.Downloading),
+                        ) {
+                            if (available) vm.setCore(game, core.id)
+                            else { pendingCore = core.id; downloads.download(core.id) }
+                        }
                     }
                 }
             }
