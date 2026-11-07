@@ -156,7 +156,10 @@ class RomScanner(
      * file sits in (a patched copy written next to its original), so removing it hides it like any
      * scanned game instead of the next scan bringing it straight back.
      */
-    suspend fun addFile(file: File, folderId: Long? = null): GameEntity? = withContext(Dispatchers.IO) {
+    suspend fun addFile(given: File, folderId: Long? = null): GameEntity? = withContext(Dispatchers.IO) {
+        // "/sdcard/..." (a file:// open-with, say) and the folder scan's "/storage/emulated/0/..." are the same
+        // file; without resolving the link the open-with copy was inserted as a second library entry.
+        val file = runCatching { given.canonicalFile }.getOrDefault(given)
         val ext = file.extension.lowercase()
         if (ext !in extMap) return@withContext null
         db.games().getByPath(file.absolutePath)?.let { return@withContext it }
